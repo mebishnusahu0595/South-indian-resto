@@ -1,0 +1,238 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import './LoginModal.css';
+
+const LoginModal = () => {
+    const [step, setStep] = useState('phone'); // phone, otp, profile
+    const [phone, setPhone] = useState('');
+    const [otp, setOtp] = useState('');
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [devOtp, setDevOtp] = useState('');
+    const [resendTimer, setResendTimer] = useState(0);
+    const [otpLength, setOtpLength] = useState(6);
+
+    const { sendOTP, verifyOTP } = useAuth();
+
+    // Resend timer countdown
+    useEffect(() => {
+        if (resendTimer > 0) {
+            const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [resendTimer]);
+
+    const handleSendOTP = async (e) => {
+        e.preventDefault();
+        if (phone.length !== 10) {
+            setError('Please enter a valid 10-digit phone number');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const res = await sendOTP(phone);
+            if (res.otp) setDevOtp(res.otp);
+            if (res.otpLength) setOtpLength(res.otpLength);
+            setResendTimer(30);
+            setStep('otp');
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to send OTP');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResendOTP = async () => {
+        if (resendTimer > 0) return;
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const res = await sendOTP(phone);
+            if (res.otp) setDevOtp(res.otp);
+            setResendTimer(30);
+            setOtp('');
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to resend OTP');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVerifyOTP = async (e) => {
+        e.preventDefault();
+        if (otp.length !== otpLength) {
+            setError(`Please enter a valid ${otpLength}-digit OTP`);
+            return;
+        }
+
+        // Try verification - backend will tell us if profile is needed
+        await submitVerification();
+    };
+
+    const handleProfileSubmit = async (e) => {
+        e.preventDefault();
+        if (!name.trim()) {
+            setError('Please enter your name');
+            return;
+        }
+        await submitVerification();
+    };
+
+    const submitVerification = async () => {
+        setLoading(true);
+        setError('');
+
+        try {
+            await verifyOTP(phone, otp, name.trim(), email.trim());
+            // Auth context will update and modal will close automatically
+        } catch (err) {
+            if (err.response?.data?.requiresProfile) {
+                setStep('profile');
+            } else {
+                setError(err.response?.data?.message || 'Invalid OTP');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="login-modal-overlay">
+            <div className="login-modal">
+                <div className="login-modal-header">
+                    <img src="/logo.png" alt="Chetta's Dosa" className="modal-logo" />
+                    <h2>Chetta's Dosa</h2>
+                </div>
+
+                <div className="login-modal-content">
+                    {step === 'phone' && (
+                        <form onSubmit={handleSendOTP}>
+                            <p className="modal-title">Welcome! 👋</p>
+                            <p className="modal-subtitle">Enter your phone number to continue</p>
+
+                            <div className="phone-input-group">
+                                <span className="country-code">+91</span>
+                                <input
+                                    type="tel"
+                                    value={phone}
+                                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                                    placeholder="Enter phone number"
+                                    className="phone-input"
+                                    autoFocus
+                                />
+                            </div>
+
+                            {error && <p className="error-message">{error}</p>}
+
+                            <button type="submit" className="btn btn-primary btn-full" disabled={loading || phone.length !== 10}>
+                                {loading ? 'Sending...' : 'Get OTP'}
+                            </button>
+                        </form>
+                    )}
+
+                    {step === 'otp' && (
+                        <form onSubmit={handleVerifyOTP}>
+                            <p className="modal-title">Verify OTP 📱</p>
+                            <p className="modal-subtitle">
+                                Enter the {otpLength}-digit code sent to +91 {phone}
+                                <button type="button" className="change-number" onClick={() => { setStep('phone'); setOtp(''); setError(''); }}>
+                                    Change
+                                </button>
+                            </p>
+
+                            {devOtp && (
+                                <div className="dev-otp-notice">
+                                    Dev OTP: <strong>{devOtp}</strong>
+                                </div>
+                            )}
+
+                            <input
+                                type="tel"
+                                value={otp}
+                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, otpLength))}
+                                placeholder={`Enter ${otpLength}-digit OTP`}
+                                className="input otp-input"
+                                autoFocus
+                                maxLength={otpLength}
+                            />
+
+                            <div className="resend-section">
+                                {resendTimer > 0 ? (
+                                    <span className="resend-timer">Resend OTP in {resendTimer}s</span>
+                                ) : (
+                                    <button type="button" className="resend-btn" onClick={handleResendOTP} disabled={loading}>
+                                        Resend OTP
+                                    </button>
+                                )}
+                            </div>
+
+                            {error && <p className="error-message">{error}</p>}
+
+                            <button type="submit" className="btn btn-primary btn-full" disabled={loading || otp.length !== otpLength}>
+                                {loading ? 'Verifying...' : 'Verify OTP'}
+                            </button>
+                        </form>
+                    )}
+
+                    {step === 'profile' && (
+                        <form onSubmit={handleProfileSubmit}>
+                            <button
+                                type="button"
+                                className="back-btn"
+                                onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
+                            >
+                                ← Change Number
+                            </button>
+                            <p className="modal-title">Almost Done! ✨</p>
+                            <p className="modal-subtitle">Please enter your details</p>
+
+                            <div className="profile-fields">
+                                <div className="input-group">
+                                    <label>Name <span className="required">*</span></label>
+                                    <input
+                                        type="text"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        placeholder="Enter your name"
+                                        className="input"
+                                        autoFocus
+                                        required
+                                    />
+                                </div>
+                                <div className="input-group">
+                                    <label>Email <span className="optional">(Optional)</span></label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        placeholder="Enter email address"
+                                        className="input"
+                                    />
+                                </div>
+                            </div>
+
+                            {error && <p className="error-message">{error}</p>}
+
+                            <button type="submit" className="btn btn-primary btn-full" disabled={loading || !name.trim()}>
+                                {loading ? 'Please wait...' : 'Continue'}
+                            </button>
+                        </form>
+                    )}
+                </div>
+
+                <p className="modal-footer">
+                    By continuing, you agree to our Terms of Service
+                </p>
+            </div>
+        </div>
+    );
+};
+
+export default LoginModal;

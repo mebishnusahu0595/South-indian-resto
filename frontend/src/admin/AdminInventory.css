@@ -1,0 +1,102 @@
+.admin-inventory .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.inventory-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.low-stock-alert {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--error);
+    font-size: 0.875rem;
+}
+
+.value-badge {
+    background: #FEF3C7;
+    color: #92400E;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-weight: 600;
+    width: fit-content;
+}
+
+.font-semibold {
+    font-weight: 600;
+}
+
+.table-container {
+    background: white;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+tr.low-stock {
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.low-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 6px;
+    background: var(--error);
+    color: white;
+    font-size: 0.6rem;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+}
+
+.stock-low {
+    color: var(--error);
+    font-weight: 600;
+}
+
+.stock-ok {
+    color: var(--success);
+}
+
+.capitalize {
+    text-transform: capitalize;
+}
+
+.table-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.modal.small {
+    max-width: 400px;
+}
+
+.status-badge {
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-badge.paid {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--success);
+}
+
+.status-badge.partial {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--warning);
+}
+
+.status-badge.unpaid {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error);
+}
