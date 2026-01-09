@@ -37,6 +37,16 @@ app.set('io', io);
 // Connect to MongoDB
 connectDB();
 
+// Initialize Redis (optional - for caching)
+const { initRedis } = require('./utils/redis');
+if (process.env.NODE_ENV === 'production') {
+    initRedis().then(() => {
+        console.log('Redis caching initialized');
+    }).catch(err => {
+        console.warn('Redis unavailable, caching disabled:', err.message);
+    });
+}
+
 // Middleware
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',

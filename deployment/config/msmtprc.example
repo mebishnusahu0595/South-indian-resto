@@ -1,0 +1,38 @@
+# =============================================================================
+# MSMTP Configuration - System Email via Gmail SMTP
+# =============================================================================
+#
+# Installation:
+#   sudo apt install msmtp msmtp-mta mailutils -y
+#
+# Setup:
+#   1. Copy this file to /etc/msmtprc
+#   2. Update with your Gmail credentials
+#   3. Set permissions: sudo chmod 600 /etc/msmtprc
+#
+# Gmail Setup:
+#   1. Enable 2-Step Verification in Google Account
+#   2. Generate App Password: Google Account > Security > App Passwords
+#   3. Use the 16-character App Password below (NOT your regular password)
+#
+# Test:
+#   echo "Test email from VPS" | mail -s "VPS Test" your_email@gmail.com
+#
+# =============================================================================
+
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        /var/log/msmtp.log
+
+# Gmail Account Configuration
+account        gmail
+host           smtp.gmail.com
+port           587
+from           your_email@gmail.com
+user           your_email@gmail.com
+password       your_16_char_app_password_here
+
+# Set default account
+account default : gmail
