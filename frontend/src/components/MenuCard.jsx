@@ -1,6 +1,7 @@
 import React from 'react';
 import { FiPlus, FiMinus } from 'react-icons/fi';
 import { useCart } from '../context/CartContext';
+import { getImageUrl } from '../utils/config';
 import './MenuCard.css';
 
 const MenuCard = ({ item }) => {
@@ -8,9 +9,7 @@ const MenuCard = ({ item }) => {
     const cartItem = items.find(i => i._id === item._id);
     const quantity = cartItem?.quantity || 0;
 
-    const imageUrl = item.image
-        ? `http://localhost:5000${item.image}`
-        : 'https://via.placeholder.com/150x150?text=No+Image';
+    const imageUrl = getImageUrl(item.image) || 'https://via.placeholder.com/150x150?text=No+Image';
 
     return (
         <div className="menu-card">

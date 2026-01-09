@@ -11,6 +11,7 @@ import {
     updateLoyaltyOffer,
     deleteLoyaltyOffer
 } from '../utils/api';
+import { getImageUrl } from '../utils/config';
 import { FiStar, FiSettings, FiUsers, FiGift, FiPlus, FiMinus, FiSave, FiTag, FiEdit, FiTrash2 } from 'react-icons/fi';
 
 import Loader from '../components/Loader';
@@ -305,7 +306,7 @@ const AdminLoyalty = () => {
                             <div key={item._id} className="product-points-card">
                                 <div className="product-info">
                                     {item.image ? (
-                                        <img src={`http://localhost:5000${item.image}`} alt={item.name} />
+                                        <img src={getImageUrl(item.image)} alt={item.name} />
                                     ) : (
                                         <div className="no-image">🍽️</div>
                                     )}

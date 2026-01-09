@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiPlus, FiEdit2, FiTrash2, FiImage } from 'react-icons/fi';
 import { getAllMenuItems, getAllCategories, createMenuItem, updateMenuItem, deleteMenuItem, updateStock } from '../utils/api';
+import { getImageUrl } from '../utils/config';
 import './AdminMenu.css';
 
 const AdminMenu = () => {
@@ -109,7 +110,7 @@ const AdminMenu = () => {
                     <div key={item._id} className={`item-card ${!item.isAvailable ? 'out-of-stock' : ''}`}>
                         <div className="item-image">
                             {item.image ? (
-                                <img src={`http://localhost:5000${item.image}`} alt={item.name} />
+                                <img src={getImageUrl(item.image)} alt={item.name} />
                             ) : (
                                 <div className="no-image"><FiImage /></div>
                             )}

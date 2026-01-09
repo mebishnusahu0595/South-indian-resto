@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiPlus, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { getAllCategories, createCategory, updateCategory, deleteCategory } from '../utils/api';
+import { getImageUrl } from '../utils/config';
 import './AdminCategories.css';
 
 const AdminCategories = () => {
@@ -83,7 +84,7 @@ const AdminCategories = () => {
                     <div key={cat._id} className="category-item">
                         <div className="category-image">
                             {cat.image ? (
-                                <img src={`http://localhost:5000${cat.image}`} alt={cat.name} />
+                                <img src={getImageUrl(cat.image)} alt={cat.name} />
                             ) : (
                                 <span>🍴</span>
                             )}

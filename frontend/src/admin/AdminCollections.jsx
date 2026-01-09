@@ -10,6 +10,7 @@ import {
     removeProductFromCollection,
     getCategories
 } from '../utils/api';
+import { getImageUrl } from '../utils/config';
 import Loader from '../components/Loader';
 import './AdminCollections.css';
 
@@ -212,7 +213,7 @@ const AdminCollections = () => {
                             {collection.products?.slice(0, 4).map(product => (
                                 <div key={product._id} className="product-preview">
                                     {product.image ? (
-                                        <img src={`http://localhost:5000${product.image}`} alt={product.name} />
+                                        <img src={getImageUrl(product.image)} alt={product.name} />
                                     ) : (
                                         <div className="no-image">🍽️</div>
                                     )}
@@ -424,7 +425,7 @@ const AdminCollections = () => {
                                         >
                                             <div className="product-image">
                                                 {item.image ? (
-                                                    <img src={`http://localhost:5000${item.image}`} alt={item.name} />
+                                                    <img src={getImageUrl(item.image)} alt={item.name} />
                                                 ) : (
                                                     <span>🍽️</span>
                                                 )}

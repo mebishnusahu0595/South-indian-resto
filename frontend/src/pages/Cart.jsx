@@ -14,8 +14,8 @@ import {
     getMenuItems,
     getMyLoyaltyPoints,
     calculateRedemption,
-    getLoyaltyOffers
 } from '../utils/api';
+import { getImageUrl } from '../utils/config';
 import './Cart.css';
 
 const Cart = () => {
@@ -254,7 +254,7 @@ const Cart = () => {
                                             <div className="result-item-info">
                                                 <div className="result-item-image">
                                                     {item.image ? (
-                                                        <img src={`http://localhost:5000${item.image}`} alt={item.name} />
+                                                        <img src={getImageUrl(item.image)} alt={item.name} />
                                                     ) : (
                                                         <span>🍽️</span>
                                                     )}
@@ -292,7 +292,7 @@ const Cart = () => {
                             <div key={item._id} className="cart-item">
                                 <div className="cart-item-image">
                                     {item.image ? (
-                                        <img src={`http://localhost:5000${item.image}`} alt={item.name} />
+                                        <img src={getImageUrl(item.image)} alt={item.name} />
                                     ) : (
                                         <span>🍽️</span>
                                     )}

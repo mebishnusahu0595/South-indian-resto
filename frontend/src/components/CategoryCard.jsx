@@ -1,10 +1,9 @@
 import React from 'react';
+import { getImageUrl } from '../utils/config';
 import './CategoryCard.css';
 
 const CategoryCard = ({ category, isActive, onClick }) => {
-    const imageUrl = category.image
-        ? `http://localhost:5000${category.image}`
-        : 'https://via.placeholder.com/80x80?text=🍴';
+    const imageUrl = getImageUrl(category.image) || 'https://via.placeholder.com/80x80?text=🍴';
 
     return (
         <div
