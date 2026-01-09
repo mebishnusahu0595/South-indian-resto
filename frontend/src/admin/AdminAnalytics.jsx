@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend, AreaChart, Area } from 'recharts';
 import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings } from '../utils/api';
+import { exportToCSV, revenueExportColumns, getFilenameDate } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
-import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings } from 'react-icons/fi';
+import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload } from 'react-icons/fi';
 import './AdminAnalytics.css';
 
 const COLORS = ['#C87316', '#E08A2E', '#22C55E', '#3B82F6', '#9333EA', '#EC4899'];
@@ -69,6 +70,11 @@ const AdminAnalytics = () => {
         }
     };
 
+    const handleExportRevenue = () => {
+        const filename = `revenue_${period}_${getFilenameDate()}`;
+        exportToCSV(revenueData, revenueExportColumns, filename);
+    };
+
     if (loading) return <Loader message="Crunching the numbers..." />;
 
     const totalRevenue = revenueData.reduce((sum, d) => sum + d.revenue, 0);
@@ -79,16 +85,21 @@ const AdminAnalytics = () => {
         <div className="admin-analytics">
             <div className="page-header">
                 <h1>Analytics Dashboard</h1>
-                <div className="period-selector">
-                    {['today', 'week', 'month', 'year'].map(p => (
-                        <button
-                            key={p}
-                            className={`period-btn ${period === p ? 'active' : ''}`}
-                            onClick={() => setPeriod(p)}
-                        >
-                            {p.charAt(0).toUpperCase() + p.slice(1)}
-                        </button>
-                    ))}
+                <div className="header-actions">
+                    <button className="btn btn-secondary export-btn" onClick={handleExportRevenue}>
+                        <FiDownload /> Export CSV
+                    </button>
+                    <div className="period-selector">
+                        {['today', 'week', 'month', 'year'].map(p => (
+                            <button
+                                key={p}
+                                className={`period-btn ${period === p ? 'active' : ''}`}
+                                onClick={() => setPeriod(p)}
+                            >
+                                {p.charAt(0).toUpperCase() + p.slice(1)}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 

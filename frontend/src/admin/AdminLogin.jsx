@@ -67,10 +67,6 @@ const AdminLogin = () => {
                         {loading ? 'Logging in...' : 'Login'}
                     </button>
                 </form>
-
-                <p className="demo-credentials">
-                    Demo: Phone: 9999999999, Password: admin123
-                </p>
             </div>
         </div>
     );

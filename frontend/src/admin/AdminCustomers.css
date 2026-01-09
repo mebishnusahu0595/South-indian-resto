@@ -3,6 +3,9 @@
 }
 
 .admin-customers .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
     margin-bottom: 24px;
 }
 
@@ -14,6 +17,12 @@
 
 .admin-customers .page-header p {
     color: var(--text-muted);
+}
+
+.export-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 /* Stats Row */
@@ -211,7 +220,8 @@
     padding: 20px;
 }
 
-.customer-modal {
+.customer-modal,
+.export-modal {
     background: white;
     border-radius: var(--radius-xl);
     width: 100%;
@@ -221,7 +231,8 @@
     position: relative;
 }
 
-.customer-modal .close-btn {
+.customer-modal .close-btn,
+.export-modal .close-btn {
     position: absolute;
     top: 16px;
     right: 16px;
@@ -230,6 +241,89 @@
     font-size: 1.5rem;
     cursor: pointer;
     color: var(--text-muted);
+}
+
+.export-modal {
+    padding: 24px;
+}
+
+.export-modal h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 1.4rem;
+}
+
+.export-modal>p {
+    color: var(--text-muted);
+    margin-bottom: 20px;
+}
+
+.date-range-section {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: var(--radius-md);
+    margin-bottom: 20px;
+}
+
+.date-range-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 1rem;
+}
+
+.date-range-section .hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.date-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.date-inputs .input-group label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.date-inputs input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+}
+
+.date-inputs input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.export-info {
+    background: rgba(59, 130, 246, 0.1);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    margin-bottom: 20px;
+}
+
+.export-info p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
 }
 
 .customer-modal .modal-header {
@@ -356,7 +450,16 @@
         padding: 16px;
     }
 
+    .admin-customers .page-header {
+        flex-direction: column;
+        gap: 16px;
+    }
+
     .stats-row {
+        grid-template-columns: 1fr;
+    }
+
+    .date-inputs {
         grid-template-columns: 1fr;
     }
 

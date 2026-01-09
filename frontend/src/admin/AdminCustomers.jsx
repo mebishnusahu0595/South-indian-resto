@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiUser, FiPhone, FiDollarSign, FiShoppingBag, FiChevronDown, FiChevronUp, FiX, FiStar, FiGift } from 'react-icons/fi';
+import { FiSearch, FiUser, FiPhone, FiDollarSign, FiShoppingBag, FiChevronDown, FiChevronUp, FiX, FiStar, FiGift, FiDownload, FiCalendar } from 'react-icons/fi';
 import { getCustomerAnalytics, getCustomerDetail } from '../utils/api';
+import { exportToCSV, customerExportColumns, getFilenameDate } from '../utils/exportUtils';
 import Loader from '../components/Loader';
 import './AdminCustomers.css';
 
@@ -14,6 +15,11 @@ const AdminCustomers = () => {
     const [customerDetail, setCustomerDetail] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [dateRange, setDateRange] = useState({
+        startDate: '',
+        endDate: ''
+    });
 
     useEffect(() => {
         fetchCustomers();
@@ -72,6 +78,32 @@ const AdminCustomers = () => {
         return sortOrder === 'desc' ? <FiChevronDown /> : <FiChevronUp />;
     };
 
+    const handleExport = async () => {
+        try {
+            // Fetch all customers for export (with date range if specified)
+            const params = {
+                sortBy,
+                order: sortOrder,
+                limit: 10000, // Get all for export
+                ...(dateRange.startDate && { startDate: dateRange.startDate }),
+                ...(dateRange.endDate && { endDate: dateRange.endDate })
+            };
+            const res = await getCustomerAnalytics(params);
+            const dataToExport = res.data.customers || [];
+
+            const filename = dateRange.startDate && dateRange.endDate
+                ? `customers_${dateRange.startDate}_to_${dateRange.endDate}`
+                : `customers_${getFilenameDate()}`;
+
+            exportToCSV(dataToExport, customerExportColumns, filename);
+            setShowExportModal(false);
+            setDateRange({ startDate: '', endDate: '' });
+        } catch (error) {
+            console.error('Export error:', error);
+            alert('Failed to export data');
+        }
+    };
+
     if (loading && customers.length === 0) {
         return <Loader message="Loading customers..." />;
     }
@@ -79,8 +111,13 @@ const AdminCustomers = () => {
     return (
         <div className="admin-customers">
             <div className="page-header">
-                <h1>Customer Analytics</h1>
-                <p>View customer spending and order history</p>
+                <div>
+                    <h1>Customer Analytics</h1>
+                    <p>View customer spending and order history</p>
+                </div>
+                <button className="btn btn-primary export-btn" onClick={() => setShowExportModal(true)}>
+                    <FiDownload /> Export CSV
+                </button>
             </div>
 
             {/* Stats Summary */}
@@ -246,6 +283,51 @@ const AdminCustomers = () => {
                                 )}
                             </>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Export Modal */}
+            {showExportModal && (
+                <div className="modal-overlay" onClick={() => setShowExportModal(false)}>
+                    <div className="export-modal" onClick={e => e.stopPropagation()}>
+                        <button className="close-btn" onClick={() => setShowExportModal(false)}><FiX /></button>
+                        <h2><FiDownload /> Export Customers</h2>
+                        <p>Download customer data as CSV file</p>
+
+                        <div className="date-range-section">
+                            <h4><FiCalendar /> Date Range (Optional)</h4>
+                            <p className="hint">Filter by customer registration date</p>
+                            <div className="date-inputs">
+                                <div className="input-group">
+                                    <label>From Date</label>
+                                    <input
+                                        type="date"
+                                        value={dateRange.startDate}
+                                        onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+                                    />
+                                </div>
+                                <div className="input-group">
+                                    <label>To Date</label>
+                                    <input
+                                        type="date"
+                                        value={dateRange.endDate}
+                                        onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="export-info">
+                            <p>📋 Export includes: Name, Phone, Email, Total Orders, Total Spent, Loyalty Points, Last Order Date</p>
+                        </div>
+
+                        <div className="modal-actions">
+                            <button className="btn btn-secondary" onClick={() => setShowExportModal(false)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleExport}>
+                                <FiDownload /> Download CSV
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

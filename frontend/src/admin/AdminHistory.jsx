@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiFileText, FiClock, FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FiSearch, FiFileText, FiClock, FiCheckCircle, FiXCircle, FiDownload, FiCalendar, FiX } from 'react-icons/fi';
 import { getAllOrders } from '../utils/api';
+import { exportToCSV, orderExportColumns, getFilenameDate } from '../utils/exportUtils';
 import OrderBill from '../components/OrderBill';
 import './AdminHistory.css';
 
@@ -12,6 +13,11 @@ const AdminHistory = () => {
     const [filters, setFilters] = useState({
         status: '',
         date: new Date().toISOString().split('T')[0]
+    });
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportRange, setExportRange] = useState({
+        startDate: '',
+        endDate: ''
     });
 
     useEffect(() => {
@@ -41,6 +47,28 @@ const AdminHistory = () => {
         }
     };
 
+    const handleExport = async () => {
+        try {
+            const params = {
+                ...(exportRange.startDate && { startDate: exportRange.startDate }),
+                ...(exportRange.endDate && { endDate: exportRange.endDate })
+            };
+            const res = await getAllOrders(params);
+            const dataToExport = res.data || [];
+
+            const filename = exportRange.startDate && exportRange.endDate
+                ? `orders_${exportRange.startDate}_to_${exportRange.endDate}`
+                : `orders_${getFilenameDate()}`;
+
+            exportToCSV(dataToExport, orderExportColumns, filename);
+            setShowExportModal(false);
+            setExportRange({ startDate: '', endDate: '' });
+        } catch (error) {
+            console.error('Export error:', error);
+            alert('Failed to export data');
+        }
+    };
+
     return (
         <div className="admin-history">
             <div className="page-header">
@@ -58,6 +86,9 @@ const AdminHistory = () => {
                             onClick={() => setAllTime(true)}
                         >
                             All Time
+                        </button>
+                        <button className="btn btn-primary export-btn" onClick={() => setShowExportModal(true)}>
+                            <FiDownload /> Export
                         </button>
                     </div>
                 </div>
@@ -158,6 +189,51 @@ const AdminHistory = () => {
                     order={selectedOrder}
                     onCancel={() => setSelectedOrder(null)}
                 />
+            )}
+
+            {/* Export Modal */}
+            {showExportModal && (
+                <div className="modal-overlay" onClick={() => setShowExportModal(false)}>
+                    <div className="export-modal" onClick={e => e.stopPropagation()}>
+                        <button className="close-btn" onClick={() => setShowExportModal(false)}><FiX /></button>
+                        <h2><FiDownload /> Export Orders</h2>
+                        <p>Download order history as CSV file</p>
+
+                        <div className="date-range-section">
+                            <h4><FiCalendar /> Date Range</h4>
+                            <p className="hint">Select dates or leave empty for all orders</p>
+                            <div className="date-inputs">
+                                <div className="input-group">
+                                    <label>From Date</label>
+                                    <input
+                                        type="date"
+                                        value={exportRange.startDate}
+                                        onChange={(e) => setExportRange({ ...exportRange, startDate: e.target.value })}
+                                    />
+                                </div>
+                                <div className="input-group">
+                                    <label>To Date</label>
+                                    <input
+                                        type="date"
+                                        value={exportRange.endDate}
+                                        onChange={(e) => setExportRange({ ...exportRange, endDate: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="export-info">
+                            <p>📋 Export includes: Order ID, Date, Customer, Items, Total, Payment Method, Status</p>
+                        </div>
+
+                        <div className="modal-actions">
+                            <button className="btn btn-secondary" onClick={() => setShowExportModal(false)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleExport}>
+                                <FiDownload /> Download CSV
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
