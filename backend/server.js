@@ -21,6 +21,7 @@ const collectionRoutes = require('./routes/collections');
 const loyaltyRoutes = require('./routes/loyalty');
 
 const app = express();
+app.set('trust proxy', 1); // Enable proxy trust for Nginx
 const server = http.createServer(app);
 
 // Socket.IO setup
