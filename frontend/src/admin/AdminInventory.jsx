@@ -15,6 +15,7 @@ const AdminInventory = () => {
     });
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [paymentFilter, setPaymentFilter] = useState('all');
 
     useEffect(() => { fetchData(); }, []);
 
@@ -29,6 +30,7 @@ const AdminInventory = () => {
         }
     };
 
+    // ... (restored functions here)
     const resetForm = () => {
         setFormData({
             name: '', category: 'ingredient', unit: 'kg', currentStock: 0, minimumStock: 10, costPerUnit: 0, amountPaid: 0, supplier: ''
@@ -92,11 +94,17 @@ const AdminInventory = () => {
     const lowStockCount = items.filter(i => i.isLowStock).length;
     const totalInventoryValue = items.reduce((sum, item) => sum + (item.currentStock * item.costPerUnit), 0);
 
-    const filteredItems = items.filter(item =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.supplier && item.supplier.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const filteredItems = items.filter(item => {
+        const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.supplier && item.supplier.toLowerCase().includes(searchTerm.toLowerCase()));
+
+        const matchesPayment = paymentFilter === 'all' ||
+            (paymentFilter === 'unpaid' && (!item.paymentStatus || item.paymentStatus === 'pending' || item.paymentStatus === 'unpaid')) ||
+            item.paymentStatus === paymentFilter;
+
+        return matchesSearch && matchesPayment;
+    });
 
     return (
         <div className="admin-inventory">
@@ -113,6 +121,17 @@ const AdminInventory = () => {
                     </div>
 
                     <div className="header-actions">
+                        <select
+                            className="inventory-filter-select"
+                            value={paymentFilter}
+                            onChange={(e) => setPaymentFilter(e.target.value)}
+                        >
+                            <option value="all">All Payments</option>
+                            <option value="paid">Paid</option>
+                            <option value="partial">Partial</option>
+                            <option value="unpaid">Unpaid / Pending</option>
+                        </select>
+
                         <input
                             type="text"
                             placeholder="Search inventory..."

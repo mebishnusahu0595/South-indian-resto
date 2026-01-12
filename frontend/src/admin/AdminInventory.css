@@ -126,3 +126,19 @@ tr.low-stock {
     background: rgba(239, 68, 68, 0.1);
     color: var(--error);
 }
+
+.inventory-filter-select {
+    padding: 10px 16px;
+    border: 1px solid #ddd;
+    border-radius: var(--radius-md);
+    background-color: white;
+    font-size: 0.9rem;
+    outline: none;
+    cursor: pointer;
+    min-width: 150px;
+}
+
+.inventory-filter-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
