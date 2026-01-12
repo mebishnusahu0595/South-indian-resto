@@ -134,13 +134,16 @@
     transform: scale(1.05);
 }
 
-/* Hide profile button on mobile since it's in bottom nav */
-.profile-btn {
+/* Hide profile and history buttons on mobile since it's in bottom nav */
+.profile-btn,
+.history-btn {
     display: none;
 }
 
 @media (min-width: 768px) {
-    .profile-btn {
+
+    .profile-btn,
+    .history-btn {
         display: flex;
     }
 }
