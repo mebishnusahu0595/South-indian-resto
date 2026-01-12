@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiShoppingCart, FiUser, FiSearch } from 'react-icons/fi';
+import { FiShoppingCart, FiUser, FiSearch, FiClock } from 'react-icons/fi';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { getMenuItems, getMyLoyaltyPoints } from '../utils/api';
@@ -164,6 +164,13 @@ const Header = ({ title, showCart = true, showBack = false }) => {
                             {itemCount > 0 && (
                                 <span className="cart-badge">{itemCount}</span>
                             )}
+                        </Link>
+                    )}
+
+                    {/* History Button - Desktop */}
+                    {isAuthenticated && (
+                        <Link to="/orders" className="header-icon-btn history-btn" title="Order History">
+                            <FiClock />
                         </Link>
                     )}
 

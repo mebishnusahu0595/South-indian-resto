@@ -9,6 +9,7 @@ import { getCategories, getCollections } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import Loader from '../components/Loader';
+import FloatingCartBtn from '../components/FloatingCartBtn';
 import './Home.css';
 
 const Home = () => {
@@ -135,12 +136,8 @@ const Home = () => {
             ))}
 
             {/* Floating Cart Button */}
-            {itemCount > 0 && (
-                <Link to="/cart" className="floating-cart-btn">
-                    <span>View Cart</span>
-                    <span className="floating-cart-count">{itemCount} items</span>
-                </Link>
-            )}
+            {/* Floating Cart Button */}
+            <FloatingCartBtn />
 
             {/* Footer */}
             <Footer />

@@ -6,6 +6,7 @@ import CategoryCard from '../components/CategoryCard';
 import MenuCard from '../components/MenuCard';
 import { getCategories, getMenuItems } from '../utils/api';
 import Loader from '../components/Loader';
+import FloatingCartBtn from '../components/FloatingCartBtn';
 import './Menu.css';
 
 const Menu = () => {
@@ -169,6 +170,8 @@ const Menu = () => {
                     </div>
                 )}
             </div>
+            {/* Floating Cart Button */}
+            <FloatingCartBtn />
         </div>
     );
 };
