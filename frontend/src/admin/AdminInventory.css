@@ -1,8 +1,32 @@
 .admin-inventory .page-header {
+    margin-bottom: 24px;
+}
+
+.header-content {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 24px;
+    align-items: flex-end;
+    width: 100%;
+}
+
+.header-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.inventory-search {
+    padding: 10px 16px;
+    border: 1px solid #ddd;
+    border-radius: var(--radius-md);
+    width: 250px;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.inventory-search:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
 }
 
 .inventory-stats {
@@ -16,8 +40,10 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--error);
-    font-size: 0.875rem;
+    color: #FFFFFF;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .value-badge {

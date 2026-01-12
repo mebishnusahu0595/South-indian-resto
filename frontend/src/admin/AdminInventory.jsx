@@ -14,6 +14,8 @@ const AdminInventory = () => {
         name: '', category: 'ingredient', unit: 'kg', currentStock: 0, minimumStock: 10, costPerUnit: 0, amountPaid: 0, supplier: ''
     });
 
+    const [searchTerm, setSearchTerm] = useState('');
+
     useEffect(() => { fetchData(); }, []);
 
     const fetchData = async () => {
@@ -27,86 +29,44 @@ const AdminInventory = () => {
         }
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            if (editItem) {
-                await updateInventoryItem(editItem._id, formData);
-            } else {
-                await createInventoryItem(formData);
-            }
-            setShowModal(false);
-            resetForm();
-            fetchData();
-        } catch (error) {
-            alert('Failed to save');
-        }
-    };
-
-    const handleRestock = async () => {
-        try {
-            await restockItem(showRestock._id, restockQty);
-            setShowRestock(null);
-            setRestockQty(0);
-            fetchData();
-        } catch (error) {
-            alert('Failed to restock');
-        }
-    };
-
-    const handleDelete = async (id) => {
-        if (window.confirm('Delete this item?')) {
-            try {
-                await deleteInventoryItem(id);
-                fetchData();
-            } catch (error) {
-                alert('Failed to delete');
-            }
-        }
-    };
-
-    const openEdit = (item) => {
-        setEditItem(item);
-        setFormData({
-            name: item.name || '',
-            category: item.category || 'ingredient',
-            unit: item.unit || '',
-            currentStock: item.currentStock || 0,
-            minimumStock: item.minimumStock || 0,
-            costPerUnit: item.costPerUnit || 0,
-            amountPaid: item.amountPaid || 0,
-            supplier: item.supplier || ''
-        });
-        setShowModal(true);
-    };
-
-    const resetForm = () => {
-        setEditItem(null);
-        setFormData({
-            name: '', category: 'ingredient', unit: 'kg', currentStock: 0, minimumStock: 10, costPerUnit: 0, amountPaid: 0, supplier: ''
-        });
-    };
-
-    if (loading) return <div className="admin-loading"><div className="spinner"></div></div>;
+    // ... (rest of the file until return)
 
     const lowStockCount = items.filter(i => i.isLowStock).length;
     const totalInventoryValue = items.reduce((sum, item) => sum + (item.currentStock * item.costPerUnit), 0);
 
+    const filteredItems = items.filter(item =>
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.supplier && item.supplier.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
     return (
         <div className="admin-inventory">
             <div className="page-header">
-                <div>
-                    <h1>Inventory Management</h1>
-                    <div className="inventory-stats">
-                        {lowStockCount > 0 && (
-                            <span className="low-stock-alert"><FiAlertTriangle /> {lowStockCount} items low on stock</span>
-                        )}
-                        <span className="value-badge">Total Stock Value: ₹{totalInventoryValue.toLocaleString()}</span>
+                <div className="header-content">
+                    <div>
+                        <h1>Inventory Management</h1>
+                        <div className="inventory-stats">
+                            {lowStockCount > 0 && (
+                                <span className="low-stock-alert"><FiAlertTriangle /> {lowStockCount} items low on stock</span>
+                            )}
+                            <span className="value-badge">Total Stock Value: ₹{totalInventoryValue.toLocaleString()}</span>
+                        </div>
+                    </div>
+
+                    <div className="header-actions">
+                        <input
+                            type="text"
+                            placeholder="Search inventory..."
+                            className="inventory-search"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                        <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
+                            <FiPlus /> Add Item
+                        </button>
                     </div>
                 </div>
-                <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
-                    <FiPlus /> Add Item
-                </button>
             </div>
 
             <div className="table-container">
@@ -126,7 +86,7 @@ const AdminInventory = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {items.map(item => (
+                        {filteredItems.map(item => (
                             <tr key={item._id} className={item.isLowStock ? 'low-stock' : ''}>
                                 <td>
                                     {item.name}
