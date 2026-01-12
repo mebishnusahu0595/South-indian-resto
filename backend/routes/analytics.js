@@ -312,7 +312,7 @@ router.get('/users', protect, admin, async (req, res) => {
         ]);
 
         const topCustomers = await Order.aggregate([
-            { $match: { status: 'paid' } },
+            { $match: { status: { $ne: 'cancelled' } } },
             { $group: { _id: '$user', orderCount: { $sum: 1 }, totalSpent: { $sum: '$total' } } },
             { $sort: { totalSpent: -1 } },
             { $limit: 5 },
