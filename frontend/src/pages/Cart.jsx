@@ -14,6 +14,7 @@ import {
     getMenuItems,
     getMyLoyaltyPoints,
     calculateRedemption,
+    getLoyaltyOffers,
 } from '../utils/api';
 import { getImageUrl } from '../utils/config';
 import './Cart.css';
