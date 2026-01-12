@@ -29,7 +29,65 @@ const AdminInventory = () => {
         }
     };
 
-    // ... (rest of the file until return)
+    const resetForm = () => {
+        setFormData({
+            name: '', category: 'ingredient', unit: 'kg', currentStock: 0, minimumStock: 10, costPerUnit: 0, amountPaid: 0, supplier: ''
+        });
+        setEditItem(null);
+    };
+
+    const openEdit = (item) => {
+        setEditItem(item);
+        setFormData({
+            name: item.name,
+            category: item.category,
+            unit: item.unit,
+            currentStock: item.currentStock,
+            minimumStock: item.minimumStock,
+            costPerUnit: item.costPerUnit,
+            amountPaid: item.amountPaid || 0,
+            supplier: item.supplier || ''
+        });
+        setShowModal(true);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            if (editItem) {
+                await updateInventoryItem(editItem._id, formData);
+            } else {
+                await createInventoryItem(formData);
+            }
+            setShowModal(false);
+            resetForm();
+            fetchData();
+        } catch (error) {
+            console.error('Error saving item:', error);
+            alert('Failed to save item');
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this item?')) return;
+        try {
+            await deleteInventoryItem(id);
+            fetchData();
+        } catch (error) {
+            console.error('Error deleting item:', error);
+        }
+    };
+
+    const handleRestock = async () => {
+        try {
+            await restockItem(showRestock._id, restockQty);
+            setShowRestock(null);
+            fetchData();
+        } catch (error) {
+            console.error('Error restocking:', error);
+            alert('Failed to restock');
+        }
+    };
 
     const lowStockCount = items.filter(i => i.isLowStock).length;
     const totalInventoryValue = items.reduce((sum, item) => sum + (item.currentStock * item.costPerUnit), 0);
