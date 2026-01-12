@@ -69,8 +69,13 @@ const AdminEmployees = () => {
 
     const handleMarkAttendance = async (status) => {
         try {
+            // Create a safe date at noon to prevent timezone shifts
+            // This ensures 12th Jan IST (UTC+5.5) stays 12th Jan in UTC
+            const safeDate = new Date(selectedDate);
+            safeDate.setHours(12, 0, 0, 0);
+
             await markAttendance(showAttendance._id, {
-                date: selectedDate.toISOString(),
+                date: safeDate.toISOString(),
                 status
             });
             const res = await getEmployeeAttendance(showAttendance._id);
