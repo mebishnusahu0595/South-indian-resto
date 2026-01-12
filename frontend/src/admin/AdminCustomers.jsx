@@ -184,7 +184,7 @@ const AdminCustomers = () => {
                                         <span className="phone">{customer.phone}</span>
                                     </div>
                                 </td>
-                                <td>{customer.paidOrders || 0}</td>
+                                <td>{customer.totalOrders || 0}</td>
                                 <td className="amount">₹{(customer.totalSpent || 0).toLocaleString()}</td>
                                 <td>
                                     <span className="points-badge">🪙 {customer.loyaltyPoints || 0}</span>
