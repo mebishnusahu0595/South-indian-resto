@@ -81,9 +81,9 @@ const AdminOrders = () => {
         }
     };
 
-    const handlePayment = async (orderId, method) => {
+    const handlePayment = async (orderId, method, amount) => {
         try {
-            const res = await updatePayment(orderId, method);
+            const res = await updatePayment(orderId, method, amount);
             setSelectedOrder(res.data);
             setShowBill(true);
         } catch (error) {
@@ -196,13 +196,13 @@ const AdminOrders = () => {
                                         <div className="payment-btns">
                                             <button
                                                 className="btn btn-success btn-sm"
-                                                onClick={() => handlePayment(order._id, 'cash')}
+                                                onClick={() => handlePayment(order._id, 'cash', order.total)}
                                             >
                                                 Cash Paid
                                             </button>
                                             <button
                                                 className="btn btn-primary btn-sm"
-                                                onClick={() => handlePayment(order._id, 'online')}
+                                                onClick={() => handlePayment(order._id, 'online', order.total)}
                                             >
                                                 Online Paid
                                             </button>
