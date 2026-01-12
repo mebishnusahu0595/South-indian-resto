@@ -147,6 +147,12 @@ const AdminOrders = () => {
                                     ))}
                                 </div>
 
+                                {order.specialInstructions && (
+                                    <div className="order-special-instructions">
+                                        <strong>⚠️ Note:</strong> {order.specialInstructions}
+                                    </div>
+                                )}
+
                                 <div className="order-total">
                                     <div className="total-row">
                                         <span>Total</span>
