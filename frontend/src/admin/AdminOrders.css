@@ -243,10 +243,10 @@
 }
 
 .order-payment-input button {
-    background: var(--bg-primary);
-    border: 1px solid var(--primary);
-    color: var(--primary);
-    padding: 4px 12px;
+    background: var(--primary);
+    border: none;
+    color: white;
+    padding: 8px 16px;
     border-radius: var(--radius-sm);
     font-weight: 600;
     cursor: pointer;
@@ -254,6 +254,5 @@
 }
 
 .order-payment-input button:hover {
-    background: var(--primary);
-    color: white;
+    filter: brightness(0.9);
 }
