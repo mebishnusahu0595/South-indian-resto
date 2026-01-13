@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiShoppingCart, FiUser, FiSearch, FiClock } from 'react-icons/fi';
+import { FiShoppingCart, FiUser, FiSearch, FiClock, FiArrowLeft } from 'react-icons/fi';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { getMenuItems, getMyLoyaltyPoints } from '../utils/api';
@@ -100,8 +100,8 @@ const Header = ({ title, showCart = true, showBack = false }) => {
         <header className="header">
             <div className="header-content">
                 {showBack ? (
-                    <button className="header-back" onClick={() => navigate(-1)}>
-                        ←
+                    <button className="header-back" onClick={() => navigate('/')}>
+                        <FiArrowLeft />
                     </button>
                 ) : (
                     <Link to="/" className="header-logo">
