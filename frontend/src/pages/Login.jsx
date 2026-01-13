@@ -170,7 +170,22 @@ const Login = () => {
                         <input
                             type="tel"
                             value={otp}
-                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, otpLength))}
+                            onChange={(e) => {
+                                const value = e.target.value.replace(/\D/g, '').slice(0, otpLength);
+                                setOtp(value);
+
+                                // Auto-submit when OTP length is complete
+                                if (value.length === otpLength && !loading) {
+                                    // Small delay to show the last digit, then go to profile step if needed
+                                    setTimeout(() => {
+                                        if (!name.trim()) {
+                                            setStep('profile');
+                                        } else {
+                                            submitVerification();
+                                        }
+                                    }, 100);
+                                }
+                            }}
                             placeholder={`Enter ${otpLength}-digit OTP`}
                             className="input otp-input"
                             autoFocus
