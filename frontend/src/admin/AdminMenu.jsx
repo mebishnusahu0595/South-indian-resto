@@ -177,11 +177,30 @@ const AdminMenu = () => {
                                     <textarea className="input" value={formData.description}
                                         onChange={e => setFormData({ ...formData, description: e.target.value })} rows={2} />
                                 </div>
+                                {/* Veg/Non-Veg Toggle */}
+                                <div className="veg-toggle-group">
+                                    <label className="toggle-label">Food Type *</label>
+                                    <div className="veg-toggle-container">
+                                        <button
+                                            type="button"
+                                            className={`veg-toggle-btn ${formData.isVeg ? 'active veg' : ''}`}
+                                            onClick={() => setFormData({ ...formData, isVeg: true })}
+                                        >
+                                            <span className="veg-indicator veg"></span>
+                                            Veg
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`veg-toggle-btn ${!formData.isVeg ? 'active non-veg' : ''}`}
+                                            onClick={() => setFormData({ ...formData, isVeg: false })}
+                                        >
+                                            <span className="veg-indicator non-veg"></span>
+                                            Non-Veg
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="checkbox-group">
-                                    <label><input type="checkbox" checked={formData.isVeg}
-                                        onChange={e => setFormData({ ...formData, isVeg: e.target.checked })} /> Veg</label>
-                                    <label><input type="checkbox" checked={formData.isBestSeller}
-                                        onChange={e => setFormData({ ...formData, isBestSeller: e.target.checked })} /> Bestseller</label>
                                     <label><input type="checkbox" checked={formData.isNewItem}
                                         onChange={e => setFormData({ ...formData, isNewItem: e.target.checked })} /> New</label>
                                     <label><input type="checkbox" checked={formData.isRecommended}
