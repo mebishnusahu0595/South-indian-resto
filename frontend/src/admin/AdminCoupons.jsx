@@ -149,11 +149,13 @@ const AdminCoupons = () => {
                                         <input type="number" className="input" value={formData.minOrderAmount}
                                             onChange={e => setFormData({ ...formData, minOrderAmount: parseFloat(e.target.value) })} />
                                     </div>
-                                    <div className="input-group">
-                                        <label>Max Discount (for %)</label>
-                                        <input type="number" className="input" value={formData.maxDiscount}
-                                            onChange={e => setFormData({ ...formData, maxDiscount: e.target.value ? parseFloat(e.target.value) : '' })} />
-                                    </div>
+                                    {formData.discountType === 'percentage' && (
+                                        <div className="input-group">
+                                            <label>Max Discount (for %)</label>
+                                            <input type="number" className="input" value={formData.maxDiscount}
+                                                onChange={e => setFormData({ ...formData, maxDiscount: e.target.value ? parseFloat(e.target.value) : '' })} />
+                                        </div>
+                                    )}
                                     <div className="input-group">
                                         <label>Usage Limit (-1 = unlimited)</label>
                                         <input type="number" className="input" value={formData.usageLimit}
