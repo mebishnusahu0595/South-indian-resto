@@ -328,7 +328,7 @@ const Cart = () => {
                         className="table-select"
                     >
                         <option value="">-- Select a Table --</option>
-                        {tables.map(table => (
+                        {[...tables].sort((a, b) => a.tableNumber - b.tableNumber).map(table => (
                             <option
                                 key={table._id}
                                 value={table._id}
@@ -452,6 +452,22 @@ const Cart = () => {
                 {/* Bill Summary */}
                 <div className="cart-section bill-section">
                     <h3 className="section-title">Bill Summary</h3>
+
+                    {/* Itemized Product List */}
+                    <div className="bill-items-list">
+                        {cart.map(item => (
+                            <div key={item._id} className="bill-item-row">
+                                <div className="bill-item-info">
+                                    <span className="bill-item-name">{item.name}</span>
+                                    <span className="bill-item-qty">x{item.quantity}</span>
+                                </div>
+                                <span className="bill-item-price">₹{(item.price * item.quantity).toFixed(2)}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="bill-divider"></div>
+
                     <div className="bill-row">
                         <span>Subtotal</span>
                         <span>₹{subtotal.toFixed(2)}</span>

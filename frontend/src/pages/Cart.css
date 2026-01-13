@@ -342,6 +342,64 @@
     background: white;
 }
 
+/* Bill Items List */
+.bill-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.bill-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.bill-item-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.bill-item-name {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bill-item-qty {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    background: white;
+    border-radius: var(--radius-xs, 4px);
+    border: 1px solid #E5E5E5;
+    flex-shrink: 0;
+}
+
+.bill-item-price {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--primary);
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.bill-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #E5E5E5, transparent);
+    margin: 8px 0;
+}
+
 .bill-row {
     display: flex;
     justify-content: space-between;
