@@ -131,7 +131,7 @@ const AdminSettings = () => {
                         <label>Contact Phone</label>
                         <input
                             type="text"
-                            value={settings.restaurant_phone || ''}
+                            value={settings.restaurant_phone || '+91 '}
                             onChange={(e) => handleBasicChange('restaurant_phone', e.target.value)}
                             placeholder="+91 XXXXX XXXXX"
                         />
