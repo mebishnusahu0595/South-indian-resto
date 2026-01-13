@@ -167,9 +167,28 @@ const AdminMenu = () => {
                                             {categories.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
                                         </select>
                                     </div>
-                                    <div className="input-group">
+                                    <div className="input-group image-upload-group">
                                         <label>Image</label>
                                         <input type="file" accept="image/*" onChange={e => setImage(e.target.files[0])} />
+                                        {/* Image Preview */}
+                                        {(image || (editItem && editItem.image)) && (
+                                            <div className="image-preview-container">
+                                                <img
+                                                    src={image ? URL.createObjectURL(image) : getImageUrl(editItem.image)}
+                                                    alt="Preview"
+                                                    className="image-preview"
+                                                />
+                                                {image && (
+                                                    <button
+                                                        type="button"
+                                                        className="remove-preview-btn"
+                                                        onClick={() => setImage(null)}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="input-group">
