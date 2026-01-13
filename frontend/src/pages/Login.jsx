@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Login.css';
@@ -14,6 +14,7 @@ const Login = () => {
     const [devOtp, setDevOtp] = useState('');
     const [resendTimer, setResendTimer] = useState(0);
     const [otpLength, setOtpLength] = useState(4);
+    const isSubmittingRef = useRef(false);
 
     const { sendOTP, verifyOTP, isAuthenticated } = useAuth();
     const navigate = useNavigate();
@@ -112,6 +113,7 @@ const Login = () => {
             } else {
                 setError(err.response?.data?.message || 'Invalid OTP');
             }
+            isSubmittingRef.current = false; // Reset on error to allow retry
         } finally {
             setLoading(false);
         }
@@ -175,15 +177,17 @@ const Login = () => {
                                 setOtp(value);
 
                                 // Auto-submit when OTP length is complete
-                                if (value.length === otpLength && !loading) {
+                                if (value.length === otpLength && !loading && !isSubmittingRef.current) {
+                                    isSubmittingRef.current = true;
                                     // Small delay to show the last digit, then go to profile step if needed
                                     setTimeout(() => {
                                         if (!name.trim()) {
                                             setStep('profile');
+                                            isSubmittingRef.current = false;
                                         } else {
                                             submitVerification();
                                         }
-                                    }, 100);
+                                    }, 150);
                                 }
                             }}
                             placeholder={`Enter ${otpLength}-digit OTP`}

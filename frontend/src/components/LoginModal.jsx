@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import './LoginModal.css';
 
@@ -13,6 +13,7 @@ const LoginModal = () => {
     const [devOtp, setDevOtp] = useState('');
     const [resendTimer, setResendTimer] = useState(0);
     const [otpLength, setOtpLength] = useState(6);
+    const isSubmittingRef = useRef(false);
 
     const { sendOTP, verifyOTP } = useAuth();
 
@@ -98,6 +99,7 @@ const LoginModal = () => {
             } else {
                 setError(err.response?.data?.message || 'Invalid OTP');
             }
+            isSubmittingRef.current = false; // Reset on error to allow retry
         } finally {
             setLoading(false);
         }
@@ -161,11 +163,12 @@ const LoginModal = () => {
                                     setOtp(value);
 
                                     // Auto-submit when OTP length is complete
-                                    if (value.length === otpLength && !loading) {
+                                    if (value.length === otpLength && !loading && !isSubmittingRef.current) {
+                                        isSubmittingRef.current = true;
                                         // Small delay to show the last digit
                                         setTimeout(() => {
                                             submitVerification();
-                                        }, 100);
+                                        }, 150);
                                     }
                                 }}
                                 placeholder={`Enter ${otpLength}-digit OTP`}
