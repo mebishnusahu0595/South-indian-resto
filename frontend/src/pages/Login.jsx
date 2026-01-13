@@ -208,9 +208,12 @@ const Login = () => {
 
                         {error && <p className="error-message">{error}</p>}
 
-                        <button type="submit" className="btn btn-primary btn-full" disabled={loading || otp.length !== otpLength}>
-                            {loading ? 'Verifying...' : 'Verify OTP'}
-                        </button>
+                        {loading && (
+                            <div className="verifying-message">
+                                <span className="spinner-small"></span>
+                                Verifying...
+                            </div>
+                        )}
                     </form>
                 )}
 
