@@ -111,3 +111,27 @@
 @media (min-width: 640px) { ... }
 @media (min-width: 1024px) { ... }
 */
+
+/* Infinite Scroll */
+.load-more-trigger {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.end-of-list {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px 16px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    gap: 8px;
+}
+
+.end-of-list span {
+    background: var(--bg-secondary);
+    padding: 8px 16px;
+    border-radius: var(--radius-full);
+}
