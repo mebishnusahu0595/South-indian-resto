@@ -57,3 +57,48 @@
     display: flex;
     gap: 8px;
 }
+
+/* Image Upload Preview */
+.image-upload-group {
+    position: relative;
+}
+
+.image-preview-container {
+    margin-top: 10px;
+    position: relative;
+    display: inline-block;
+}
+
+.image-preview {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    border: 2px solid #E5E5E5;
+    background: white;
+}
+
+.remove-preview-btn {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: #EF4444;
+    color: white;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.remove-preview-btn:hover {
+    background: #DC2626;
+    transform: scale(1.1);
+}

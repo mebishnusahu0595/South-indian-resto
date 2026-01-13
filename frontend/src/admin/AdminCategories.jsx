@@ -9,7 +9,7 @@ const AdminCategories = () => {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
-    const [formData, setFormData] = useState({ name: '', description: '', order: 0 });
+    const [formData, setFormData] = useState({ name: '', description: '', order: 1 });
     const [image, setImage] = useState(null);
 
     useEffect(() => { fetchData(); }, []);
@@ -58,13 +58,13 @@ const AdminCategories = () => {
 
     const openEdit = (item) => {
         setEditItem(item);
-        setFormData({ name: item.name, description: item.description || '', order: item.order || 0 });
+        setFormData({ name: item.name, description: item.description || '', order: item.order || 1 });
         setShowModal(true);
     };
 
     const resetForm = () => {
         setEditItem(null);
-        setFormData({ name: '', description: '', order: 0 });
+        setFormData({ name: '', description: '', order: 1 });
         setImage(null);
     };
 
@@ -125,9 +125,28 @@ const AdminCategories = () => {
                                     <input type="number" className="input" value={formData.order}
                                         onChange={e => setFormData({ ...formData, order: parseInt(e.target.value) })} />
                                 </div>
-                                <div className="input-group">
+                                <div className="input-group image-upload-group">
                                     <label>Image</label>
                                     <input type="file" accept="image/*" onChange={e => setImage(e.target.files[0])} />
+                                    {/* Image Preview */}
+                                    {(image || (editItem && editItem.image)) && (
+                                        <div className="image-preview-container">
+                                            <img
+                                                src={image ? URL.createObjectURL(image) : getImageUrl(editItem.image)}
+                                                alt="Preview"
+                                                className="image-preview"
+                                            />
+                                            {image && (
+                                                <button
+                                                    type="button"
+                                                    className="remove-preview-btn"
+                                                    onClick={() => setImage(null)}
+                                                >
+                                                    ×
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="modal-footer">
