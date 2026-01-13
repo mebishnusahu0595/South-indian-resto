@@ -87,18 +87,28 @@
 }
 
 .header-back {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.15);
     border: none;
     color: white;
-    font-size: 1.25rem;
-    padding: 8px 12px;
-    border-radius: var(--radius-md);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    border-radius: 50%;
     cursor: pointer;
-    transition: background var(--transition-fast);
+    transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 .header-back:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.05);
+}
+
+.header-back:active {
+    transform: scale(0.95);
 }
 
 .header-title {
