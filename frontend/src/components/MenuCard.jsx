@@ -9,7 +9,7 @@ const MenuCard = ({ item }) => {
     const cartItem = items.find(i => i._id === item._id);
     const quantity = cartItem?.quantity || 0;
 
-    const imageUrl = getImageUrl(item.image) || 'https://via.placeholder.com/150x150?text=No+Image';
+    const imageUrl = getImageUrl(item.image) || '/placeholder-food.svg';
 
     return (
         <div className="menu-card">

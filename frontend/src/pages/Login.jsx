@@ -100,12 +100,15 @@ const Login = () => {
         await submitVerification();
     };
 
-    const submitVerification = async () => {
+    const submitVerification = async (otpValue = null) => {
         setLoading(true);
         setError('');
 
+        // Use passed otpValue or fall back to state
+        const otpToVerify = otpValue || otp;
+
         try {
-            await verifyOTP(phone, otp, name.trim(), email.trim());
+            await verifyOTP(phone, otpToVerify, name.trim(), email.trim());
             navigate('/');
         } catch (err) {
             if (err.response?.data?.requiresProfile) {
@@ -185,7 +188,7 @@ const Login = () => {
                                             setStep('profile');
                                             isSubmittingRef.current = false;
                                         } else {
-                                            submitVerification();
+                                            submitVerification(value);  // Pass value directly
                                         }
                                     }, 150);
                                 }

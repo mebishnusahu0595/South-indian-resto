@@ -3,7 +3,7 @@ import { getImageUrl } from '../utils/config';
 import './CategoryCard.css';
 
 const CategoryCard = ({ category, isActive, onClick }) => {
-    const imageUrl = getImageUrl(category.image) || 'https://via.placeholder.com/80x80?text=🍴';
+    const imageUrl = getImageUrl(category.image) || '/placeholder-food.svg';
 
     return (
         <div

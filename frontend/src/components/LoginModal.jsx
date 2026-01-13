@@ -86,12 +86,15 @@ const LoginModal = () => {
         await submitVerification();
     };
 
-    const submitVerification = async () => {
+    const submitVerification = async (otpValue = null) => {
         setLoading(true);
         setError('');
 
+        // Use passed otpValue or fall back to state
+        const otpToVerify = otpValue || otp;
+
         try {
-            await verifyOTP(phone, otp, name.trim(), email.trim());
+            await verifyOTP(phone, otpToVerify, name.trim(), email.trim());
             // Auth context will update and modal will close automatically
         } catch (err) {
             if (err.response?.data?.requiresProfile) {
@@ -167,7 +170,7 @@ const LoginModal = () => {
                                         isSubmittingRef.current = true;
                                         // Small delay to show the last digit
                                         setTimeout(() => {
-                                            submitVerification();
+                                            submitVerification(value);  // Pass value directly
                                         }, 150);
                                     }
                                 }}
