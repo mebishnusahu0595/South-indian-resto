@@ -341,42 +341,67 @@ router.put('/:id/status', protect, admin, async (req, res) => {
 // @route   PUT /api/orders/:id/request-bill
 // @desc    Request bill for order
 // @access  Private
+// @route   PUT /api/orders/:id/request-bill
+// @desc    Request bill for order (and all associated active orders for that table/user)
+// @access  Private
 router.put('/:id/request-bill', protect, async (req, res) => {
     try {
-        const order = await Order.findById(req.params.id);
-        if (!order) {
+        const currentOrder = await Order.findById(req.params.id);
+        if (!currentOrder) {
             return res.status(404).json({ message: 'Order not found' });
         }
 
         console.log('Bill Request:', {
-            orderId: order._id,
-            orderUser: order.user,
+            orderId: currentOrder._id,
+            orderUser: currentOrder.user,
             currentUser: req.user._id
         });
 
-        // Temporary: Letting all authenticated users request bills for any order to resolve blockers
-        /*
-        if (order.user && order.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-            return res.status(403).json({ message: 'Not authorized' });
+        // Find query for all associated orders
+        let query = {
+            status: { $nin: ['paid', 'cancelled', 'bill_requested'] }
+        };
+
+        if (currentOrder.table) {
+            query.table = currentOrder.table;
+        } else {
+            query.user = currentOrder.user;
         }
-        */
 
-        order.status = 'bill_requested';
-        await order.save();
+        // Find all orders to update
+        const ordersToUpdate = await Order.find(query);
 
-        const populatedOrder = await Order.findById(order._id)
-            .populate('user', 'phone name')
-            .populate('items.menuItem', 'name image');
+        // Also include the current order if it wasn't picked up (though it should be)
+        if (!ordersToUpdate.find(o => o._id.toString() === currentOrder._id.toString())) {
+            // If current order status was already bill_requested/generated, we might still want to trigger socket
+            ordersToUpdate.push(currentOrder);
+        }
 
-        // Emit socket event
         const io = req.app.get('io');
-        if (io) {
-            io.emit('order-updated', populatedOrder); // For admin panel real-time update
-            io.emit('bill-requested', populatedOrder); // For specific handling if needed
-            io.to(`user-${order.user}`).emit('my-order-updated', populatedOrder);
+        const updatedOrders = [];
+
+        // Update all identified orders
+        for (const order of ordersToUpdate) {
+            order.status = 'bill_requested';
+            await order.save();
+
+            const populatedOrder = await Order.findById(order._id)
+                .populate('user', 'phone name')
+                .populate('items.menuItem', 'name image');
+
+            updatedOrders.push(populatedOrder);
+
+            if (io) {
+                io.emit('order-updated', populatedOrder);
+                io.emit('bill-requested', populatedOrder);
+                io.to(`user-${order.user}`).emit('my-order-updated', populatedOrder);
+            }
         }
 
-        res.json(populatedOrder);
+        // Return the current order (updated)
+        const finalCurrentOrder = updatedOrders.find(o => o._id.toString() === req.params.id) || await Order.findById(req.params.id).populate('user', 'phone name').populate('items.menuItem', 'name image');
+
+        res.json(finalCurrentOrder);
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server error' });

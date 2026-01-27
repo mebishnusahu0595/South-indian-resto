@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { FiFileText, FiCheckCircle } from 'react-icons/fi';
 import Header from '../components/Header';
 import OrderStatus from '../components/OrderStatus';
 import { useAuth } from '../context/AuthContext';
@@ -112,7 +113,7 @@ const OrderDetails = () => {
             {/* Bill Section - Shown when bill is generated */}
             {order.status === 'bill_generated' || order.status === 'paid' ? (
                 <div className="bill-section">
-                    <h3>🧾 Your Bill</h3>
+                    <h3><FiFileText /> Your Bill</h3>
                     <div className="bill-details">
                         <div className="bill-row">
                             <span>Subtotal</span>
@@ -136,7 +137,7 @@ const OrderDetails = () => {
 
                     {order.status === 'paid' ? (
                         <div className="paid-badge">
-                            ✅ Payment Received - Thank You!
+                            <FiCheckCircle /> Payment Received - Thank You!
                         </div>
                     ) : (
                         <p className="payment-instruction">

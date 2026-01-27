@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiMinus, FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiTrash2, FiShoppingCart, FiAward, FiLock, FiAlertTriangle, FiImage } from 'react-icons/fi';
+import { BiDish } from 'react-icons/bi';
 import Header from '../components/Header';
 import AnimatedSearchInput from '../components/AnimatedSearchInput';
 import { useCart } from '../context/CartContext';
@@ -219,7 +220,7 @@ const Cart = () => {
             <div className="cart-page">
                 <Header title="Cart" showBack showCart={false} />
                 <div className="empty-cart">
-                    <div className="empty-cart-icon">🛒</div>
+                    <div className="empty-cart-icon"><FiShoppingCart /></div>
                     <h2>Your cart is empty</h2>
                     <p>Add some delicious items from our menu</p>
                     <button onClick={() => navigate('/menu')} className="btn btn-primary">
@@ -257,7 +258,7 @@ const Cart = () => {
                                                     {item.image ? (
                                                         <img src={getImageUrl(item.image)} alt={item.name} />
                                                     ) : (
-                                                        <span>🍽️</span>
+                                                        <span><BiDish /></span>
                                                     )}
                                                 </div>
                                                 <div className="result-item-details">
@@ -295,7 +296,7 @@ const Cart = () => {
                                     {item.image ? (
                                         <img src={getImageUrl(item.image)} alt={item.name} />
                                     ) : (
-                                        <span>🍽️</span>
+                                        <span><BiDish /></span>
                                     )}
                                 </div>
                                 <div className="cart-item-info">
@@ -372,7 +373,7 @@ const Cart = () => {
                 {isAuthenticated && loyaltyPoints && (
                     <div className="cart-section loyalty-section">
                         <div className="loyalty-header">
-                            <h3 className="section-title">🪙 Loyalty Rewards</h3>
+                            <h3 className="section-title"><FiAward /> Loyalty Rewards</h3>
                             <span className="points-balance">{loyaltyPoints.currentPoints} pts available</span>
                         </div>
 
@@ -396,11 +397,11 @@ const Cart = () => {
                                     >
                                         <div className="offer-info">
                                             <span className="offer-name">{offer.name}</span>
-                                            <span className="offer-cost">🪙 {offer.pointsRequired} points</span>
+                                            <span className="offer-cost"><FiAward /> {offer.pointsRequired} points</span>
                                         </div>
                                         <div className="offer-action">
                                             {loyaltyPoints.currentPoints < offer.pointsRequired ? (
-                                                <span className="lock-icon">🔒</span>
+                                                <span className="lock-icon"><FiLock /></span>
                                             ) : (
                                                 <div className="radio-circle"></div>
                                             )}
@@ -480,7 +481,7 @@ const Cart = () => {
                     )}
                     {usePoints && pointsDiscount > 0 && (
                         <div className="bill-row points-row">
-                            <span>🪙 Points ({pointsUsed} pts)</span>
+                            <span><FiAward /> Points ({pointsUsed} pts)</span>
                             <span>-₹{pointsDiscount.toFixed(2)}</span>
                         </div>
                     )}
@@ -510,7 +511,7 @@ const Cart = () => {
             {error && (
                 <div className="error-modal-overlay" onClick={() => setError('')}>
                     <div className="error-modal" onClick={e => e.stopPropagation()}>
-                        <div className="error-icon">⚠️</div>
+                        <div className="error-icon"><FiAlertTriangle /></div>
                         <p className="error-text">{error}</p>
                         <button className="error-close-btn" onClick={() => setError('')}>
                             OK

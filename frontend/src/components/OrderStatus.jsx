@@ -1,12 +1,14 @@
 import React from 'react';
 import './OrderStatus.css';
+import { FiClipboard, FiCheck, FiCoffee, FicheckCircle, FiCheckCircle, FiCloudLightning, FiFlag, FiFileText } from 'react-icons/fi';
+import { BiDish } from 'react-icons/bi';
 
 const statusSteps = [
-    { key: 'pending', label: 'Order Placed', icon: '📝' },
-    { key: 'confirmed', label: 'Confirmed', icon: '✅' },
-    { key: 'preparing', label: 'Preparing', icon: '👨‍🍳' },
-    { key: 'ready', label: 'Ready', icon: '🍽️' },
-    { key: 'served', label: 'Served', icon: '✨' },
+    { key: 'pending', label: 'Order Placed', icon: <FiClipboard /> },
+    { key: 'confirmed', label: 'Confirmed', icon: <FiCheck /> },
+    { key: 'preparing', label: 'Preparing', icon: <FiCoffee /> }, // Or a chef hat icon if available, using coffee/cooking metaphor
+    { key: 'ready', label: 'Ready', icon: <BiDish /> },
+    { key: 'served', label: 'Served', icon: <FiFlag /> },
 ];
 
 const OrderStatus = ({ status }) => {
@@ -15,7 +17,7 @@ const OrderStatus = ({ status }) => {
     if (status === 'paid') {
         return (
             <div className="order-status-complete">
-                <div className="complete-icon">✅</div>
+                <div className="complete-icon"><FiCheckCircle /></div>
                 <span>Order Complete & Paid</span>
             </div>
         );
@@ -24,7 +26,7 @@ const OrderStatus = ({ status }) => {
     if (status === 'bill_requested' || status === 'bill_generated') {
         return (
             <div className="order-status-bill">
-                <div className="bill-icon">🧾</div>
+                <div className="bill-icon"><FiFileText /></div>
                 <span>{status === 'bill_requested' ? 'Bill Requested' : 'Bill Ready'}</span>
             </div>
         );

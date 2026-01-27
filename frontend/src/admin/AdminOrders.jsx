@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiCheck, FiX, FiFileText } from 'react-icons/fi';
+import { FiCheck, FiX, FiFileText, FiAlertTriangle } from 'react-icons/fi';
 import { getActiveOrders, updateOrderStatus, updatePayment } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import OrderBill from '../components/OrderBill';
@@ -11,6 +11,7 @@ const AdminOrders = () => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState(null);
+    const [selectedOrdersForBill, setSelectedOrdersForBill] = useState([]);
     const [showBill, setShowBill] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState({});
 
@@ -23,6 +24,9 @@ const AdminOrders = () => {
             if (res.data.status === 'paid') {
                 // If now fully paid, show bill
                 setSelectedOrder(res.data);
+                // Also pay for other orders of same table? 
+                // For now, let's keep simple payment per order or handle it in backend updatePayment
+                // The prompt was about "One Bill", so payment should ideally clear the bill.
                 setShowBill(true);
             }
             setPaymentAmount({ ...paymentAmount, [orderId]: '' });
@@ -91,6 +95,22 @@ const AdminOrders = () => {
         }
     };
 
+    const handleShowBill = (order) => {
+        // Collect all orders for this table/user
+        let relatedOrders = [];
+        if (order.table) {
+            relatedOrders = orders.filter(o => o.table === order.table && o.status !== 'cancelled' && o.status !== 'paid');
+        } else {
+            relatedOrders = orders.filter(o => o.user && order.user && o.user._id === order.user._id && o.status !== 'cancelled' && o.status !== 'paid');
+        }
+
+        // If no related (e.g. they are paid), at least show the current one
+        if (relatedOrders.length === 0) relatedOrders = [order];
+
+        setSelectedOrdersForBill(relatedOrders);
+        setShowBill(true);
+    };
+
     const getNextStatus = (status) => {
         const flow = {
             pending: 'confirmed',
@@ -149,7 +169,7 @@ const AdminOrders = () => {
 
                                 {order.specialInstructions && (
                                     <div className="order-special-instructions">
-                                        <strong>⚠️ Note:</strong> {order.specialInstructions}
+                                        <strong><FiAlertTriangle /> Note:</strong> {order.specialInstructions}
                                     </div>
                                 )}
 
@@ -220,10 +240,7 @@ const AdminOrders = () => {
 
                                     <button
                                         className="btn btn-secondary btn-sm"
-                                        onClick={() => {
-                                            setSelectedOrder(order);
-                                            setShowBill(true);
-                                        }}
+                                        onClick={() => handleShowBill(order)}
                                     >
                                         <FiFileText /> Bill
                                     </button>
@@ -238,12 +255,12 @@ const AdminOrders = () => {
                 )}
             </div>
 
-            {showBill && selectedOrder && (
+            {showBill && selectedOrdersForBill.length > 0 && (
                 <OrderBill
-                    order={selectedOrder}
+                    orders={selectedOrdersForBill}
                     onCancel={() => {
                         setShowBill(false);
-                        setSelectedOrder(null);
+                        setSelectedOrdersForBill([]);
                         fetchOrders(); // Refresh to remove paid ones
                     }}
                 />

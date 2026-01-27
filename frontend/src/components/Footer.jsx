@@ -35,7 +35,7 @@ const Footer = () => {
                     <ul className="footer-contact">
                         <li>
                             <FiMapPin className="contact-icon" />
-                            <span>123 Food Street, Chennai</span>
+                            <span>Near IIT Bhilai, Khamariya</span>
                         </li>
                         <li>
                             <FiPhone className="contact-icon" />
@@ -55,7 +55,7 @@ const Footer = () => {
                             <FiClock className="contact-icon" />
                             <div>
                                 <span>Mon - Sun</span>
-                                <span>7:00 AM - 10:00 PM</span>
+                                <span>7:00 AM - 2:00 PM</span>
                             </div>
                         </li>
                     </ul>

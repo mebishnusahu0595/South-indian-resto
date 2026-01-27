@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FiGrid, FiSearch } from 'react-icons/fi';
+import { FiGrid, FiSearch, FiAlertCircle, FiCheck } from 'react-icons/fi';
 import Header from '../components/Header';
 import CategoryCard from '../components/CategoryCard';
 import MenuCard from '../components/MenuCard';
@@ -269,7 +269,7 @@ const Menu = () => {
                     </div>
                 ) : menuItems.length === 0 ? (
                     <div className="empty-state">
-                        <div className="empty-state-icon">🍽️</div>
+                        <div className="empty-state-icon"><FiAlertCircle /></div>
                         <p className="empty-state-title">No items found</p>
                         <p className="empty-state-text">Try selecting a different category</p>
                     </div>
@@ -296,7 +296,7 @@ const Menu = () => {
                         {/* End of list indicator */}
                         {!hasMore && menuItems.length > ITEMS_PER_PAGE && (
                             <div className="end-of-list">
-                                <span>🍽️ You've seen all items!</span>
+                                <span><FiCheck /> You've seen all items!</span>
                             </div>
                         )}
                     </>
