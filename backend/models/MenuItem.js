@@ -42,6 +42,10 @@ const menuItemSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    isUpsell: {
+        type: Boolean,
+        default: false
+    },
     tags: [{
         type: String
     }],

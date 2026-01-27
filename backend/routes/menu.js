@@ -112,7 +112,7 @@ router.post('/', protect, admin, upload.single('image'), async (req, res) => {
     try {
         const {
             name, description, price, category, isVeg,
-            isBestSeller, isNewItem, isRecommended, tags,
+            isBestSeller, isNewItem, isRecommended, isUpsell, tags,
             preparationTime, stockQuantity
         } = req.body;
 
@@ -125,6 +125,7 @@ router.post('/', protect, admin, upload.single('image'), async (req, res) => {
             isBestSeller: isBestSeller === 'true' || isBestSeller === true,
             isNewItem: isNewItem === 'true' || isNewItem === true,
             isRecommended: isRecommended === 'true' || isRecommended === true,
+            isUpsell: isUpsell === 'true' || isUpsell === true,
             tags: tags ? JSON.parse(tags) : [],
             preparationTime: preparationTime || 15,
             stockQuantity: stockQuantity || -1,

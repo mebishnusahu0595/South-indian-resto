@@ -78,7 +78,8 @@ const AdminMenu = () => {
         setFormData({
             name: item.name, description: item.description || '', price: item.price,
             category: item.category?._id || '', isVeg: item.isVeg,
-            isBestSeller: item.isBestSeller, isNewItem: item.isNewItem, isRecommended: item.isRecommended,
+            category: item.category?._id || '', isVeg: item.isVeg,
+            isBestSeller: item.isBestSeller, isNewItem: item.isNewItem, isRecommended: item.isRecommended, isUpsell: item.isUpsell,
             preparationTime: item.preparationTime, stockQuantity: item.stockQuantity
         });
         setShowModal(true);
@@ -224,6 +225,8 @@ const AdminMenu = () => {
                                         onChange={e => setFormData({ ...formData, isNewItem: e.target.checked })} /> New</label>
                                     <label><input type="checkbox" checked={formData.isRecommended}
                                         onChange={e => setFormData({ ...formData, isRecommended: e.target.checked })} /> Recommended</label>
+                                    <label><input type="checkbox" checked={formData.isUpsell}
+                                        onChange={e => setFormData({ ...formData, isUpsell: e.target.checked })} /> Show as Cart Suggestion</label>
                                 </div>
                             </div>
                             <div className="modal-footer">
