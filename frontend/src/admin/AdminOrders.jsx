@@ -77,8 +77,63 @@ const AdminOrders = () => {
         }
     };
 
+    const getSessionOrders = (targetOrder, allList) => {
+        const getOrderId = (obj) => obj?._id?.toString() || obj?.toString() || '';
+        const orderTime = new Date(targetOrder.createdAt).getTime();
+        const ONE_HOUR = 60 * 60 * 1000;
+
+        let sessionOrders = [];
+        if (targetOrder.table) {
+            const currentTableId = getOrderId(targetOrder.table);
+            sessionOrders = allList.filter(o =>
+                getOrderId(o.table) === currentTableId &&
+                o.status !== 'cancelled' &&
+                o.status !== 'paid' &&
+                Math.abs(new Date(o.createdAt).getTime() - orderTime) < ONE_HOUR
+            );
+        } else {
+            const currentUserId = getOrderId(targetOrder.user);
+            sessionOrders = allList.filter(o =>
+                getOrderId(o.user) === currentUserId &&
+                targetOrder.user &&
+                o.status !== 'cancelled' &&
+                o.status !== 'paid' &&
+                Math.abs(new Date(o.createdAt).getTime() - orderTime) < ONE_HOUR
+            );
+        }
+        // Ensure at least current is included
+        if (!sessionOrders.find(o => o._id === targetOrder._id)) {
+            sessionOrders.push(targetOrder);
+        }
+        return sessionOrders;
+    };
+
     const handleStatusChange = async (orderId, status) => {
         try {
+            // Auto-grouping for Bill Generation
+            if (status === 'bill_generated') {
+                const targetOrder = orders.find(o => o._id === orderId);
+                if (targetOrder) {
+                    const sessionOrders = getSessionOrders(targetOrder, orders);
+
+                    // Update ALL session orders to 'bill_generated'
+                    await Promise.all(sessionOrders.map(o => {
+                        if (o.status !== 'bill_generated') {
+                            return updateOrderStatus(o._id, 'bill_generated');
+                        }
+                        return Promise.resolve();
+                    }));
+
+                    // Show Combined Bill
+                    setSelectedOrdersForBill(sessionOrders);
+                    setShowBill(true);
+
+                    // Refresh Orders to reflect specific status changes
+                    fetchOrders();
+                    return;
+                }
+            }
+
             await updateOrderStatus(orderId, status);
         } catch (error) {
             alert('Failed to update status');
@@ -88,44 +143,21 @@ const AdminOrders = () => {
     const handlePayment = async (orderId, method, amount) => {
         try {
             const res = await updatePayment(orderId, method, amount);
+            // After payment, refresh to see updated status
+            fetchOrders();
+            // If still needs to show bill (e.g. partial payment), update selectedOrder
             setSelectedOrder(res.data);
-            setShowBill(true);
+
+            // Re-fetch session orders to keep bill up to date?
+            // Simplified: just refresh main list.
         } catch (error) {
             alert('Failed to update payment');
         }
     };
 
     const handleShowBill = (order) => {
-        // Collect all orders for this table/user within a 1-hour session window
-        let relatedOrders = [];
-
-        const getOrderId = (obj) => obj?._id?.toString() || obj?.toString() || '';
-        const orderTime = new Date(order.createdAt).getTime();
-        const ONE_HOUR = 60 * 60 * 1000;
-
-        if (order.table) {
-            const currentTableId = getOrderId(order.table);
-            relatedOrders = orders.filter(o =>
-                getOrderId(o.table) === currentTableId &&
-                o.status !== 'cancelled' &&
-                o.status !== 'paid' &&
-                Math.abs(new Date(o.createdAt).getTime() - orderTime) < ONE_HOUR // 1 Hour Session check
-            );
-        } else {
-            const currentUserId = getOrderId(order.user);
-            relatedOrders = orders.filter(o =>
-                getOrderId(o.user) === currentUserId &&
-                order.user && // Ensure selected order has a user
-                o.status !== 'cancelled' &&
-                o.status !== 'paid' &&
-                Math.abs(new Date(o.createdAt).getTime() - orderTime) < ONE_HOUR
-            );
-        }
-
-        // If no related found (shouldn't happen as it matches itself), ensure at least current is shown
-        if (relatedOrders.length === 0) relatedOrders = [order];
-
-        setSelectedOrdersForBill(relatedOrders);
+        const sessionOrders = getSessionOrders(order, orders);
+        setSelectedOrdersForBill(sessionOrders);
         setShowBill(true);
     };
 
