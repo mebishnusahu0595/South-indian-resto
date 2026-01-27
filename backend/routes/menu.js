@@ -152,7 +152,7 @@ router.put('/:id', protect, admin, upload.single('image'), async (req, res) => {
         }
 
         const fields = ['name', 'description', 'price', 'category', 'preparationTime', 'stockQuantity'];
-        const boolFields = ['isVeg', 'isAvailable', 'isBestSeller', 'isNewItem', 'isRecommended'];
+        const boolFields = ['isVeg', 'isAvailable', 'isBestSeller', 'isNewItem', 'isRecommended', 'isUpsell'];
 
         fields.forEach(field => {
             if (req.body[field] !== undefined) {
