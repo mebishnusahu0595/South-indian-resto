@@ -78,7 +78,6 @@ const AdminMenu = () => {
         setFormData({
             name: item.name, description: item.description || '', price: item.price,
             category: item.category?._id || '', isVeg: item.isVeg,
-            category: item.category?._id || '', isVeg: item.isVeg,
             isBestSeller: item.isBestSeller, isNewItem: item.isNewItem, isRecommended: item.isRecommended, isUpsell: item.isUpsell,
             preparationTime: item.preparationTime, stockQuantity: item.stockQuantity
         });

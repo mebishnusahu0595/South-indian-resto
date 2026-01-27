@@ -1,6 +1,6 @@
 import React from 'react';
 import './OrderStatus.css';
-import { FiClipboard, FiCheck, FiCoffee, FicheckCircle, FiCheckCircle, FiCloudLightning, FiFlag, FiFileText } from 'react-icons/fi';
+import { FiClipboard, FiCheck, FiCoffee, FiCheckCircle, FiCloudLightning, FiFlag, FiFileText } from 'react-icons/fi';
 import { BiDish } from 'react-icons/bi';
 
 const statusSteps = [
