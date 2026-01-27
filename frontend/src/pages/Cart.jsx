@@ -59,17 +59,11 @@ const Cart = () => {
 
     const fetchUpsellItem = async () => {
         try {
-            // Find item marked as Upsell
-            const res = await getMenuItems({ isUpsell: true });
+            // Simply fetch Water Bottle as requested, ignoring dynamic admin flag
+            const res = await getMenuItems({ search: 'Water Bottle' });
             if (res.data && res.data.length > 0) {
-                setUpsellItem(res.data[0]);
-            } else {
-                // Fallback
-                const fallback = await getMenuItems({ search: 'Water Bottle' });
-                if (fallback.data && fallback.data.length > 0) {
-                    const found = fallback.data.find(i => i.name.toLowerCase().includes('water bottle')) || fallback.data[0];
-                    setUpsellItem(found);
-                }
+                const found = res.data.find(i => i.name.toLowerCase().includes('water bottle')) || res.data[0];
+                setUpsellItem(found);
             }
         } catch (error) {
             console.error('Error fetching upsell item:', error);

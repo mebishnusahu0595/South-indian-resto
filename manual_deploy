@@ -10,4 +10,3 @@
 # # If backend changed:
 # pm2 restart chettas-api
 
-aab ek aur feature daalo jaise ki koi ek aaya resturant mein !! vo table par baitha hai .. toh agar table pe baith ke book kiya toh uske 1 hours ke session mein jitna book karega unn sabka ek saath bill show krna chahiye instead of 1-1 .. admin panel se admin jab bill request accept karega toh ek saath dikhaye sabko billl !! session 1 hours ka hona chahiye 
