@@ -116,6 +116,11 @@ router.post('/', protect, admin, upload.single('image'), async (req, res) => {
             preparationTime, stockQuantity
         } = req.body;
 
+        // If setting this item as upsell, unset any existing upsell
+        if (isUpsell === 'true' || isUpsell === true) {
+            await MenuItem.updateMany({}, { isUpsell: false });
+        }
+
         const item = new MenuItem({
             name,
             description,
@@ -159,6 +164,12 @@ router.put('/:id', protect, admin, upload.single('image'), async (req, res) => {
                 item[field] = req.body[field];
             }
         });
+
+        // Check if isUpsell is being set to true for this item
+        if (req.body.isUpsell === 'true' || req.body.isUpsell === true) {
+            // If so, unset isUpsell for all other items
+            await MenuItem.updateMany({ _id: { $ne: item._id } }, { isUpsell: false });
+        }
 
         boolFields.forEach(field => {
             if (req.body[field] !== undefined) {
