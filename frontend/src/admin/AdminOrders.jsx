@@ -96,15 +96,33 @@ const AdminOrders = () => {
     };
 
     const handleShowBill = (order) => {
-        // Collect all orders for this table/user
+        // Collect all orders for this table/user within a 1-hour session window
         let relatedOrders = [];
+
+        const getOrderId = (obj) => obj?._id?.toString() || obj?.toString() || '';
+        const orderTime = new Date(order.createdAt).getTime();
+        const ONE_HOUR = 60 * 60 * 1000;
+
         if (order.table) {
-            relatedOrders = orders.filter(o => o.table === order.table && o.status !== 'cancelled' && o.status !== 'paid');
+            const currentTableId = getOrderId(order.table);
+            relatedOrders = orders.filter(o =>
+                getOrderId(o.table) === currentTableId &&
+                o.status !== 'cancelled' &&
+                o.status !== 'paid' &&
+                Math.abs(new Date(o.createdAt).getTime() - orderTime) < ONE_HOUR // 1 Hour Session check
+            );
         } else {
-            relatedOrders = orders.filter(o => o.user && order.user && o.user._id === order.user._id && o.status !== 'cancelled' && o.status !== 'paid');
+            const currentUserId = getOrderId(order.user);
+            relatedOrders = orders.filter(o =>
+                getOrderId(o.user) === currentUserId &&
+                order.user && // Ensure selected order has a user
+                o.status !== 'cancelled' &&
+                o.status !== 'paid' &&
+                Math.abs(new Date(o.createdAt).getTime() - orderTime) < ONE_HOUR
+            );
         }
 
-        // If no related (e.g. they are paid), at least show the current one
+        // If no related found (shouldn't happen as it matches itself), ensure at least current is shown
         if (relatedOrders.length === 0) relatedOrders = [order];
 
         setSelectedOrdersForBill(relatedOrders);
