@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiMinus, FiPlus, FiTrash2, FiShoppingCart, FiAward, FiLock, FiAlertTriangle, FiImage } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiTrash2, FiShoppingCart, FiAward, FiLock, FiAlertTriangle, FiImage, FiDroplet } from 'react-icons/fi';
 import { BiDish } from 'react-icons/bi';
 import Header from '../components/Header';
 import AnimatedSearchInput from '../components/AnimatedSearchInput';
@@ -39,6 +39,9 @@ const Cart = () => {
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
+    // Water Bottle Uplift
+    const [waterBottle, setWaterBottle] = useState(null);
+
     // Loyalty Points
     const [loyaltyPoints, setLoyaltyPoints] = useState(null);
     const [loyaltyOffers, setLoyaltyOffers] = useState([]);
@@ -51,7 +54,22 @@ const Cart = () => {
         fetchTables();
         fetchRecommendations();
         fetchGstRate();
+        fetchWaterBottle();
     }, []);
+
+    const fetchWaterBottle = async () => {
+        try {
+            // Find item exactly named "Water Bottle"
+            const res = await getMenuItems({ search: 'Water Bottle' });
+            if (res.data && res.data.length > 0) {
+                // Filter strictly for "Water Bottle" to avoid "Water Bottle Extra" etc if they exist, or take first
+                const found = res.data.find(i => i.name.toLowerCase().includes('water bottle')) || res.data[0];
+                setWaterBottle(found);
+            }
+        } catch (error) {
+            console.error('Error fetching water bottle:', error);
+        }
+    };
 
     useEffect(() => {
         if (isAuthenticated) {
@@ -446,6 +464,30 @@ const Cart = () => {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Water Bottle Upsell - Specific Check */}
+                {waterBottle && !cart.find(item => item._id === waterBottle._id) && (
+                    <div className="cart-section water-upsell-section" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                        <div className="water-upsell-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px' }}>
+                            <div className="water-info" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div className="water-icon" style={{ fontSize: '24px', color: 'var(--primary)' }}>
+                                    <FiDroplet />
+                                </div>
+                                <div className="water-text">
+                                    <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary)' }}>Forgot Water?</h4>
+                                    <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Add {waterBottle.name} - ₹{waterBottle.price}</span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => addItem(waterBottle)}
+                                className="btn btn-sm btn-outline-primary"
+                                style={{ padding: '6px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                                <FiPlus /> Add
+                            </button>
                         </div>
                     </div>
                 )}
