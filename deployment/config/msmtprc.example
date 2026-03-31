@@ -30,8 +30,8 @@ logfile        /var/log/msmtp.log
 account        gmail
 host           smtp.gmail.com
 port           587
-from           nairsolutions02@gmail.com
-user           nairsolutions02@gmail.com
+from           mebishnusahu0595@gmail.com
+user           mebishnusahu0595@gmail.com
 password       fobkuvzrljwpzfgb
 
 # Set default account
