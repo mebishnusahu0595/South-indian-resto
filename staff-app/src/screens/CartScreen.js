@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   },
   billRow: {
     flexDirection: 'row',
-    justify.content: 'space-between',
+    justifyContent: 'space-between',
     marginBottom: 6,
   },
   billLabel: {
