@@ -61,6 +61,32 @@
     transition: all var(--transition-fast);
 }
 
+.sidebar-badge {
+    margin-left: auto;
+    background: #EF4444;
+    color: #FFFFFF;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 12px;
+    min-width: 20px;
+    text-align: center;
+    line-height: 1.2;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar-badge.badge-bills {
+    background: #10B981;
+}
+
+.sidebar-badge.badge-bookings {
+    background: #7C3AED;
+}
+
+.sidebar-badge.badge-tables {
+    background: #F59E0B;
+}
+
 .nav-link:hover {
     background: rgba(255, 255, 255, 0.1);
     color: white;

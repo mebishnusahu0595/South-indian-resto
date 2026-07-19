@@ -32,14 +32,14 @@ const AdminOrders = () => {
     const [searchQueryByOrder, setSearchQueryByOrder] = useState({});
     const [isSavingBill, setIsSavingBill] = useState(false);
     const [coupons, setCoupons] = useState([]);
-    const [prepareDiscountName, setPrepareDiscountName] = useState('');
-
     // Payment Biller Modal state
     const [showPaymentBillerModal, setShowPaymentBillerModal] = useState(false);
     const [paymentBillerOrderId, setPaymentBillerOrderId] = useState('');
     const [paymentBillerMethod, setPaymentBillerMethod] = useState('cash');
     const [paymentBillerAmount, setPaymentBillerAmount] = useState(0);
     const [paymentBillerName, setPaymentBillerName] = useState('');
+    const [paymentDiscountInput, setPaymentDiscountInput] = useState('');
+    const [paymentDiscountName, setPaymentDiscountName] = useState('');
     const [showPaymentBillerSuggestions, setShowPaymentBillerSuggestions] = useState(false);
 
     // Max discount cap
@@ -363,6 +363,8 @@ const AdminOrders = () => {
         setPaymentBillerMethod(method);
         setPaymentBillerAmount(amount);
         setPaymentBillerName(order?.billerName || localStorage.getItem('lastBillerName') || '');
+        setPaymentDiscountInput(order?.discount ? String(order.discount) : '');
+        setPaymentDiscountName(order?.discountName || '');
         setShowPaymentBillerModal(true);
     };
 
@@ -377,17 +379,20 @@ const AdminOrders = () => {
             const targetOrder = orders.find(o => o._id === paymentBillerOrderId);
             const sessionOrders = targetOrder ? getSessionOrders(targetOrder, orders) : [];
             const orderIds = sessionOrders.map(o => o._id);
+            const baseSubtotal = sessionOrders.reduce((sum, o) => sum + (o.subtotal || o.total), 0);
+            const discountVal = parseDiscount(paymentDiscountInput, baseSubtotal);
 
-            // 1. Generate/Save the Bill document in DB first to persist billerName and create the invoice
+            // 1. Generate/Save the Bill document in DB first to persist billerName, discount and create invoice
             const billRes = await generateBill({
                 orderIds: orderIds.length > 0 ? orderIds : [paymentBillerOrderId],
                 billerName: paymentBillerName,
-                discount: targetOrder?.discount || 0,
-                discountName: targetOrder?.discountName || ''
+                discount: discountVal,
+                discountName: paymentDiscountName
             });
 
             // 2. Complete payment
-            const res = await updatePayment(paymentBillerOrderId, paymentBillerMethod, paymentBillerAmount);
+            const finalPayable = ((baseSubtotal - discountVal) * 1.05);
+            const res = await updatePayment(paymentBillerOrderId, paymentBillerMethod, finalPayable > 0 ? finalPayable : paymentBillerAmount);
             localStorage.setItem('lastBillerName', paymentBillerName);
             setShowPaymentBillerModal(false);
             fetchOrders();
@@ -401,7 +406,7 @@ const AdminOrders = () => {
                 setShowBill(true);
             }
         } catch (error) {
-            alert('Failed to process payment and bill generation');
+            alert(error.response?.data?.message || 'Failed to process payment and bill generation');
         }
     };
 
@@ -844,17 +849,19 @@ const AdminOrders = () => {
             {/* Payment Biller Selection Modal */}
             {showPaymentBillerModal && (
                 <div className="bill-modal-overlay" onClick={() => setShowPaymentBillerModal(false)}>
-                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '400px' }}>
+                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '480px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #111111', paddingBottom: '10px' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.4rem', fontFamily: "'Patrick Hand', cursive" }}>Confirm Payment Biller</h2>
+                            <h2 style={{ margin: 0, fontSize: '1.4rem', fontFamily: "'Patrick Hand', cursive" }}>Confirm Payment & Bill</h2>
                             <button onClick={() => setShowPaymentBillerModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}><FiX /></button>
                         </div>
-                        <form onSubmit={handleConfirmPaymentBiller} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div style={{ fontSize: '0.95rem', color: '#555', marginBottom: '4px' }}>
-                                Mark payment as <strong style={{ color: 'var(--primary)' }}>{paymentBillerMethod.toUpperCase()}</strong> for order total <strong style={{ color: '#000' }}>₹{paymentBillerAmount.toFixed(2)}</strong>.
+                        <form onSubmit={handleConfirmPaymentBiller} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div style={{ fontSize: '0.9rem', color: '#555' }}>
+                                Mark payment as <strong style={{ color: 'var(--primary)' }}>{paymentBillerMethod.toUpperCase()}</strong>.
                             </div>
-                            <div className="input-group" style={{ position: 'relative' }}>
-                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Biller Name *</label>
+
+                            {/* Biller Name */}
+                            <div className="input-group" style={{ position: 'relative', marginBottom: 0 }}>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Biller Name *</label>
                                 <input
                                     type="text"
                                     required
@@ -866,7 +873,7 @@ const AdminOrders = () => {
                                     }}
                                     onFocus={() => setShowPaymentBillerSuggestions(true)}
                                     className="input"
-                                    style={{ width: '100%', padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
+                                    style={{ width: '100%', padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
                                 />
                                 {showPaymentBillerSuggestions && prepareSuggestions.length > 0 && (
                                     <div className="biller-suggestions-dropdown" style={{ zIndex: 1004 }}>
@@ -890,10 +897,100 @@ const AdminOrders = () => {
                                 )}
                             </div>
 
+                            {/* Coupon Code Selector */}
+                            <div className="input-group" style={{ marginBottom: 0 }}>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Apply Coupon (Optional)</label>
+                                <select
+                                    value={paymentDiscountInput}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setPaymentDiscountInput(val);
+                                        const matchedCoupon = coupons.find(c => (c.discountType === 'percentage' ? `${c.discountValue}%` : `${c.discountValue}`) === val);
+                                        if (matchedCoupon) {
+                                            setPaymentDiscountName(matchedCoupon.code);
+                                        } else {
+                                            setPaymentDiscountName('');
+                                        }
+                                    }}
+                                    className="input"
+                                    style={{ width: '100%', padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
+                                >
+                                    <option value="">-- No Coupon --</option>
+                                    {coupons.map(c => (
+                                        <option key={c._id} value={c.discountType === 'percentage' ? `${c.discountValue}%` : `${c.discountValue}`}>
+                                            {c.code} - {c.discountType === 'percentage' ? `${c.discountValue}%` : `₹${c.discountValue}`} Off (Min: ₹{c.minOrderAmount})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Custom Discount Input */}
+                            <div className="input-group" style={{ marginBottom: 0 }}>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Discount (e.g. 50 or 10%)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 50 or 10%"
+                                    value={paymentDiscountInput}
+                                    onChange={(e) => setPaymentDiscountInput(e.target.value)}
+                                    className="input"
+                                    style={{ width: '100%', padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
+                                />
+                                {user?.role !== 'superadmin' && (
+                                    <span style={{ fontSize: '0.75rem', color: '#F59E0B', marginTop: '3px', display: 'block' }}>
+                                        Max allowed: {maxDiscountPercent}% (set by superadmin)
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Reason for Discount */}
+                            {parseDiscount(paymentDiscountInput, (orders.find(o => o._id === paymentBillerOrderId)?.subtotal || paymentBillerAmount)) > 0 && (
+                                <div className="input-group" style={{ marginBottom: 0 }}>
+                                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Discount Reason / Note</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Staff Discount / Birthday"
+                                        value={paymentDiscountName}
+                                        onChange={(e) => setPaymentDiscountName(e.target.value)}
+                                        className="input"
+                                        style={{ width: '100%', padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Live Summary Box */}
+                            {(() => {
+                                const currentOrd = orders.find(o => o._id === paymentBillerOrderId);
+                                const baseSub = currentOrd?.subtotal || (paymentBillerAmount / 1.05);
+                                const discVal = parseDiscount(paymentDiscountInput, baseSub);
+                                const taxVal = (baseSub - discVal) * 0.05;
+                                const finalTot = (baseSub - discVal) + taxVal;
+
+                                return (
+                                    <div style={{ background: '#F9FAFB', padding: '10px 12px', borderRadius: '6px', border: '1px solid #E5E7EB', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                                            <span>Subtotal:</span>
+                                            <span>₹{baseSub.toFixed(2)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#DC2626' }}>
+                                            <span>Discount:</span>
+                                            <span>- ₹{discVal.toFixed(2)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                                            <span>GST (5%):</span>
+                                            <span>₹{taxVal.toFixed(2)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.95rem', borderTop: '1px dashed #D1D5DB', paddingTop: '4px', color: '#7C3AED' }}>
+                                            <span>FINAL PAYABLE:</span>
+                                            <span>₹{finalTot.toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             <button
                                 type="submit"
                                 className="btn btn-primary btn-full sketch-border sketch-shadow"
-                                style={{ marginTop: '10px' }}
+                                style={{ marginTop: '6px', padding: '10px' }}
                             >
                                 Confirm & Mark Paid
                             </button>

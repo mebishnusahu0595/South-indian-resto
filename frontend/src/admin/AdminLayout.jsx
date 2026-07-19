@@ -6,6 +6,7 @@ import {
     FiActivity, FiSettings, FiPlus, FiFileText
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
+import { getActiveOrders, getBills, getTables, getBookings } from '../utils/api';
 import './AdminLayout.css';
 
 const AdminLayout = () => {
@@ -14,28 +15,98 @@ const AdminLayout = () => {
     const navigate = useNavigate();
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
+    
+    // Sidebar real-time badge counts
+    const [counts, setCounts] = useState({
+        orders: 0,
+        bills: 0,
+        bookings: 0,
+        tables: 0
+    });
+
+    useEffect(() => {
+        fetchCounts();
+    }, []);
+
+    const fetchCounts = async () => {
+        try {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const [ordersRes, billsRes, tablesRes, bookingsRes] = await Promise.allSettled([
+                getActiveOrders(),
+                getBills(todayStr),
+                getTables(),
+                getBookings({ date: todayStr })
+            ]);
+
+            const ordersCount = ordersRes.status === 'fulfilled' ? (ordersRes.value.data?.length || 0) : 0;
+            const billsCount = billsRes.status === 'fulfilled' ? (billsRes.value.data?.length || 0) : 0;
+            const tablesCount = tablesRes.status === 'fulfilled' ? (tablesRes.value.data?.filter(t => t.status !== 'available')?.length || 0) : 0;
+            const bookingsCount = bookingsRes.status === 'fulfilled' ? (bookingsRes.value.data?.filter(b => b.status === 'upcoming' || b.status === 'confirmed')?.length || 0) : 0;
+
+            setCounts({
+                orders: ordersCount,
+                bills: billsCount,
+                tables: tablesCount,
+                bookings: bookingsCount
+            });
+        } catch (err) {
+            console.error('Error fetching counts:', err);
+        }
+    };
 
     useEffect(() => {
         if (socket) {
+            const handleOrderChange = () => {
+                fetchCounts();
+            };
+
             socket.on('new-order', (order) => {
                 setNotifications(prev => [...prev, { type: 'order', message: `New order #${order.orderNumber}`, id: order._id }]);
                 playNotificationSound();
+                fetchCounts();
             });
 
             socket.on('bill-requested', (order) => {
                 setNotifications(prev => [...prev, { type: 'bill', message: `Bill requested for #${order.orderNumber}`, id: order._id }]);
                 playNotificationSound();
+                fetchCounts();
+            });
+
+            socket.on('bill-generated', () => {
+                fetchCounts();
+            });
+
+            socket.on('bill-deleted', () => {
+                fetchCounts();
             });
 
             socket.on('new-booking', (booking) => {
-                setNotifications(prev => [...prev, { type: 'booking', message: `New booking: ${booking.guestName} (${booking.guestCount} guests) at ${booking.bookingTime}`, id: booking._id }]);
+                setNotifications(prev => [...prev, { type: 'booking', message: `New booking: ${booking.guestName} (${booking.guestCount} guests)`, id: booking._id }]);
                 playNotificationSound();
+                fetchCounts();
             });
+
+            socket.on('booking-updated', () => fetchCounts());
+            socket.on('booking-deleted', () => fetchCounts());
+            socket.on('order-updated', () => fetchCounts());
+            socket.on('order-deleted', () => fetchCounts());
+            socket.on('table-occupied', () => fetchCounts());
+            socket.on('table-freed', () => fetchCounts());
+            socket.on('table-updated', () => fetchCounts());
 
             return () => {
                 socket.off('new-order');
                 socket.off('bill-requested');
+                socket.off('bill-generated');
+                socket.off('bill-deleted');
                 socket.off('new-booking');
+                socket.off('booking-updated');
+                socket.off('booking-deleted');
+                socket.off('order-updated');
+                socket.off('order-deleted');
+                socket.off('table-occupied');
+                socket.off('table-freed');
+                socket.off('table-updated');
             };
         }
     }, [socket]);
@@ -52,15 +123,15 @@ const AdminLayout = () => {
 
     const menuItems = [
         { path: '/admin', icon: FiHome, label: 'Dashboard', exact: true },
-        { path: '/admin/orders', icon: FiShoppingBag, label: 'Orders' },
+        { path: '/admin/orders', icon: FiShoppingBag, label: 'Orders', badgeKey: 'orders' },
         { path: '/admin/create-order', icon: FiPlus, label: 'Create Order' },
-        { path: '/admin/bills', icon: FiFileText, label: 'Bills' },
-        { path: '/admin/bookings', icon: FiLayout, label: 'Pre-Bookings' },
+        { path: '/admin/bills', icon: FiFileText, label: 'Bills', badgeKey: 'bills' },
+        { path: '/admin/bookings', icon: FiLayout, label: 'Pre-Bookings', badgeKey: 'bookings' },
         { path: '/admin/history', icon: FiActivity, label: 'History' },
         { path: '/admin/menu', icon: FiGrid, label: 'Menu' },
         { path: '/admin/categories', icon: FiGrid, label: 'Categories' },
         { path: '/admin/collections', icon: FiLayout, label: 'Homepage Sections' },
-        { path: '/admin/tables', icon: FiLayout, label: 'Tables' },
+        { path: '/admin/tables', icon: FiLayout, label: 'Tables', badgeKey: 'tables' },
         { path: '/admin/coupons', icon: FiTag, label: 'Coupons' },
         { path: '/admin/loyalty', icon: FiTag, label: 'Loyalty Points' },
         { path: '/admin/inventory', icon: FiPackage, label: 'Inventory' },
@@ -74,8 +145,6 @@ const AdminLayout = () => {
         if (!user) return false;
         if (user.role === 'superadmin') return true;
         
-        // Admin role: operational access only.
-        // Analytics + sensitive config are superadmin-only. Settings IS available to admin (password + basics).
         const restrictedPaths = [
             '/admin/customers',
             '/admin/loyalty',
@@ -113,6 +182,11 @@ const AdminLayout = () => {
                         >
                             <item.icon />
                             <span>{item.label}</span>
+                            {item.badgeKey && counts[item.badgeKey] > 0 && (
+                                <span className={`sidebar-badge badge-${item.badgeKey}`}>
+                                    {counts[item.badgeKey]}
+                                </span>
+                            )}
                         </Link>
                     ))}
                 </nav>

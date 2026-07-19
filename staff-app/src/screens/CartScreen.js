@@ -25,12 +25,17 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
     setSubmitting(true);
 
     try {
+      const isMulti = Array.isArray(selectedTable);
+      const primaryTable = isMulti ? selectedTable[0] : selectedTable;
+      const tableIdsList = isMulti ? selectedTable.map(t => t._id) : (selectedTable ? [selectedTable._id] : []);
+
       const orderPayload = {
         items: cart.map(item => ({
           menuItem: item._id,
           quantity: item.quantity
         })),
-        tableId: selectedTable ? selectedTable._id : null,
+        tableId: primaryTable ? primaryTable._id : null,
+        tableIds: tableIdsList,
         specialInstructions: instructions,
         customerPhone: customerPhone || undefined,
         customerName: customerName || undefined
@@ -76,8 +81,12 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>Order Destination</Text>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Table:</Text>
-              <Text style={styles.infoValue}>Table {selectedTable?.tableNumber}</Text>
+              <Text style={styles.infoLabel}>Table(s):</Text>
+              <Text style={styles.infoValue}>
+                {Array.isArray(selectedTable)
+                  ? selectedTable.map(t => `Table ${t.tableNumber}`).join(', ')
+                  : (selectedTable ? `Table ${selectedTable.tableNumber}` : 'Takeaway')}
+              </Text>
             </View>
             {customerPhone ? (
               <View style={styles.infoRow}>

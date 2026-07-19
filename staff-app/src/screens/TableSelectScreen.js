@@ -4,7 +4,7 @@ import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Activi
 export default function TableSelectScreen({ api, staffName, onNext, onLogout, onOpenHost, onOpenHistory }) {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTable, setSelectedTable] = useState(null);
+  const [selectedTables, setSelectedTables] = useState([]);
   const [attendance, setAttendance] = useState(null);
   const [assignedTables, setAssignedTables] = useState([]);
   const [submittingAttendance, setSubmittingAttendance] = useState(false);
@@ -81,8 +81,19 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
     }
   };
 
+  const toggleTableSelection = (table) => {
+    setSelectedTables(prev => {
+      const exists = prev.some(t => t._id === table._id);
+      if (exists) {
+        return prev.filter(t => t._id !== table._id);
+      } else {
+        return [...prev, table];
+      }
+    });
+  };
+
   const handleNext = () => {
-    onNext(selectedTable, phone.trim(), name.trim());
+    onNext(selectedTables, phone.trim(), name.trim());
   };
 
   // Determine which tables to display
@@ -113,7 +124,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
           <View>
             <Text style={styles.welcome}>Hello, {staffName} 👋</Text>
             <Text style={styles.subWelcome}>
-              {hasAssigned ? 'Assigned Tables' : 'Select a table to start'}
+              {hasAssigned ? 'Assigned Tables' : 'Select table(s) to start'}
             </Text>
           </View>
           <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
@@ -228,7 +239,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
 
           {/* Table List Section - Grouped by Section */}
           <Text style={styles.mainTitle}>
-            {hasAssigned ? '📋 Your Assigned Tables' : '🍽️ All Restaurant Tables'}
+            {hasAssigned ? '📋 Your Assigned Tables (Tap to Select Multiple)' : '🍽️ All Restaurant Tables (Tap to Select Multiple)'}
           </Text>
           
           {loading ? (
@@ -241,7 +252,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
                 <Text style={styles.sectionHeader}>📍 {sectionName}</Text>
                 <View style={styles.grid}>
                   {groupedSections[sectionName].map((table) => {
-                    const isSelected = selectedTable?._id === table._id;
+                    const isSelected = selectedTables.some(t => t._id === table._id);
                     const isOccupied = table.status !== 'available';
 
                     return (
@@ -253,7 +264,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
                           isSelected && styles.selectedCard
                         ]}
                         disabled={isOccupied}
-                        onPress={() => setSelectedTable(isSelected ? null : table)}
+                        onPress={() => toggleTableSelection(table)}
                       >
                         <Text style={[
                           styles.tableNumberText,
@@ -272,6 +283,9 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
                         {isOccupied && (
                           <Text style={styles.occupiedLabel}>Occupied</Text>
                         )}
+                        {isSelected && (
+                          <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#FFF', backgroundColor: '#10B981', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, marginTop: 2 }}>✓ Selected</Text>
+                        )}
                       </TouchableOpacity>
                     );
                   })}
@@ -284,12 +298,14 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
         {/* Footer Navigation */}
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.nextBtn, !selectedTable && styles.nextBtnDisabled]}
+            style={[styles.nextBtn, selectedTables.length === 0 && styles.nextBtnDisabled]}
             onPress={handleNext}
-            disabled={!selectedTable}
+            disabled={selectedTables.length === 0}
           >
             <Text style={styles.nextBtnText}>
-              {selectedTable ? `Continue with Table ${selectedTable.tableNumber}` : 'Select a Table to Continue'}
+              {selectedTables.length > 0 
+                ? `Continue (${selectedTables.length} Table${selectedTables.length > 1 ? 's' : ''}: ${selectedTables.map(t => 'T' + t.tableNumber).join(', ')})`
+                : 'Select Table(s) to Continue'}
             </Text>
           </TouchableOpacity>
         </View>
