@@ -416,3 +416,53 @@
         grid-template-columns: 1fr !important;
     }
 }
+
+/* Enhanced Responsive Overrides for Admin & Superadmin */
+.table-responsive, table, .bills-table, .data-table {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1024px) {
+    .stats-grid, .dashboard-grid, .analytics-grid, .overview-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 12px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .stats-grid, .dashboard-grid, .analytics-grid, .overview-grid, .charts-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+    
+    .table-container, .table-wrapper {
+        overflow-x: auto !important;
+        max-width: 100%;
+        display: block;
+    }
+
+    .bill-container {
+        width: 95vw !important;
+        max-width: 95vw !important;
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+        padding: 16px !important;
+    }
+
+    .modal-content, .modal-body {
+        max-height: 80vh !important;
+        overflow-y: auto !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-content {
+        padding: 10px 8px !important;
+    }
+    .btn {
+        padding: 8px 12px !important;
+        font-size: 0.82rem !important;
+    }
+}

@@ -123,6 +123,7 @@ const AdminLayout = () => {
 
     const menuItems = [
         { path: '/admin', icon: FiHome, label: 'Dashboard', exact: true },
+        { path: '/admin/analytics', icon: FiBarChart2, label: 'Analytics' },
         { path: '/admin/orders', icon: FiShoppingBag, label: 'Orders', badgeKey: 'orders' },
         { path: '/admin/create-order', icon: FiPlus, label: 'Create Order' },
         { path: '/admin/bills', icon: FiFileText, label: 'Bills', badgeKey: 'bills' },
@@ -137,7 +138,6 @@ const AdminLayout = () => {
         { path: '/admin/inventory', icon: FiPackage, label: 'Inventory' },
         { path: '/admin/employees', icon: FiUsers, label: 'Employees' },
         { path: '/admin/customers', icon: FiUsers, label: 'Customers' },
-        { path: '/admin/analytics', icon: FiBarChart2, label: 'Analytics' },
         { path: '/admin/settings', icon: FiSettings, label: 'Settings' },
     ];
 

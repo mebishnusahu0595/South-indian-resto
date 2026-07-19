@@ -2,10 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FiUsers, FiMapPin, FiGrid, FiStar, FiSun, FiCoffee, FiHome, FiTag, FiCheck, FiMove } from 'react-icons/fi';
 import './TableLayoutSelector.css';
 
-const UNIT_W = 180;
-const UNIT_H = 170;
-const GAP_X = 50;
-const GAP_Y = 56;
+const UNIT_W = 160;
+const UNIT_H = 150;
+const GAP_X = 64;
+const GAP_Y = 64;
 const PER_ROW = 4;
 
 const AreaIcon = ({ type, size = 14 }) => {
@@ -24,7 +24,7 @@ const defaultPos = (index) => ({
     y: 12 + Math.floor(index / PER_ROW) * (UNIT_H + GAP_Y),
 });
 
-// Compute chair placement (percent) and rotation (deg) around a table.
+// Compute chair placement (percent) docked tightly to table surface edges.
 const getChairs = (capacity, shape) => {
     const count = Math.min(Math.max(capacity || 1, 1), 14);
     const chairs = [];
@@ -33,7 +33,8 @@ const getChairs = (capacity, shape) => {
         for (let i = 0; i < count; i++) {
             const deg = (360 / count) * i;
             const rad = (deg * Math.PI) / 180;
-            const R = 46;
+            // Radius 37% keeps chair docked right on round table perimeter (table diameter ~56%)
+            const R = 37;
             chairs.push({ left: 50 + R * Math.sin(rad), top: 50 - R * Math.cos(rad), angle: deg });
         }
         return chairs;
@@ -57,10 +58,17 @@ const getChairs = (capacity, shape) => {
     const push = (n, side) => {
         for (let i = 0; i < n; i++) {
             const frac = (i + 1) / (n + 1);
-            if (side === 'top') chairs.push({ left: frac * 100, top: -7, angle: 0 });
-            if (side === 'bottom') chairs.push({ left: frac * 100, top: 107, angle: 180 });
-            if (side === 'left') chairs.push({ left: -7, top: frac * 100, angle: 270 });
-            if (side === 'right') chairs.push({ left: 107, top: frac * 100, angle: 90 });
+            if (isRect) {
+                if (side === 'top') chairs.push({ left: 10 + frac * 80, top: 12, angle: 0 });
+                if (side === 'bottom') chairs.push({ left: 10 + frac * 80, top: 88, angle: 180 });
+                if (side === 'left') chairs.push({ left: 3, top: 22 + frac * 56, angle: 270 });
+                if (side === 'right') chairs.push({ left: 97, top: 22 + frac * 56, angle: 90 });
+            } else {
+                if (side === 'top') chairs.push({ left: 18 + frac * 64, top: 8, angle: 0 });
+                if (side === 'bottom') chairs.push({ left: 18 + frac * 64, top: 92, angle: 180 });
+                if (side === 'left') chairs.push({ left: 8, top: 18 + frac * 64, angle: 270 });
+                if (side === 'right') chairs.push({ left: 92, top: 18 + frac * 64, angle: 90 });
+            }
         }
     };
     push(top, 'top');
@@ -70,14 +78,44 @@ const getChairs = (capacity, shape) => {
     return chairs;
 };
 
+// Automatic overlap resolution helper so tables/chairs never collide
+const resolveSectionOverlaps = (tablesList) => {
+    const minX = UNIT_W + GAP_X; // 224
+    const minY = UNIT_H + GAP_Y; // 214
+
+    const items = tablesList.map((t, idx) => {
+        const hasPos = t.posX != null && t.posY != null;
+        const p = hasPos ? { x: t.posX, y: t.posY } : defaultPos(idx);
+        return { table: t, x: p.x, y: p.y };
+    });
+
+    for (let i = 0; i < items.length; i++) {
+        for (let j = 0; j < i; j++) {
+            const a = items[j];
+            const b = items[i];
+            const dx = Math.abs(b.x - a.x);
+            const dy = Math.abs(b.y - a.y);
+            if (dx < minX && dy < minY) {
+                // Overlap detected: shift b to available slot
+                if (a.x + minX + UNIT_W <= 960) {
+                    b.x = a.x + minX;
+                } else {
+                    b.y = a.y + minY;
+                    b.x = 16;
+                }
+            }
+        }
+    }
+    return items;
+};
+
 const TableLayoutSelector = ({ tables, selectedTableIds = [], onToggleTable, sections: sectionList = [], onMoveChair, onMoveTable }) => {
     const [activeSection, setActiveSection] = useState('all');
     const [dragOverTableId, setDragOverTableId] = useState(null);
-    const [livePos, setLivePos] = useState(null); // { id, x, y } while dragging a table
+    const [livePos, setLivePos] = useState(null);
     const dragRef = useRef(null);
     const suppressClickRef = useRef(false);
 
-    // Table repositioning via pointer drag
     useEffect(() => {
         const onMove = (e) => {
             const d = dragRef.current;
@@ -111,7 +149,7 @@ const TableLayoutSelector = ({ tables, selectedTableIds = [], onToggleTable, sec
     const startTableDrag = (e, tableId, pos) => {
         if (!onMoveTable) return;
         if (e.button !== 0) return;
-        if (e.target.closest('.tls-chair')) return; // chairs have their own drag
+        if (e.target.closest('.tls-chair')) return;
         e.preventDefault();
         dragRef.current = { id: tableId, startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y, moved: false, curX: pos.x, curY: pos.y };
     };
@@ -152,8 +190,6 @@ const TableLayoutSelector = ({ tables, selectedTableIds = [], onToggleTable, sec
         return acc;
     }, {});
 
-    const getPos = (t, i) => (t.posX != null && t.posY != null) ? { x: t.posX, y: t.posY } : defaultPos(i);
-
     return (
         <div className="table-layout-selector">
             <div className="tls-section-tabs">
@@ -166,21 +202,21 @@ const TableLayoutSelector = ({ tables, selectedTableIds = [], onToggleTable, sec
             </div>
 
             <div className="tls-layout-area">
-
                 {Object.entries(grouped).map(([sectionName, sectionTables]) => {
-                    const positions = sectionTables.map((t, i) => getPos(t, i));
-                    const floorHeight = Math.max(220, ...positions.map(p => p.y + UNIT_H + 24));
-                    const floorWidth = Math.max(PER_ROW * (UNIT_W + GAP_X), ...positions.map(p => p.x + UNIT_W + 24));
+                    const resolved = resolveSectionOverlaps(sectionTables);
+                    const floorHeight = Math.max(200, ...resolved.map(item => item.y + UNIT_H + 20));
+                    const floorWidth = Math.max(PER_ROW * (UNIT_W + GAP_X), ...resolved.map(item => item.x + UNIT_W + 20));
                     return (
                         <div key={sectionName} className="tls-section-group">
                             <div className="tls-section-label">{sectionName}</div>
                             <div className="tls-tables-floor" style={{ height: floorHeight, minWidth: floorWidth }}>
-                                {sectionTables.map((table, i) => {
+                                {resolved.map((item) => {
+                                    const table = item.table;
                                     const isSelected = selectedTableIds.includes(table._id);
                                     const isOccupied = table.status === 'occupied';
                                     const isReserved = table.status === 'reserved';
                                     const chairs = getChairs(table.capacity, table.shape || 'square');
-                                    const basePos = positions[i];
+                                    const basePos = { x: item.x, y: item.y };
                                     const pos = (livePos && livePos.id === table._id) ? livePos : basePos;
                                     return (
                                         <div
