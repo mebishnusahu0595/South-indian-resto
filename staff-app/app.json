@@ -2,6 +2,7 @@
   "expo": {
     "name": "Kea Staff",
     "slug": "kea-staff-app",
+    "owner": "bishnusahu059595595",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,7 +13,8 @@
       "backgroundColor": "#7C3AED"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.keabythepool.staff"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,6 +25,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d34742b2-5dd6-40c8-9ecd-b03d11833f97"
+      }
     }
   }
 }
