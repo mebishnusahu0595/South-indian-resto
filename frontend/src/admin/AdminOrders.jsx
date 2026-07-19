@@ -26,6 +26,7 @@ const AdminOrders = () => {
     const [prepareSelectedOrderIds, setPrepareSelectedOrderIds] = useState([]);
     const [prepareBillerName, setPrepareBillerName] = useState('');
     const [prepareDiscountInput, setPrepareDiscountInput] = useState('');
+    const [prepareDiscountType, setPrepareDiscountType] = useState('%');
     const [prepareSuggestions, setPrepareSuggestions] = useState([]);
     const [showPrepareSuggestions, setShowPrepareSuggestions] = useState(false);
     const [allMenuItems, setAllMenuItems] = useState([]);
@@ -310,14 +311,17 @@ const AdminOrders = () => {
         }
     };
 
-    const parseDiscount = (input, baseAmt) => {
-        if (!input) return 0;
-        const trimmed = input.trim();
-        if (trimmed.endsWith('%')) {
-            const pct = parseFloat(trimmed.replace('%', '')) || 0;
-            return (baseAmt * pct) / 100;
-        }
-        return parseFloat(trimmed) || 0;
+    const parseDiscount = (input, baseAmt, type) => {
+        if (!input && input !== 0) return 0;
+        const trimmed = String(input).trim();
+        if (!trimmed) return 0;
+        const num = parseFloat(trimmed) || 0;
+        // If type is explicitly passed, use it; otherwise fall back to string detection
+        if (type === '₹') return num;
+        if (type === '%') return (baseAmt * num) / 100;
+        // Legacy fallback: detect by trailing % character
+        if (trimmed.endsWith('%')) return (baseAmt * (parseFloat(trimmed) || 0)) / 100;
+        return num;
     };
 
     const handleConfirmPrepareBill = async (e) => {
@@ -336,7 +340,7 @@ const AdminOrders = () => {
             const res = await generateBill({
                 orderIds: prepareSelectedOrderIds,
                 billerName: prepareBillerName,
-                discount: parseDiscount(prepareDiscountInput, getSelectedSubtotal()),
+                discount: parseDiscount(prepareDiscountInput, getSelectedSubtotal(), prepareDiscountType),
                 discountName: prepareDiscountName
             });
 
