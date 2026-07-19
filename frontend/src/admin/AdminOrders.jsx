@@ -801,50 +801,22 @@ const AdminOrders = () => {
                                 </select>
                             </div>
 
-                            {/* Custom discount text box & Type Selector */}
+                            {/* Custom discount text box - Percentage only */}
                             <div className="input-group">
-                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Custom Discount</label>
-                                <div style={{ display: 'flex', gap: '6px' }}>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Custom Discount (%)</label>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                     <input
                                         type="number"
                                         min="0"
+                                        max="100"
                                         step="any"
-                                        placeholder={prepareDiscountType === '%' ? "e.g. 10 (for 10%)" : "e.g. 50 (for ₹50)"}
+                                        placeholder="e.g. 10 (for 10%)"
                                         value={prepareDiscountInput}
                                         onChange={(e) => setPrepareDiscountInput(e.target.value)}
                                         className="input"
                                         style={{ flex: 1, padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
                                     />
-                                    <div style={{ display: 'flex', border: '2px solid #111111', borderRadius: '6px', overflow: 'hidden' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPrepareDiscountType('%')}
-                                            style={{
-                                                padding: '6px 14px',
-                                                background: prepareDiscountType === '%' ? '#7C3AED' : '#F3F4F6',
-                                                color: prepareDiscountType === '%' ? '#FFF' : '#111',
-                                                border: 'none',
-                                                fontWeight: 'bold',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            %
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPrepareDiscountType('₹')}
-                                            style={{
-                                                padding: '6px 14px',
-                                                background: prepareDiscountType === '₹' ? '#7C3AED' : '#F3F4F6',
-                                                color: prepareDiscountType === '₹' ? '#FFF' : '#111',
-                                                border: 'none',
-                                                fontWeight: 'bold',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            ₹
-                                        </button>
-                                    </div>
+                                    <span style={{ padding: '8px 14px', background: '#7C3AED', color: '#FFF', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem' }}>%</span>
                                 </div>
                             </div>
 
@@ -996,50 +968,22 @@ const AdminOrders = () => {
                                 </select>
                             </div>
 
-                            {/* Custom Discount Input & Type Selector */}
+                            {/* Custom Discount Input - Percentage only */}
                             <div className="input-group" style={{ marginBottom: 0 }}>
-                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Discount</label>
-                                <div style={{ display: 'flex', gap: '6px' }}>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Discount (%)</label>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                     <input
                                         type="number"
                                         min="0"
+                                        max="100"
                                         step="any"
-                                        placeholder={paymentDiscountType === '%' ? "e.g. 10 (for 10%)" : "e.g. 50 (for ₹50)"}
+                                        placeholder="e.g. 10 (for 10%)"
                                         value={paymentDiscountInput}
                                         onChange={(e) => setPaymentDiscountInput(e.target.value)}
                                         className="input"
                                         style={{ flex: 1, padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
                                     />
-                                    <div style={{ display: 'flex', border: '2px solid #111111', borderRadius: '6px', overflow: 'hidden' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentDiscountType('%')}
-                                            style={{
-                                                padding: '6px 12px',
-                                                background: paymentDiscountType === '%' ? '#7C3AED' : '#F3F4F6',
-                                                color: paymentDiscountType === '%' ? '#FFF' : '#111',
-                                                border: 'none',
-                                                fontWeight: 'bold',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            %
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentDiscountType('₹')}
-                                            style={{
-                                                padding: '6px 12px',
-                                                background: paymentDiscountType === '₹' ? '#7C3AED' : '#F3F4F6',
-                                                color: paymentDiscountType === '₹' ? '#FFF' : '#111',
-                                                border: 'none',
-                                                fontWeight: 'bold',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            ₹
-                                        </button>
-                                    </div>
+                                    <span style={{ padding: '6px 12px', background: '#7C3AED', color: '#FFF', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.95rem' }}>%</span>
                                 </div>
                             </div>
 
