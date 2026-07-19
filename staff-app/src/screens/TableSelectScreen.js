@@ -140,6 +140,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
                 </Text>
               </TouchableOpacity>
             </View>
+          )}
         </View>
 
         {/* Performance Statistics Card */}
