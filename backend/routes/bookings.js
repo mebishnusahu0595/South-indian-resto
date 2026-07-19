@@ -108,8 +108,8 @@ router.post('/', protect, async (req, res) => {
     }
 });
 
-// Update booking status (admin can update status)
-router.put('/:id/status', protect, admin, async (req, res) => {
+// Update booking status (admin & staff can update status)
+router.put('/:id/status', protect, async (req, res) => {
     try {
         const { status } = req.body;
         const validStatuses = ['upcoming', 'confirmed', 'seated', 'completed', 'cancelled', 'no-show'];

@@ -181,16 +181,19 @@ log_success "Certbot installed. Run 'sudo certbot --nginx -d yourdomain.com' aft
 # =============================================================================
 # Phase 10: Install MongoDB
 # =============================================================================
-log_info "Phase 10: Installing MongoDB 7.0..."
+log_info "Phase 10: Installing MongoDB 8.0..."
 
 apt-get install -y gnupg curl
 
-curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
-    gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+# Remove any old bad mongodb list file if it exists
+rm -f /etc/apt/sources.list.d/mongodb-org-7.0.list
 
-# Ubuntu 24.04 (noble)
-echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/7.0 multiverse" | \
-    tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+curl -fsSL https://pgp.mongodb.com/server-8.0.asc | \
+    gpg --yes -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
+
+# Ubuntu 24.04 (noble) repository for MongoDB 8.0
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | \
+    tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 
 apt-get update
 apt-get install -y mongodb-org
@@ -210,8 +213,8 @@ apt install -y redis-server
 
 sed -i 's/supervised no/supervised systemd/' /etc/redis/redis.conf
 
-systemctl restart redis.service
-systemctl enable redis.service
+systemctl restart redis-server
+systemctl enable redis-server
 
 log_success "Redis installed and configured."
 
@@ -274,13 +277,11 @@ echo "  ✅ rclone (Backup sync)"
 echo "  ✅ Lynis (Security Audit)"
 echo ""
 echo "Next Steps:"
-echo "  1. Clone your repo: git clone https://github.com/Deepakscripts/kea-by-the-pool-website.git"
+echo "  1. Clone your repo: git clone https://github.com/mebishnusahu0595/kea-by-the-pool-website.git"
 echo "  2. Set up Nginx config: /etc/nginx/sites-available/"
 echo "  3. Get SSL: sudo certbot --nginx -d yourdomain.com"
 echo "  4. Secure MongoDB with authentication"
 echo "  5. Configure rclone: rclone config"
 echo "  6. Run security audit: sudo lynis audit system"
-echo "  7. Configure rclone: rclone config"
-echo "  8. Run security audit: sudo lynis audit system"
 echo ""
 echo "==========================================="

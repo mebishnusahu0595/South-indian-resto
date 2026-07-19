@@ -16,8 +16,8 @@ module.exports = {
             cwd: '/root/kea-by-the-pool-website/backend',
 
             // Instances & Mode
-            instances: 'max', // Use all CPU cores
-            exec_mode: 'cluster', // Enable clustering for load balancing
+            instances: 1, // Single instance for low resource server
+            exec_mode: 'fork', // Fork mode to minimize memory usage
 
             // Environment Variables
             env: {

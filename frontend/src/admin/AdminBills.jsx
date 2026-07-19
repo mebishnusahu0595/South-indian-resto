@@ -332,37 +332,68 @@ const AdminBills = () => {
         }
     };
 
+    // Payment status filter
+    const [paymentFilter, setPaymentFilter] = useState('all');
+
+    const filteredBills = bills.filter(bill => {
+        const isPaid = bill.order?.status === 'paid';
+        const method = (bill.order?.paymentMethod || 'cash').toLowerCase();
+        if (paymentFilter === 'paid') return isPaid;
+        if (paymentFilter === 'pending') return !isPaid;
+        if (paymentFilter === 'cash') return isPaid && method === 'cash';
+        if (paymentFilter === 'online') return isPaid && (method === 'online' || method === 'upi' || method === 'card');
+        return true;
+    });
+
     return (
         <div className="admin-bills-page">
             <div className="bills-header-row">
                 <h1>Billing Registry & Invoices</h1>
 
-                {user?.role === 'superadmin' && selectedBillIds.length > 0 && (
-                    <button
-                        className="btn btn-danger"
-                        onClick={handleBulkDelete}
-                        disabled={bulkDeleting}
-                        style={{ fontSize: '0.85rem', padding: '8px 16px' }}
-                    >
-                        <FiTrash2 /> {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedBillIds.length})`}
-                    </button>
-                )}
-                
-                <div className="date-filter-control sketch-border-subtle">
-                    <button className="date-arrow-btn" onClick={handlePrevDay}>
-                        <FiChevronLeft />
-                    </button>
-                    <div className="date-display-box">
-                        <FiCalendar />
-                        <input 
-                            type="date" 
-                            value={selectedDate} 
-                            onChange={(e) => setSelectedDate(e.target.value)} 
-                        />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    {/* Payment Status Filter */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FFF', border: '2px solid #111', borderRadius: '6px', padding: '4px 10px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Payment Filter:</span>
+                        <select 
+                            value={paymentFilter} 
+                            onChange={(e) => setPaymentFilter(e.target.value)}
+                            style={{ border: 'none', outline: 'none', background: 'transparent', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}
+                        >
+                            <option value="all">All Bills</option>
+                            <option value="paid">Paid & Settled</option>
+                            <option value="pending">Pending Payment</option>
+                            <option value="cash">Cash Paid</option>
+                            <option value="online">Online / UPI Paid</option>
+                        </select>
                     </div>
-                    <button className="date-arrow-btn" onClick={handleNextDay}>
-                        <FiChevronRight />
-                    </button>
+
+                    {user?.role === 'superadmin' && selectedBillIds.length > 0 && (
+                        <button
+                            className="btn btn-danger"
+                            onClick={handleBulkDelete}
+                            disabled={bulkDeleting}
+                            style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+                        >
+                            <FiTrash2 /> {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedBillIds.length})`}
+                        </button>
+                    )}
+                    
+                    <div className="date-filter-control sketch-border-subtle">
+                        <button className="date-arrow-btn" onClick={handlePrevDay}>
+                            <FiChevronLeft />
+                        </button>
+                        <div className="date-display-box">
+                            <FiCalendar />
+                            <input 
+                                type="date" 
+                                value={selectedDate} 
+                                onChange={(e) => setSelectedDate(e.target.value)} 
+                            />
+                        </div>
+                        <button className="date-arrow-btn" onClick={handleNextDay}>
+                            <FiChevronRight />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -372,8 +403,8 @@ const AdminBills = () => {
                 <Loader message="Loading invoices..." fullScreen={false} />
             ) : (
                 <div className="bills-table-container sketch-border-subtle sketch-shadow">
-                    {bills.length === 0 ? (
-                        <p className="no-bills-message">No bills issued on this date.</p>
+                    {filteredBills.length === 0 ? (
+                        <p className="no-bills-message">No matching bills found.</p>
                     ) : (
                         <table className="bills-table">
                             <thead>
@@ -382,7 +413,7 @@ const AdminBills = () => {
                                         <th style={{ width: '40px' }}>
                                             <input
                                                 type="checkbox"
-                                                checked={selectedBillIds.length === bills.length && bills.length > 0}
+                                                checked={selectedBillIds.length === filteredBills.length && filteredBills.length > 0}
                                                 onChange={toggleSelectAll}
                                             />
                                         </th>
@@ -393,6 +424,7 @@ const AdminBills = () => {
                                     <th>Table</th>
                                     <th>Customer</th>
                                     <th>Biller</th>
+                                    <th>Status</th>
                                     <th>Subtotal</th>
                                     <th>Discount</th>
                                     <th>Total</th>
@@ -400,59 +432,75 @@ const AdminBills = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {bills.map(bill => (
-                                    <tr key={bill._id}>
-                                        {user?.role === 'superadmin' && (
+                                {filteredBills.map(bill => {
+                                    const isPaid = bill.order?.status === 'paid';
+                                    return (
+                                        <tr key={bill._id}>
+                                            {user?.role === 'superadmin' && (
+                                                <td>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedBillIds.includes(bill._id)}
+                                                        onChange={() => toggleBillSelect(bill._id)}
+                                                    />
+                                                </td>
+                                            )}
+                                            <td><strong>{bill.billNumber}</strong></td>
+                                            <td>{new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                                            <td>#{bill.order?.orderNumber || 'Deleted'}</td>
+                                            <td>{bill.order?.tableNumber ? `Table ${bill.order.tableNumber}` : 'Takeaway'}</td>
+                                            <td>{bill.order?.user?.name || 'Walk-in'}</td>
+                                            <td>{bill.billerName}</td>
                                             <td>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedBillIds.includes(bill._id)}
-                                                    onChange={() => toggleBillSelect(bill._id)}
-                                                />
+                                                <span style={{
+                                                    fontSize: '0.75rem',
+                                                    padding: '3px 8px',
+                                                    borderRadius: '4px',
+                                                    fontWeight: 'bold',
+                                                    background: isPaid ? '#D1FAE5' : '#FEF3C7',
+                                                    color: isPaid ? '#047857' : '#D97706',
+                                                    border: `1px solid ${isPaid ? '#10B981' : '#F59E0B'}`
+                                                }}>
+                                                    {isPaid ? `PAID (${(bill.order?.paymentMethod || 'cash').toUpperCase()})` : 'UNPAID'}
+                                                </span>
                                             </td>
-                                        )}
-                                        <td><strong>{bill.billNumber}</strong></td>
-                                        <td>{new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                                        <td>#{bill.order?.orderNumber || 'Deleted'}</td>
-                                        <td>{bill.order?.tableNumber ? `Table ${bill.order.tableNumber}` : 'Takeaway'}</td>
-                                        <td>{bill.order?.user?.name || 'Walk-in'}</td>
-                                        <td>{bill.billerName}</td>
-                                        <td>₹{bill.subtotal.toFixed(2)}</td>
-                                        <td style={{ color: bill.discount > 0 ? '#DC2626' : 'inherit' }}>
-                                            {bill.discount > 0 ? `-₹${bill.discount.toFixed(2)}` : '₹0.00'}
-                                        </td>
-                                        <td><strong>₹{bill.total.toFixed(2)}</strong></td>
-                                        <td className="actions-cell">
-                                            {bill.order?.status === 'paid' ? (
-                                                <button 
-                                                    className="btn-action print" 
-                                                    title="Print Receipt"
-                                                    onClick={() => setCreatedBill(bill)}
-                                                    style={{ background: '#059669', color: 'white' }}
-                                                >
-                                                    <FiPrinter /> Print
-                                                </button>
-                                            ) : (
-                                                <button 
-                                                    className="btn-action reissue" 
-                                                    title="Re-issue & Print"
-                                                    onClick={() => handleOpenEdit(bill)}
-                                                >
-                                                    <FiPrinter /> Re-issue
-                                                </button>
-                                            )}
-                                            {user && user.role === 'superadmin' && (
-                                                <button 
-                                                    className="btn-action delete" 
-                                                    title="Delete Bill & Order"
-                                                    onClick={() => handleDelete(bill._id)}
-                                                >
-                                                    <FiTrash2 />
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
+                                            <td>₹{bill.subtotal.toFixed(2)}</td>
+                                            <td style={{ color: bill.discount > 0 ? '#DC2626' : 'inherit' }}>
+                                                {bill.discount > 0 ? `-₹${bill.discount.toFixed(2)}` : '₹0.00'}
+                                            </td>
+                                            <td><strong>₹{bill.total.toFixed(2)}</strong></td>
+                                            <td className="actions-cell">
+                                                {isPaid ? (
+                                                    <button 
+                                                        className="btn-action print" 
+                                                        title="View & Print Bill"
+                                                        onClick={() => setCreatedBill(bill)}
+                                                        style={{ background: '#059669', color: 'white' }}
+                                                    >
+                                                        <FiPrinter /> View
+                                                    </button>
+                                                ) : (
+                                                    <button 
+                                                        className="btn-action reissue" 
+                                                        title="Re-issue Bill"
+                                                        onClick={() => handleOpenEdit(bill)}
+                                                    >
+                                                        <FiPrinter /> Re-issue
+                                                    </button>
+                                                )}
+                                                {user && user.role === 'superadmin' && (
+                                                    <button 
+                                                        className="btn-action delete" 
+                                                        title="Delete Bill & Order"
+                                                        onClick={() => handleDelete(bill._id)}
+                                                    >
+                                                        <FiTrash2 />
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     )}

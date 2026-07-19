@@ -1,7 +1,9 @@
 import React, { useState, useEffect, Component } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, LogBox } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, LogBox, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import io from 'socket.io-client';
 import axios from 'axios';
 
 // Suppress non-critical warnings
@@ -14,9 +16,9 @@ import MenuScreen from './src/screens/MenuScreen';
 import CartScreen from './src/screens/CartScreen';
 import HostScreen from './src/screens/HostScreen';
 import RatingScreen from './src/screens/RatingScreen';
+import StaffHistoryScreen from './src/screens/StaffHistoryScreen';
 
 // ─── Error Boundary ────────────────────────────────────────
-// Catches any JS crash in the component tree and shows a recovery screen
 class ErrorBoundary extends Component {
   state = { hasError: false, error: null, errorInfo: null };
 
@@ -67,6 +69,10 @@ function MainApp() {
   const [serverUrl, setServerUrl] = useState('https://keabythepool.com');
   const [token, setToken] = useState(null);
   const [staffName, setStaffName] = useState('Staff');
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // Socket state
+  const [socket, setSocket] = useState(null);
 
   // Shared order state
   const [selectedTable, setSelectedTable] = useState(null);
@@ -75,15 +81,50 @@ function MainApp() {
   const [cart, setCart] = useState([]);
   const [instructions, setInstructions] = useState('');
   const [ratingOrder, setRatingOrder] = useState(null);
-
-  // Backend-driven config (fetched after login, cached)
   const [appConfig, setAppConfig] = useState(null);
-
-  // Debug: last network error visible on screen in dev
   const [lastError, setLastError] = useState('');
 
-  // Fetch remote config from backend (app name, features, version message, etc.)
-  // This means you can change behavior without rebuilding the APK
+  // 1. Restore persistent login session from AsyncStorage on startup
+  useEffect(() => {
+    restoreSession();
+  }, []);
+
+  const restoreSession = async () => {
+    try {
+      const savedToken = await AsyncStorage.getItem('staff_token');
+      const savedName = await AsyncStorage.getItem('staff_name');
+      const savedUrl = await AsyncStorage.getItem('server_url') || 'https://keabythepool.com';
+
+      if (savedToken) {
+        setToken(savedToken);
+        setStaffName(savedName || 'Staff');
+        setServerUrl(savedUrl);
+        setActiveScreen('table-select');
+        fetchAppConfig(savedUrl, savedToken);
+      }
+    } catch (e) {
+      console.log('Error restoring session:', e);
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
+  // 2. Initialize WebSocket when logged in
+  useEffect(() => {
+    if (token && serverUrl) {
+      const targetUrl = serverUrl.replace(/\/+$/, '');
+      const newSocket = io(targetUrl, {
+        transports: ['websocket', 'polling'],
+        reconnection: true
+      });
+      setSocket(newSocket);
+
+      return () => {
+        newSocket.disconnect();
+      };
+    }
+  }, [token, serverUrl]);
+
   const fetchAppConfig = async (url, authToken) => {
     try {
       const res = await axios.get(`${url}/api/settings/app-config`, {
@@ -92,12 +133,10 @@ function MainApp() {
       });
       setAppConfig(res.data || {});
     } catch (err) {
-      // Non-critical: app works without config
       console.log('[AppConfig] Could not fetch:', err.message);
     }
   };
 
-  // Configure Axios instance
   const getApi = () => {
     const instance = axios.create({
       baseURL: `${serverUrl}/api`,
@@ -106,18 +145,15 @@ function MainApp() {
     if (token) {
       instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     }
-    // Intercept errors globally
     instance.interceptors.response.use(
       (response) => {
-        setLastError(''); // clear on success
+        setLastError('');
         return response;
       },
       (error) => {
         const msg = error.response?.data?.message || error.message || 'Network error';
         const status = error.response?.status;
         setLastError(`[${status || 'NET'}] ${msg}`);
-
-        // Auto-logout on 401
         if (status === 401) {
           handleLogout();
         }
@@ -127,15 +163,24 @@ function MainApp() {
     return instance;
   };
 
-  const handleLogin = (jwtToken, name, url) => {
+  const handleLogin = async (jwtToken, name, url) => {
     setToken(jwtToken);
     setStaffName(name);
     setServerUrl(url);
     setActiveScreen('table-select');
     fetchAppConfig(url, jwtToken);
+
+    // Save session to AsyncStorage
+    try {
+      await AsyncStorage.setItem('staff_token', jwtToken);
+      await AsyncStorage.setItem('staff_name', name);
+      await AsyncStorage.setItem('server_url', url);
+    } catch (e) {
+      console.log('Error saving session:', e);
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setToken(null);
     setCart([]);
     setSelectedTable(null);
@@ -146,6 +191,13 @@ function MainApp() {
     setAppConfig(null);
     setLastError('');
     setActiveScreen('login');
+
+    try {
+      await AsyncStorage.removeItem('staff_token');
+      await AsyncStorage.removeItem('staff_name');
+    } catch (e) {
+      console.log('Error clearing session:', e);
+    }
   };
 
   const resetOrder = (completedOrder) => {
@@ -162,6 +214,16 @@ function MainApp() {
       setActiveScreen('table-select');
     }
   };
+
+  if (isInitializing) {
+    return (
+      <SafeAreaProvider>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F3FF' }}>
+          <ActivityIndicator size="large" color="#7C3AED" />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>
@@ -187,6 +249,7 @@ function MainApp() {
             }}
             onLogout={handleLogout}
             onOpenHost={() => setActiveScreen('host')}
+            onOpenHistory={() => setActiveScreen('history')}
           />
         )}
 
@@ -220,6 +283,10 @@ function MainApp() {
           <HostScreen api={getApi()} staffName={staffName} onBack={() => setActiveScreen('table-select')} />
         )}
 
+        {activeScreen === 'history' && (
+          <StaffHistoryScreen api={getApi()} socket={socket} onBack={() => setActiveScreen('table-select')} />
+        )}
+
         {activeScreen === 'rating' && ratingOrder && (
           <RatingScreen
             api={getApi()}
@@ -228,29 +295,11 @@ function MainApp() {
             onSkip={() => { setRatingOrder(null); setActiveScreen('table-select'); }}
           />
         )}
-
-        {/* Debug banner: shows last network error (auto-hides after 5s) */}
-        {!!lastError && __DEV__ && (
-          <View style={styles.debugBanner}>
-            <Text style={styles.debugText}>{lastError}</Text>
-            <TouchableOpacity onPress={() => setLastError('')}>
-              <Text style={styles.debugClose}>X</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Backend config message (e.g. maintenance notice) */}
-        {appConfig?.announcement && (
-          <View style={styles.announceBanner}>
-            <Text style={styles.announceText}>{appConfig.announcement}</Text>
-          </View>
-        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
-// Wrap in ErrorBoundary
 export default function App() {
   return (
     <ErrorBoundary>
@@ -264,30 +313,4 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F3FF',
   },
-  debugBanner: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FEF3C7',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: '#F59E0B',
-  },
-  debugText: { fontSize: 11, color: '#92400E', flex: 1, fontFamily: 'monospace' },
-  debugClose: { fontSize: 14, fontWeight: '700', color: '#92400E', paddingLeft: 12 },
-  announceBanner: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#7C3AED',
-    padding: 8,
-    alignItems: 'center',
-  },
-  announceText: { color: '#FFF', fontSize: 12, fontWeight: '600', textAlign: 'center' },
 });

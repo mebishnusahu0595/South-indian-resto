@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 
-export default function TableSelectScreen({ api, staffName, onNext, onLogout, onOpenHost }) {
+export default function TableSelectScreen({ api, staffName, onNext, onLogout, onOpenHost, onOpenHistory }) {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTable, setSelectedTable] = useState(null);
@@ -121,10 +121,15 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
           </TouchableOpacity>
         </View>
 
-        {/* Host / Pre-booking button */}
-        <TouchableOpacity style={styles.hostBtn} onPress={onOpenHost}>
-          <Text style={styles.hostBtnText}>Pre-Bookings (Host)</Text>
-        </TouchableOpacity>
+        {/* Action Buttons Row */}
+        <View style={styles.topActionRow}>
+          <TouchableOpacity style={styles.hostBtn} onPress={onOpenHost}>
+            <Text style={styles.hostBtnText}>📅 Pre-Bookings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.historyBtn} onPress={onOpenHistory}>
+            <Text style={styles.historyBtnText}>📜 Today's History</Text>
+          </TouchableOpacity>
+        </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Attendance card */}
@@ -330,10 +335,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#EF4444',
   },
-  hostBtn: {
-    backgroundColor: '#7C3AED',
+  topActionRow: {
+    flexDirection: 'row',
+    gap: 10,
     marginHorizontal: 16,
     marginTop: 10,
+  },
+  hostBtn: {
+    flex: 1,
+    backgroundColor: '#7C3AED',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -341,7 +351,19 @@ const styles = StyleSheet.create({
   hostBtnText: {
     color: '#FFF',
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 13,
+  },
+  historyBtn: {
+    flex: 1,
+    backgroundColor: '#0EA5E9',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  historyBtnText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
   },
   content: {
     padding: 16,

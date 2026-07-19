@@ -215,11 +215,26 @@ router.post('/admin-login', async (req, res) => {
             return res.status(400).json({ message: 'Phone and password are required' });
         }
 
+        const rawPhone = (phone || '').trim();
+        const cleanPhone = rawPhone.replace(/\D/g, '').slice(-10);
+        const trimmedPassword = (password || '').trim();
+
+        const phoneMatches = [
+            rawPhone,
+            cleanPhone,
+            `+91${cleanPhone}`,
+            `+91 ${cleanPhone}`
+        ];
+
         // Try admin first
-        const user = await User.findOne({ phone, role: { $in: ['admin', 'superadmin'] } });
+        const user = await User.findOne({
+            phone: { $in: phoneMatches },
+            role: { $in: ['admin', 'superadmin'] }
+        });
+
         if (user) {
-            const expectedPassword = user.password || 'admin123';
-            if (password !== expectedPassword) {
+            const expectedPassword = (user.password || 'admin123').trim();
+            if (trimmedPassword !== expectedPassword) {
                 return res.status(401).json({ message: 'Invalid credentials' });
             }
 
@@ -241,9 +256,14 @@ router.post('/admin-login', async (req, res) => {
 
         // Try active employee next
         const Employee = require('../models/Employee');
-        const emp = await Employee.findOne({ phone, isActive: true }).populate('assignedTables');
+        const emp = await Employee.findOne({
+            phone: { $in: phoneMatches },
+            isActive: true
+        }).populate('assignedTables');
+
         if (emp) {
-            if (emp.password !== password) {
+            const expectedEmpPassword = (emp.password || '').trim();
+            if (trimmedPassword !== expectedEmpPassword) {
                 return res.status(401).json({ message: 'Invalid credentials' });
             }
 

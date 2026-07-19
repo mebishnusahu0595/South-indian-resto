@@ -177,7 +177,7 @@ router.post('/generate', protect, admin, async (req, res) => {
         // Emit socket events for real-time updates
         const io = req.app.get('io');
         if (io) {
-            io.emit('order-updated', order);
+            io.emit('order-updated', primaryOrder);
             io.emit('bill-generated', populatedBill);
         }
 
