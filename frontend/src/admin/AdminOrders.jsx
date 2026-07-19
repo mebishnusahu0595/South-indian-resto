@@ -40,6 +40,7 @@ const AdminOrders = () => {
     const [paymentBillerName, setPaymentBillerName] = useState('');
     const [paymentDiscountInput, setPaymentDiscountInput] = useState('');
     const [paymentDiscountName, setPaymentDiscountName] = useState('');
+    const [paymentDiscountType, setPaymentDiscountType] = useState('%');
     const [showPaymentBillerSuggestions, setShowPaymentBillerSuggestions] = useState(false);
 
     // Max discount cap
