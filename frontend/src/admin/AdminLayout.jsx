@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { getActiveOrders, getBills, getTables, getBookings } from '../utils/api';
 import './AdminLayout.css';
+import './admin-mobile.css';
 
 const AdminLayout = () => {
     const { user, logout, socket } = useAuth();

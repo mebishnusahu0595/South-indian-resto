@@ -1,0 +1,660 @@
+/* ============================================================
+   ADMIN GLOBAL MOBILE RESPONSIVE — covers all admin pages
+   Breakpoints: 1024px (tablet), 768px (mobile), 480px (small)
+   ============================================================ */
+
+/* ─── LAYOUT ─── */
+@media (max-width: 1024px) {
+    .admin-content {
+        padding: 16px 14px;
+    }
+}
+
+@media (max-width: 768px) {
+    .admin-content {
+        padding: 12px 10px;
+    }
+
+    /* Page headers with title + action buttons */
+    .page-header,
+    .bills-header,
+    .orders-header,
+    .history-header,
+    .bookings-header,
+    .inventory-header,
+    .employees-header,
+    .customers-header,
+    .settings-header,
+    .tables-header,
+    .menu-header,
+    .categories-header,
+    .coupons-header,
+    .collections-header,
+    .loyalty-header,
+    .analytics-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+    }
+
+    .page-header h1,
+    .bills-header h1,
+    .admin-dashboard h1,
+    .admin-orders h1,
+    .admin-bills h1,
+    .admin-history h1,
+    h1 {
+        font-size: 1.3rem !important;
+    }
+
+    /* Header action button groups */
+    .header-actions,
+    .bills-actions,
+    .history-actions,
+    .filter-bar,
+    .filter-row {
+        width: 100% !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    .header-actions .btn,
+    .bills-actions .btn,
+    .header-actions button,
+    .filter-bar button {
+        flex: 1 1 auto !important;
+        min-width: 120px !important;
+        font-size: 0.8rem !important;
+        padding: 8px 10px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-content {
+        padding: 8px 6px;
+    }
+
+    h1 { font-size: 1.15rem !important; }
+    h2 { font-size: 1rem !important; }
+}
+
+
+/* ─── DASHBOARD ─── */
+@media (max-width: 1024px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 12px !important;
+    }
+    .dashboard-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .stats-grid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 10px !important;
+    }
+    .stat-card {
+        padding: 14px !important;
+        gap: 10px !important;
+    }
+    .stat-value {
+        font-size: 1.2rem !important;
+    }
+    .stat-icon {
+        width: 44px !important;
+        height: 44px !important;
+        font-size: 1.1rem !important;
+    }
+}
+
+@media (max-width: 400px) {
+    .stats-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ─── ORDERS ─── */
+@media (max-width: 1024px) {
+    .orders-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .orders-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .orders-board {
+        padding: 12px !important;
+    }
+    .order-card {
+        padding: 12px !important;
+    }
+    .order-actions {
+        flex-wrap: wrap !important;
+    }
+    .order-actions .btn {
+        flex: 1 1 auto !important;
+        font-size: 0.78rem !important;
+        padding: 7px 8px !important;
+    }
+    .payment-btns {
+        flex-wrap: wrap !important;
+    }
+    .payment-btns .btn {
+        flex: 1 !important;
+        min-width: 100px !important;
+    }
+
+    /* Payment + Prepare Bill modals */
+    .modal,
+    .bill-modal-overlay > div,
+    .prepare-modal,
+    .payment-modal {
+        width: 95vw !important;
+        max-width: 95vw !important;
+        max-height: 92vh !important;
+        overflow-y: auto !important;
+        border-radius: 12px !important;
+    }
+    .input-group label {
+        font-size: 0.82rem !important;
+    }
+}
+
+
+/* ─── BILLS ─── */
+@media (max-width: 768px) {
+    .bills-table,
+    .billing-table {
+        font-size: 0.75rem !important;
+        display: block !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    .bills-table thead,
+    .billing-table thead {
+        display: none !important;
+    }
+    .bills-table tr,
+    .billing-table tr {
+        display: flex !important;
+        flex-direction: column !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 8px !important;
+        margin-bottom: 10px !important;
+        padding: 10px !important;
+        background: white !important;
+    }
+    .bills-table td,
+    .billing-table td {
+        display: flex !important;
+        justify-content: space-between !important;
+        padding: 4px 0 !important;
+        border: none !important;
+        font-size: 0.8rem !important;
+    }
+    .bills-table td::before,
+    .billing-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #6B7280;
+        font-size: 0.73rem;
+        text-transform: uppercase;
+        margin-right: 8px;
+        white-space: nowrap;
+    }
+
+    /* Bill receipt modal */
+    .bill-container {
+        width: 96vw !important;
+        max-width: 96vw !important;
+        padding: 14px !important;
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+    }
+    .bill-actions {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+    .bill-actions .btn {
+        width: 100% !important;
+    }
+}
+
+
+/* ─── CREATE ORDER ─── */
+@media (max-width: 1024px) {
+    .create-order-container {
+        grid-template-columns: 1fr !important;
+    }
+    .order-summary-panel {
+        position: static !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .menu-categories {
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+    .category-btn {
+        font-size: 0.78rem !important;
+        padding: 6px 10px !important;
+    }
+    .items-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .menu-item-card {
+        padding: 10px !important;
+    }
+    .menu-item-card img {
+        height: 90px !important;
+    }
+    .order-summary-panel {
+        padding: 14px !important;
+    }
+    .cart-item {
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .items-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ─── TABLES ─── */
+@media (max-width: 1024px) {
+    .tables-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .tables-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .table-card {
+        padding: 12px !important;
+    }
+    .table-card h3 {
+        font-size: 1rem !important;
+    }
+    .table-actions {
+        flex-direction: column !important;
+        gap: 6px !important;
+    }
+    .table-actions .btn {
+        width: 100% !important;
+        font-size: 0.78rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .tables-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media (max-width: 360px) {
+    .tables-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ─── ANALYTICS ─── */
+@media (max-width: 1024px) {
+    .analytics-grid,
+    .charts-grid,
+    .overview-grid {
+        grid-template-columns: 1fr !important;
+        gap: 14px !important;
+    }
+    .analytics-stats {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .analytics-stats {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .chart-card {
+        padding: 14px !important;
+        overflow-x: auto !important;
+    }
+    .recharts-wrapper,
+    .recharts-surface {
+        max-width: 100% !important;
+    }
+    .date-filter-bar,
+    .analytics-filters {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+    .analytics-filters input,
+    .analytics-filters select {
+        width: 100% !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .analytics-stats {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ─── SETTINGS ─── */
+@media (max-width: 1024px) {
+    .settings-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .settings-card {
+        padding: 16px !important;
+    }
+    .card-header-flex {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+    }
+    .card-header-flex .btn {
+        width: 100% !important;
+    }
+    .tax-item {
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+    .tax-item input {
+        flex: 1 !important;
+        min-width: 100px !important;
+    }
+    .receipt-mock {
+        font-size: 0.78rem !important;
+    }
+}
+
+
+/* ─── EMPLOYEES / INVENTORY / COUPONS / CATEGORIES ─── */
+@media (max-width: 768px) {
+    /* Generic data tables */
+    .data-table-wrapper,
+    .employees-table-wrap,
+    .inventory-table-wrap,
+    .coupons-table-wrap {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        border-radius: 8px !important;
+    }
+
+    table {
+        min-width: 580px;
+    }
+
+    /* Card-based lists */
+    .employee-card,
+    .inventory-card,
+    .coupon-card {
+        padding: 12px !important;
+    }
+
+    /* Form modals */
+    .form-modal,
+    .edit-modal,
+    .add-modal {
+        width: 95vw !important;
+        max-width: 95vw !important;
+        max-height: 88vh !important;
+        overflow-y: auto !important;
+    }
+
+    .form-row,
+    .form-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ─── MENU ─── */
+@media (max-width: 1024px) {
+    .menu-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .menu-grid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 10px !important;
+    }
+    .menu-card {
+        padding: 10px !important;
+    }
+    .menu-card img,
+    .menu-item-img {
+        height: 100px !important;
+        object-fit: cover !important;
+    }
+    .menu-card-actions {
+        flex-direction: column !important;
+        gap: 6px !important;
+    }
+    .menu-card-actions .btn {
+        width: 100% !important;
+        font-size: 0.78rem !important;
+    }
+    .menu-search-bar {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+    .menu-search-bar input,
+    .menu-search-bar select {
+        width: 100% !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .menu-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ─── BOOKINGS ─── */
+@media (max-width: 768px) {
+    .bookings-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .booking-card {
+        padding: 14px !important;
+    }
+    .booking-meta {
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+    .booking-actions {
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+    .booking-actions .btn {
+        flex: 1 1 auto !important;
+        font-size: 0.78rem !important;
+    }
+}
+
+
+/* ─── HISTORY ─── */
+@media (max-width: 768px) {
+    .history-filters {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+    .history-filters input,
+    .history-filters select {
+        width: 100% !important;
+    }
+    .history-table-wrap {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    .history-table {
+        min-width: 560px;
+    }
+}
+
+
+/* ─── LOYALTY / CUSTOMERS ─── */
+@media (max-width: 1024px) {
+    .loyalty-grid,
+    .customers-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .loyalty-stats,
+    .customer-stats {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .loyalty-table-wrap,
+    .customers-table {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    .loyalty-table,
+    .customers-table table {
+        min-width: 540px;
+    }
+    .offers-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ─── COLLECTIONS ─── */
+@media (max-width: 768px) {
+    .collections-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .collection-card {
+        padding: 14px !important;
+    }
+    .collection-products-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+
+/* ─── GLOBAL UTILITIES ─── */
+@media (max-width: 768px) {
+    /* All modals */
+    .modal-overlay {
+        padding: 10px !important;
+        align-items: flex-end !important;
+    }
+
+    .modal,
+    [class*="-modal"],
+    [class*="modal-"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 16px 16px 0 0 !important;
+        max-height: 92vh !important;
+        overflow-y: auto !important;
+    }
+
+    /* Inputs & buttons consistent sizing */
+    .input, input[type="text"], input[type="number"],
+    input[type="email"], input[type="url"], input[type="password"],
+    select, textarea {
+        font-size: 0.9rem !important;
+        padding: 9px 10px !important;
+    }
+
+    .btn {
+        font-size: 0.82rem !important;
+        padding: 9px 14px !important;
+        touch-action: manipulation;
+    }
+
+    /* Scrollable tables always horizontal-scrollable */
+    .table-responsive,
+    .data-table,
+    .bills-table,
+    .history-table,
+    .loyalty-table {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        display: block !important;
+        width: 100% !important;
+    }
+
+    /* Filter / search bars */
+    .filter-bar,
+    .search-bar,
+    .date-picker-bar {
+        flex-direction: column !important;
+        gap: 8px !important;
+        width: 100% !important;
+    }
+
+    .filter-bar input,
+    .filter-bar select,
+    .search-bar input,
+    .search-bar select {
+        width: 100% !important;
+    }
+
+    /* Notice / alert banners */
+    .notice-banner {
+        font-size: 0.82rem !important;
+        padding: 8px 12px !important;
+    }
+
+    /* Info boxes */
+    .info-box {
+        font-size: 0.8rem !important;
+        padding: 10px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Stack two-column grids */
+    .form-row,
+    .two-col,
+    .grid-2 {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Smaller buttons on tiny screens */
+    .btn {
+        font-size: 0.78rem !important;
+        padding: 8px 10px !important;
+    }
+
+    /* Tighten card padding */
+    .settings-card,
+    .dashboard-card,
+    .order-card,
+    .stat-card,
+    .booking-card,
+    .employee-card,
+    .inventory-card {
+        padding: 12px !important;
+    }
+}

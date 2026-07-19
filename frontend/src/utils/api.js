@@ -99,6 +99,8 @@ export const getGstRate = () => axios.get(`${API_URL}/settings/gst`);
 export const updateGstRate = (gstRate) => axios.put(`${API_URL}/settings/gst`, { gstRate });
 export const getMaxDiscount = () => axios.get(`${API_URL}/settings/max-discount`);
 export const updateMaxDiscount = (maxDiscountPercent) => axios.put(`${API_URL}/settings/max-discount`, { maxDiscountPercent });
+export const getSiteInfo = () => axios.get(`${API_URL}/settings/site-info`);
+export const updateSiteInfo = (data) => axios.put(`${API_URL}/settings/site-info`, data);
 export const updateSetting = (key, value) => axios.put(`${API_URL}/settings/${key}`, { value });
 
 // Collections (Custom Homepage Sections)

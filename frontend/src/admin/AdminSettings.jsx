@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FiSettings, FiSave, FiPlus, FiTrash2, FiInfo, FiEye, FiEyeOff, FiPercent } from 'react-icons/fi';
-import { getAllSettings, updateSetting, changeAdminPassword, getMaxDiscount, updateMaxDiscount } from '../utils/api';
+import { FiSettings, FiSave, FiPlus, FiTrash2, FiInfo, FiEye, FiEyeOff, FiPercent, FiInstagram, FiFacebook, FiTwitter, FiPhone, FiMail, FiMapPin, FiClock } from 'react-icons/fi';
+import { getAllSettings, updateSetting, changeAdminPassword, getMaxDiscount, updateMaxDiscount, getSiteInfo, updateSiteInfo } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
 import './AdminSettings.css';
@@ -24,9 +24,21 @@ const AdminSettings = () => {
     const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
     const [savingDiscount, setSavingDiscount] = useState(false);
 
+    // Site info state (social links, contact, hours)
+    const [siteInfo, setSiteInfo] = useState({
+        instagram: '', facebook: '', twitter: '',
+        address: 'Dhanora, Risali, Bhilai',
+        phone: '+91 98765 43210',
+        email: 'hello@keabythepool.com',
+        hoursLabel: 'Mon - Sun',
+        hoursTime: '11:00 AM - 11:00 PM'
+    });
+    const [savingSiteInfo, setSavingSiteInfo] = useState(false);
+
     useEffect(() => {
         fetchSettings();
         fetchMaxDiscount();
+        fetchSiteInfo();
     }, []);
 
     const fetchMaxDiscount = async () => {
@@ -35,6 +47,27 @@ const AdminSettings = () => {
             setMaxDiscountPercent(res.data.maxDiscountPercent);
         } catch (err) {
             console.error('Error fetching max discount:', err);
+        }
+    };
+
+    const fetchSiteInfo = async () => {
+        try {
+            const res = await getSiteInfo();
+            setSiteInfo(prev => ({ ...prev, ...res.data }));
+        } catch (err) {
+            console.error('Error fetching site info:', err);
+        }
+    };
+
+    const handleSaveSiteInfo = async () => {
+        setSavingSiteInfo(true);
+        try {
+            await updateSiteInfo(siteInfo);
+            showNotice('success', 'Site info updated successfully!');
+        } catch (err) {
+            showNotice('error', err.response?.data?.message || 'Failed to update site info');
+        } finally {
+            setSavingSiteInfo(false);
         }
     };
 
@@ -313,6 +346,108 @@ const AdminSettings = () => {
                             <div className="info-box">
                                 <FiInfo />
                                 <p>Example: If set to 20%, admin can give max 20% discount on any bill. Attempting more will be blocked. Superadmin is not limited.</p>
+                            </div>
+                        </div>
+
+                        {/* Site Info — Social, Contact, Hours */}
+                        <div className="settings-card">
+                            <div className="card-header-flex">
+                                <h2>Website Info</h2>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleSaveSiteInfo}
+                                    disabled={savingSiteInfo}
+                                    style={{ padding: '8px 18px', fontSize: '0.85rem' }}
+                                >
+                                    {savingSiteInfo ? 'Saving...' : <><FiSave /> Save</>}
+                                </button>
+                            </div>
+
+                            {/* Social Links */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <p style={{ fontWeight: 700, marginBottom: '10px', color: '#374151', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Social Links</p>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiInstagram /> Instagram URL</label>
+                                    <input
+                                        type="url"
+                                        value={siteInfo.instagram}
+                                        onChange={(e) => setSiteInfo(p => ({ ...p, instagram: e.target.value }))}
+                                        placeholder="https://instagram.com/keabythepool"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiFacebook /> Facebook URL</label>
+                                    <input
+                                        type="url"
+                                        value={siteInfo.facebook}
+                                        onChange={(e) => setSiteInfo(p => ({ ...p, facebook: e.target.value }))}
+                                        placeholder="https://facebook.com/keabythepool"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiTwitter /> Twitter / X URL</label>
+                                    <input
+                                        type="url"
+                                        value={siteInfo.twitter}
+                                        onChange={(e) => setSiteInfo(p => ({ ...p, twitter: e.target.value }))}
+                                        placeholder="https://twitter.com/keabythepool"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Contact Info */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <p style={{ fontWeight: 700, marginBottom: '10px', color: '#374151', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Contact Info</p>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiMapPin /> Address</label>
+                                    <input
+                                        type="text"
+                                        value={siteInfo.address}
+                                        onChange={(e) => setSiteInfo(p => ({ ...p, address: e.target.value }))}
+                                        placeholder="Dhanora, Risali, Bhilai"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiPhone /> Phone</label>
+                                    <input
+                                        type="text"
+                                        value={siteInfo.phone}
+                                        onChange={(e) => setSiteInfo(p => ({ ...p, phone: e.target.value }))}
+                                        placeholder="+91 98765 43210"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiMail /> Email</label>
+                                    <input
+                                        type="email"
+                                        value={siteInfo.email}
+                                        onChange={(e) => setSiteInfo(p => ({ ...p, email: e.target.value }))}
+                                        placeholder="hello@keabythepool.com"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Business Hours */}
+                            <div>
+                                <p style={{ fontWeight: 700, marginBottom: '10px', color: '#374151', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Business Hours</p>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiClock /> Days</label>
+                                    <input
+                                        type="text"
+                                        value={siteInfo.hoursLabel}
+                                        onChange={(e) => setSiteInfo(p => ({ ...p, hoursLabel: e.target.value }))}
+                                        placeholder="Mon - Sun"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiClock /> Timings</label>
+                                    <input
+                                        type="text"
+                                        value={siteInfo.hoursTime}
+                                        onChange={(e) => setSiteInfo(p => ({ ...p, hoursTime: e.target.value }))}
+                                        placeholder="11:00 AM - 11:00 PM"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </>

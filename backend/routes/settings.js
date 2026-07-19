@@ -37,6 +37,45 @@ router.get('/max-discount', async (req, res) => {
     }
 });
 
+// Get site info (social links, contact, hours) - public
+router.get('/site-info', async (req, res) => {
+    try {
+        const siteInfo = await Settings.getSetting('site_info', {
+            instagram: '',
+            facebook: '',
+            twitter: '',
+            address: 'Dhanora, Risali, Bhilai',
+            phone: '+91 98765 43210',
+            email: 'hello@keabythepool.com',
+            hoursLabel: 'Mon - Sun',
+            hoursTime: '11:00 AM - 11:00 PM'
+        });
+        res.json(siteInfo);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Superadmin: Update site info
+router.put('/site-info', protect, superadmin, async (req, res) => {
+    try {
+        const { instagram, facebook, twitter, address, phone, email, hoursLabel, hoursTime } = req.body;
+        const updated = await Settings.setSetting('site_info', {
+            instagram: instagram || '',
+            facebook: facebook || '',
+            twitter: twitter || '',
+            address: address || '',
+            phone: phone || '',
+            email: email || '',
+            hoursLabel: hoursLabel || 'Mon - Sun',
+            hoursTime: hoursTime || '11:00 AM - 11:00 PM'
+        }, 'Website contact info, social links and business hours');
+        res.json(updated.value);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 // Superadmin: Update max discount percent
 router.put('/max-discount', protect, superadmin, async (req, res) => {
     try {
