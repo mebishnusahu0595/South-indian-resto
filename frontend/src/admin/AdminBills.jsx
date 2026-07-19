@@ -58,10 +58,14 @@ const AdminBills = () => {
                 if (billDate === selectedDate) {
                     setBills(prev => {
                         const exists = prev.find(b => b._id === newBill._id);
+                        let updated;
                         if (exists) {
-                            return prev.map(b => b._id === newBill._id ? newBill : b);
+                            updated = prev.map(b => b._id === newBill._id ? newBill : b);
+                        } else {
+                            updated = [newBill, ...prev];
                         }
-                        return [newBill, ...prev];
+                        // Keep descending order
+                        return updated.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     });
                 }
             });
@@ -87,7 +91,9 @@ const AdminBills = () => {
         setError('');
         try {
             const res = await getBills(selectedDate);
-            setBills(res.data || []);
+            // Sort descending: latest bill on top
+            const sorted = (res.data || []).slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            setBills(sorted);
         } catch (err) {
             setError('Failed to fetch bills');
         } finally {

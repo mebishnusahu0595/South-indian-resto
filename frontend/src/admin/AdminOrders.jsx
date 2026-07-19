@@ -529,16 +529,28 @@ const AdminOrders = () => {
                                     )}
 
                                     {['served', 'bill_requested', 'bill_generated'].includes(order.status) && order.status !== 'paid' && (
-                                        <div className="payment-btns">
+                                        <div className="payment-btns" style={{ display: 'flex', gap: '8px', width: '100%', position: 'relative', zIndex: 10 }}>
                                             <button
+                                                type="button"
                                                 className="btn btn-success btn-sm"
-                                                onClick={() => handleOpenPaymentBiller(order._id, 'cash', order.total)}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleOpenPaymentBiller(order._id, 'cash', order.total);
+                                                }}
+                                                style={{ cursor: 'pointer', flex: 1, zIndex: 10, position: 'relative', touchAction: 'manipulation' }}
                                             >
                                                 Cash Paid
                                             </button>
                                             <button
+                                                type="button"
                                                 className="btn btn-primary btn-sm"
-                                                onClick={() => handleOpenPaymentBiller(order._id, 'online', order.total)}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleOpenPaymentBiller(order._id, 'online', order.total);
+                                                }}
+                                                style={{ cursor: 'pointer', flex: 1, zIndex: 10, position: 'relative', touchAction: 'manipulation' }}
                                             >
                                                 Online Paid
                                             </button>
