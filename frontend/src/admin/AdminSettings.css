@@ -43,23 +43,12 @@
     border-left: 4px solid #e02424;
 }
 
-.settings-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+.store-settings-container {
+    display: flex;
+    flex-direction: column;
     gap: 24px;
-}
-
-@media (max-width: 900px) {
-    .settings-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* For mobile */
-@media (max-width: 500px) {
-    .settings-grid {
-        grid-template-columns: 1fr;
-    }
+    max-width: 800px;
+    margin: 0 auto;
 }
 
 .settings-card {

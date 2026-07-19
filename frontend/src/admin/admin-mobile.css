@@ -358,8 +358,9 @@
 
 /* ─── SETTINGS ─── */
 @media (max-width: 1024px) {
-    .settings-grid {
-        grid-template-columns: 1fr !important;
+    .store-settings-container {
+        width: 100% !important;
+        max-width: 100% !important;
     }
 }
 

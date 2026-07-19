@@ -201,7 +201,7 @@ const AdminSettings = () => {
                 </div>
             )}
 
-            <div className="settings-grid">
+            <div className="store-settings-container">
                 {user && user.role === 'superadmin' && (
                     <>
                         {/* Restaurant Profile */}
