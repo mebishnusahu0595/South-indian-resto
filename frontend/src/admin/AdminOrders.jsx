@@ -352,11 +352,6 @@ const AdminOrders = () => {
         }
     };
 
-    const getSelectedSubtotal = () => {
-        const selectedOrders = prepareOrders.filter(o => prepareSelectedOrderIds.includes(o._id));
-        return selectedOrders.reduce((sum, o) => sum + o.subtotal, 0);
-    };
-
     const handleOpenPaymentBiller = (orderId, method, amount) => {
         const order = orders.find(o => o._id === orderId);
         setPaymentBillerOrderId(orderId);
@@ -364,6 +359,7 @@ const AdminOrders = () => {
         setPaymentBillerAmount(amount);
         setPaymentBillerName(order?.billerName || localStorage.getItem('lastBillerName') || '');
         setPaymentDiscountInput(order?.discount ? String(order.discount) : '');
+        setPaymentDiscountType('%');
         setPaymentDiscountName(order?.discountName || '');
         setShowPaymentBillerModal(true);
     };
@@ -380,7 +376,13 @@ const AdminOrders = () => {
             const sessionOrders = targetOrder ? getSessionOrders(targetOrder, orders) : [];
             const orderIds = sessionOrders.map(o => o._id);
             const baseSubtotal = sessionOrders.reduce((sum, o) => sum + (o.subtotal || o.total), 0);
-            const discountVal = parseDiscount(paymentDiscountInput, baseSubtotal);
+            const discountVal = parseDiscount(paymentDiscountInput, baseSubtotal, paymentDiscountType);
+            const discountPct = baseSubtotal > 0 ? (discountVal / baseSubtotal) * 100 : 0;
+
+            if (user?.role !== 'superadmin' && discountPct > maxDiscountPercent + 0.01) {
+                alert(`Discount (${discountPct.toFixed(1)}%) exceeds maximum allowed limit of ${maxDiscountPercent}%. Only superadmin can approve.`);
+                return;
+            }
 
             // 1. Generate/Save the Bill document in DB first to persist billerName, discount and create invoice
             const billRes = await generateBill({
@@ -400,7 +402,7 @@ const AdminOrders = () => {
 
             if (sessionOrders.length > 0) {
                 const updatedSessionOrders = sessionOrders.map(o => 
-                    o._id === paymentBillerOrderId ? { ...o, status: 'paid', paymentMethod: paymentBillerMethod, billerName: paymentBillerName } : { ...o, billerName: paymentBillerName }
+                    o._id === paymentBillerOrderId ? { ...o, status: 'paid', paymentMethod: paymentBillerMethod, billerName: paymentBillerName, discount: discountVal, discountName: paymentDiscountName, total: finalPayable } : { ...o, billerName: paymentBillerName, discount: discountVal }
                 );
                 setSelectedOrdersForBill(updatedSessionOrders);
                 setShowBill(true);
@@ -782,26 +784,55 @@ const AdminOrders = () => {
                                 </select>
                             </div>
 
-                            {/* Custom discount text box */}
+                            {/* Custom discount text box & Type Selector */}
                             <div className="input-group">
-                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Custom Discount (e.g. 50 or 10%)</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. 50 or 10%"
-                                    value={prepareDiscountInput}
-                                    onChange={(e) => setPrepareDiscountInput(e.target.value)}
-                                    className="input"
-                                    style={{ width: '100%', padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
-                                />
-                                {user?.role !== 'superadmin' && (
-                                    <span style={{ fontSize: '0.75rem', color: '#F59E0B', marginTop: '4px', display: 'block' }}>
-                                        Max allowed: {maxDiscountPercent}% (set by superadmin)
-                                    </span>
-                                )}
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Custom Discount</label>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        placeholder={prepareDiscountType === '%' ? "e.g. 10 (for 10%)" : "e.g. 50 (for ₹50)"}
+                                        value={prepareDiscountInput}
+                                        onChange={(e) => setPrepareDiscountInput(e.target.value)}
+                                        className="input"
+                                        style={{ flex: 1, padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
+                                    />
+                                    <div style={{ display: 'flex', border: '2px solid #111111', borderRadius: '6px', overflow: 'hidden' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPrepareDiscountType('%')}
+                                            style={{
+                                                padding: '6px 14px',
+                                                background: prepareDiscountType === '%' ? '#7C3AED' : '#F3F4F6',
+                                                color: prepareDiscountType === '%' ? '#FFF' : '#111',
+                                                border: 'none',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            %
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPrepareDiscountType('₹')}
+                                            style={{
+                                                padding: '6px 14px',
+                                                background: prepareDiscountType === '₹' ? '#7C3AED' : '#F3F4F6',
+                                                color: prepareDiscountType === '₹' ? '#FFF' : '#111',
+                                                border: 'none',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            ₹
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Custom discount name / reason */}
-                            {parseDiscount(prepareDiscountInput, getSelectedSubtotal()) > 0 && (
+                            {parseDiscount(prepareDiscountInput, getSelectedSubtotal(), prepareDiscountType) > 0 && (
                                 <div className="input-group">
                                     <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Discount Reason / Name (e.g. Staff Discount, Birthday Special)</label>
                                     <input
@@ -815,33 +846,57 @@ const AdminOrders = () => {
                                 </div>
                             )}
 
-                            {/* Preview box */}
-                            <div style={{ background: '#F3F4F6', padding: '12px', borderRadius: '6px', border: '1px solid #E5E7EB', margin: '8px 0' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px', color: '#111111' }}>
-                                    <span>Subtotal:</span>
-                                    <span>₹{getSelectedSubtotal().toFixed(2)}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px', color: '#DC2626' }}>
-                                    <span>Discount:</span>
-                                    <span>- ₹{parseDiscount(prepareDiscountInput, getSelectedSubtotal()).toFixed(2)}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '8px', color: '#111111' }}>
-                                    <span>GST (5%):</span>
-                                    <span>₹{((getSelectedSubtotal() - parseDiscount(prepareDiscountInput, getSelectedSubtotal())) * 0.05).toFixed(2)}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.05rem', borderTop: '1px dashed #D1D5DB', paddingTop: '6px', color: '#7C3AED' }}>
-                                    <span>GRAND TOTAL:</span>
-                                    <span>₹{((getSelectedSubtotal() - parseDiscount(prepareDiscountInput, getSelectedSubtotal())) * 1.05).toFixed(2)}</span>
-                                </div>
-                            </div>
+                            {/* Live Summary & Violation Alert */}
+                            {(() => {
+                                const subtotal = getSelectedSubtotal();
+                                const discVal = parseDiscount(prepareDiscountInput, subtotal, prepareDiscountType);
+                                const discPct = subtotal > 0 ? (discVal / subtotal) * 100 : 0;
+                                const isExceeding = user?.role !== 'superadmin' && discPct > maxDiscountPercent + 0.01;
+                                const taxVal = (subtotal - discVal) * 0.05;
+                                const grandTotal = (subtotal - discVal) + taxVal;
 
-                            <button
-                                type="submit"
-                                disabled={isSavingBill || prepareSelectedOrderIds.length === 0}
-                                className="btn btn-primary btn-full sketch-border sketch-shadow"
-                            >
-                                {isSavingBill ? 'Generating Bill...' : 'Confirm & Generate Bill'}
-                            </button>
+                                return (
+                                    <>
+                                        {isExceeding && (
+                                            <div style={{ background: '#FEE2E2', border: '2px solid #EF4444', color: '#B91C1C', padding: '10px 12px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, margin: '6px 0' }}>
+                                                ⛔ DISCOUNT EXCEEDED! Maximum allowed discount is {maxDiscountPercent}%. You applied {discPct.toFixed(1)}%. Bill generation is BLOCKED. Only superadmin can approve.
+                                            </div>
+                                        )}
+
+                                        <div style={{ background: '#F3F4F6', padding: '12px', borderRadius: '6px', border: '1px solid #E5E7EB', margin: '8px 0' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px', color: '#111111' }}>
+                                                <span>Subtotal:</span>
+                                                <span>₹{subtotal.toFixed(2)}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px', color: '#DC2626' }}>
+                                                <span>Discount ({discPct.toFixed(1)}%):</span>
+                                                <span>- ₹{discVal.toFixed(2)}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '8px', color: '#111111' }}>
+                                                <span>GST (5%):</span>
+                                                <span>₹{taxVal.toFixed(2)}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.05rem', borderTop: '1px dashed #D1D5DB', paddingTop: '6px', color: '#7C3AED' }}>
+                                                <span>GRAND TOTAL:</span>
+                                                <span>₹{grandTotal.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="submit"
+                                            disabled={isSavingBill || prepareSelectedOrderIds.length === 0 || isExceeding}
+                                            className="btn btn-primary btn-full sketch-border sketch-shadow"
+                                            style={{
+                                                opacity: isExceeding ? 0.5 : 1,
+                                                cursor: isExceeding ? 'not-allowed' : 'pointer',
+                                                backgroundColor: isExceeding ? '#9CA3AF' : undefined
+                                            }}
+                                        >
+                                            {isSavingBill ? 'Generating Bill...' : isExceeding ? `Blocked: Exceeds ${maxDiscountPercent}% Max Limit` : 'Confirm & Generate Bill'}
+                                        </button>
+                                    </>
+                                );
+                            })()}
                         </form>
                     </div>
                 </div>
@@ -924,26 +979,55 @@ const AdminOrders = () => {
                                 </select>
                             </div>
 
-                            {/* Custom Discount Input */}
+                            {/* Custom Discount Input & Type Selector */}
                             <div className="input-group" style={{ marginBottom: 0 }}>
-                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Discount (e.g. 50 or 10%)</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. 50 or 10%"
-                                    value={paymentDiscountInput}
-                                    onChange={(e) => setPaymentDiscountInput(e.target.value)}
-                                    className="input"
-                                    style={{ width: '100%', padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
-                                />
-                                {user?.role !== 'superadmin' && (
-                                    <span style={{ fontSize: '0.75rem', color: '#F59E0B', marginTop: '3px', display: 'block' }}>
-                                        Max allowed: {maxDiscountPercent}% (set by superadmin)
-                                    </span>
-                                )}
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Discount</label>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        placeholder={paymentDiscountType === '%' ? "e.g. 10 (for 10%)" : "e.g. 50 (for ₹50)"}
+                                        value={paymentDiscountInput}
+                                        onChange={(e) => setPaymentDiscountInput(e.target.value)}
+                                        className="input"
+                                        style={{ flex: 1, padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
+                                    />
+                                    <div style={{ display: 'flex', border: '2px solid #111111', borderRadius: '6px', overflow: 'hidden' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPaymentDiscountType('%')}
+                                            style={{
+                                                padding: '6px 12px',
+                                                background: paymentDiscountType === '%' ? '#7C3AED' : '#F3F4F6',
+                                                color: paymentDiscountType === '%' ? '#FFF' : '#111',
+                                                border: 'none',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            %
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPaymentDiscountType('₹')}
+                                            style={{
+                                                padding: '6px 12px',
+                                                background: paymentDiscountType === '₹' ? '#7C3AED' : '#F3F4F6',
+                                                color: paymentDiscountType === '₹' ? '#FFF' : '#111',
+                                                border: 'none',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            ₹
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Reason for Discount */}
-                            {parseDiscount(paymentDiscountInput, (orders.find(o => o._id === paymentBillerOrderId)?.subtotal || paymentBillerAmount)) > 0 && (
+                            {parseDiscount(paymentDiscountInput, (orders.find(o => o._id === paymentBillerOrderId)?.subtotal || paymentBillerAmount), paymentDiscountType) > 0 && (
                                 <div className="input-group" style={{ marginBottom: 0 }}>
                                     <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Discount Reason / Note</label>
                                     <input
@@ -957,43 +1041,60 @@ const AdminOrders = () => {
                                 </div>
                             )}
 
-                            {/* Live Summary Box */}
+                            {/* Live Summary Box & Max Discount Violation Check */}
                             {(() => {
                                 const currentOrd = orders.find(o => o._id === paymentBillerOrderId);
                                 const baseSub = currentOrd?.subtotal || (paymentBillerAmount / 1.05);
-                                const discVal = parseDiscount(paymentDiscountInput, baseSub);
+                                const discVal = parseDiscount(paymentDiscountInput, baseSub, paymentDiscountType);
+                                const discPct = baseSub > 0 ? (discVal / baseSub) * 100 : 0;
+                                const isExceeding = user?.role !== 'superadmin' && discPct > maxDiscountPercent + 0.01;
                                 const taxVal = (baseSub - discVal) * 0.05;
                                 const finalTot = (baseSub - discVal) + taxVal;
 
                                 return (
-                                    <div style={{ background: '#F9FAFB', padding: '10px 12px', borderRadius: '6px', border: '1px solid #E5E7EB', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                                            <span>Subtotal:</span>
-                                            <span>₹{baseSub.toFixed(2)}</span>
+                                    <>
+                                        {isExceeding && (
+                                            <div style={{ background: '#FEE2E2', border: '2px solid #EF4444', color: '#B91C1C', padding: '10px 12px', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 600 }}>
+                                                ⛔ DISCOUNT EXCEEDED! Maximum allowed discount is {maxDiscountPercent}%. You applied {discPct.toFixed(1)}%. Bill generation is BLOCKED. Only superadmin can approve.
+                                            </div>
+                                        )}
+
+                                        <div style={{ background: '#F9FAFB', padding: '10px 12px', borderRadius: '6px', border: '1px solid #E5E7EB', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                                                <span>Subtotal:</span>
+                                                <span>₹{baseSub.toFixed(2)}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#DC2626' }}>
+                                                <span>Discount ({discPct.toFixed(1)}%):</span>
+                                                <span>- ₹{discVal.toFixed(2)}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                                                <span>GST (5%):</span>
+                                                <span>₹{taxVal.toFixed(2)}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.95rem', borderTop: '1px dashed #D1D5DB', paddingTop: '4px', color: '#7C3AED' }}>
+                                                <span>FINAL PAYABLE:</span>
+                                                <span>₹{finalTot.toFixed(2)}</span>
+                                            </div>
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#DC2626' }}>
-                                            <span>Discount:</span>
-                                            <span>- ₹{discVal.toFixed(2)}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                                            <span>GST (5%):</span>
-                                            <span>₹{taxVal.toFixed(2)}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.95rem', borderTop: '1px dashed #D1D5DB', paddingTop: '4px', color: '#7C3AED' }}>
-                                            <span>FINAL PAYABLE:</span>
-                                            <span>₹{finalTot.toFixed(2)}</span>
-                                        </div>
-                                    </div>
+
+                                        <button
+                                            type="submit"
+                                            disabled={isExceeding || !paymentBillerName.trim()}
+                                            className="btn btn-primary btn-full sketch-border sketch-shadow"
+                                            style={{
+                                                marginTop: '6px',
+                                                padding: '10px',
+                                                opacity: isExceeding ? 0.5 : 1,
+                                                cursor: isExceeding ? 'not-allowed' : 'pointer',
+                                                backgroundColor: isExceeding ? '#9CA3AF' : undefined
+                                            }}
+                                        >
+                                            {isExceeding ? `Blocked: Exceeds ${maxDiscountPercent}% Max Limit` : 'Confirm & Mark Paid'}
+                                        </button>
+                                    </>
                                 );
                             })()}
-
-                            <button
-                                type="submit"
-                                className="btn btn-primary btn-full sketch-border sketch-shadow"
-                                style={{ marginTop: '6px', padding: '10px' }}
-                            >
-                                Confirm & Mark Paid
-                            </button>
                         </form>
                     </div>
                 </div>

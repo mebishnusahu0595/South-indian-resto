@@ -122,7 +122,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.welcome}>Hello, {staffName} 👋</Text>
+            <Text style={styles.welcome}>Hello, {staffName}</Text>
             <Text style={styles.subWelcome}>
               {hasAssigned ? 'Assigned Tables' : 'Select table(s) to start'}
             </Text>
@@ -135,25 +135,25 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
         {/* Action Buttons Row */}
         <View style={styles.topActionRow}>
           <TouchableOpacity style={styles.hostBtn} onPress={onOpenHost}>
-            <Text style={styles.hostBtnText}>📅 Pre-Bookings</Text>
+            <Text style={styles.hostBtnText}>Pre-Bookings</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.historyBtn} onPress={onOpenHistory}>
-            <Text style={styles.historyBtnText}>📜 Today's History</Text>
+            <Text style={styles.historyBtnText}>Today's History</Text>
           </TouchableOpacity>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Attendance card */}
           <View style={styles.attendanceCard}>
-            <Text style={styles.cardTitle}>⏱️ Shift Attendance</Text>
+            <Text style={styles.cardTitle}>Shift Attendance</Text>
             {attendance ? (
               <View>
                 <Text style={styles.attendanceStatus}>
                   Status: <Text style={{ color: '#10B981', fontWeight: 'bold' }}>{attendance.status.toUpperCase()}</Text>
                 </Text>
-                {attendance.checkIn ? <Text style={styles.attendanceTime}>📥 Checked In: {attendance.checkIn}</Text> : null}
+                {attendance.checkIn ? <Text style={styles.attendanceTime}>Checked In: {attendance.checkIn}</Text> : null}
                 {attendance.checkOut ? (
-                  <Text style={styles.attendanceTime}>📤 Checked Out: {attendance.checkOut}</Text>
+                  <Text style={styles.attendanceTime}>Checked Out: {attendance.checkOut}</Text>
                 ) : (
                   <TouchableOpacity 
                     style={[styles.attendanceBtn, { backgroundColor: '#EF4444', marginTop: 10 }]}
@@ -184,7 +184,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
 
           {/* Performance Statistics Card */}
           <View style={styles.performanceCard}>
-            <Text style={styles.cardTitle}>📊 My Performance Stats</Text>
+            <Text style={styles.cardTitle}>My Performance Stats</Text>
             {loadingPerformance ? (
               <ActivityIndicator size="small" color="#7C3AED" />
             ) : performance ? (
@@ -239,7 +239,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
 
           {/* Table List Section - Grouped by Section */}
           <Text style={styles.mainTitle}>
-            {hasAssigned ? '📋 Your Assigned Tables (Tap to Select Multiple)' : '🍽️ All Restaurant Tables (Tap to Select Multiple)'}
+            {hasAssigned ? 'Your Assigned Tables (Select Multiple)' : 'All Restaurant Tables (Select Multiple)'}
           </Text>
           
           {loading ? (
@@ -249,7 +249,7 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
           ) : (
             Object.keys(groupedSections).map((sectionName) => (
               <View key={sectionName} style={styles.sectionBlock}>
-                <Text style={styles.sectionHeader}>📍 {sectionName}</Text>
+                <Text style={styles.sectionHeader}>{sectionName}</Text>
                 <View style={styles.grid}>
                   {groupedSections[sectionName].map((table) => {
                     const isSelected = selectedTables.some(t => t._id === table._id);
