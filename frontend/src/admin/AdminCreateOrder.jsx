@@ -63,6 +63,14 @@ const AdminCreateOrder = () => {
                     setShowBillModal(false);
                 }
             }
+            if (e.key === 'Enter') {
+                const activeEl = document.activeElement;
+                const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+                if (step === 'table-select' && !isInput && selectedTableIds.length > 0) {
+                    e.preventDefault();
+                    setStep('menu');
+                }
+            }
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
                 if (cart.length > 0 && !submitting && !showBillModal) {
@@ -72,7 +80,7 @@ const AdminCreateOrder = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart, submitting, showBillModal, createdBill]);
+    }, [step, selectedTableIds, cart, submitting, showBillModal, createdBill]);
 
     useEffect(() => {
         fetchInitialData();
@@ -342,9 +350,26 @@ const AdminCreateOrder = () => {
             {/* Step 1: Table Selection */}
             {step === 'table-select' && (
                 <div className="table-select-step">
-                    <div className="step-header">
-                        <h1>Create Order</h1>
-                        <p className="step-subtitle">Tap tables to select (pick multiple for one customer). Drag a chair from one table onto another to move a seat.</p>
+                    <div className="step-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                        <div>
+                            <h1 style={{ margin: 0 }}>Create Order</h1>
+                            <p className="step-subtitle" style={{ margin: '4px 0 0 0' }}>
+                                Tap tables to select (pick multiple for one customer). Press <kbd style={{ background: '#E5E7EB', color: '#111', padding: '2px 6px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '0.8rem' }}>Enter ↵</kbd> to continue.
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <button className="btn btn-ghost skip-table-btn" onClick={handleSkipTable}>
+                                Skip (Takeaway)
+                            </button>
+                            <button
+                                className="btn btn-primary continue-btn"
+                                onClick={handleContinueToMenu}
+                                disabled={selectedTableIds.length === 0}
+                                style={{ fontWeight: 'bold', padding: '10px 22px', fontSize: '0.95rem', boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)' }}
+                            >
+                                Continue {selectedTableIds.length > 0 ? `(${selectedTableIds.length} Table${selectedTableIds.length > 1 ? 's' : ''}) ↵` : ''}
+                            </button>
+                        </div>
                     </div>
                     <TableLayoutSelector
                         tables={tables}
@@ -354,7 +379,7 @@ const AdminCreateOrder = () => {
                         onMoveChair={handleMoveChair}
                         onMoveTable={handleMoveTable}
                     />
-                    <div className="table-select-actions">
+                    <div className="table-select-actions" style={{ marginTop: '16px' }}>
                         <button className="btn btn-ghost skip-table-btn" onClick={handleSkipTable}>
                             Skip (Takeaway / Parcel)
                         </button>
