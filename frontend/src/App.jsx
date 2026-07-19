@@ -9,8 +9,7 @@ import LoginModal from './components/LoginModal';
 import Menu from './pages/Menu';
 import Cart from './pages/Cart';
 import OrderDetails from './pages/OrderDetails';
-import History from './pages/History';
-import Profile from './pages/Profile';
+
 import BottomNav from './components/BottomNav';
 
 // Admin Pages
@@ -104,8 +103,8 @@ function AppRoutes() {
       <Route path="/categories" element={<UserLayout><Menu /></UserLayout>} />
       <Route path="/cart" element={<UserLayout><Cart /></UserLayout>} />
       <Route path="/order/:id" element={<UserLayout><OrderDetails /></UserLayout>} />
-      <Route path="/history" element={<UserLayout><History /></UserLayout>} />
-      <Route path="/profile" element={<UserLayout><Profile /></UserLayout>} />
+      <Route path="/history" element={<Navigate to="/menu" />} />
+      <Route path="/profile" element={<Navigate to="/menu" />} />
 
       {/* Admin Routes */}
       <Route path="/admin/login" element={<AdminLogin />} />
