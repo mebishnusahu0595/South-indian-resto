@@ -330,6 +330,40 @@ router.post('/', protect, async (req, res) => {
     }
 });
 
+const freeTablesForOrder = async (order, io) => {
+    try {
+        const tableIdsToFree = [...(order.tables || []), order.table].filter(Boolean);
+        let orConditions = [];
+        if (tableIdsToFree.length > 0) {
+            orConditions.push({ _id: { $in: tableIdsToFree } });
+        }
+        if (order._id) {
+            orConditions.push({ currentOrder: order._id });
+        }
+        if (order.tableNumber) {
+            const nums = String(order.tableNumber).split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+            if (nums.length > 0) {
+                orConditions.push({ tableNumber: { $in: nums } });
+            }
+        }
+        if (orConditions.length > 0) {
+            const tablesToFree = await Table.find({ $or: orConditions });
+            for (const t of tablesToFree) {
+                t.status = 'available';
+                t.isOccupied = false;
+                t.currentOrder = null;
+                await t.save();
+                if (io) {
+                    io.emit('table-freed', t);
+                    io.emit('table-updated', t);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Error freeing tables:', err);
+    }
+};
+
 // @route   PUT /api/orders/:id/status
 // @desc    Update order status
 // @access  Private/Admin
@@ -357,12 +391,8 @@ router.put('/:id/status', protect, admin, async (req, res) => {
 
         // Free all tables if order is completed or cancelled
         if (status === 'paid' || status === 'cancelled') {
-            const tableIdsToFree = [...(order.tables || []), order.table].filter(Boolean);
             const io = req.app.get('io');
-            for (const tid of tableIdsToFree) {
-                const t = await Table.findByIdAndUpdate(tid, { status: 'available', isOccupied: false, currentOrder: null }, { new: true });
-                if (t && io) io.emit('table-freed', t);
-            }
+            await freeTablesForOrder(order, io);
         }
 
         const populatedOrder = await Order.findById(order._id)
@@ -511,12 +541,8 @@ router.put('/:id/payment', protect, admin, async (req, res) => {
             }
 
             // Free all tables the order occupied
-            const tableIdsToFree = [...(order.tables || []), order.table].filter(Boolean);
             const ioFree = req.app.get('io');
-            for (const tid of tableIdsToFree) {
-                const t = await Table.findByIdAndUpdate(tid, { status: 'available', isOccupied: false, currentOrder: null }, { new: true });
-                if (t && ioFree) ioFree.emit('table-freed', t);
-            }
+            await freeTablesForOrder(order, ioFree);
         }
 
         const populatedOrder = await Order.findById(order._id)
