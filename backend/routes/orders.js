@@ -128,19 +128,36 @@ router.post('/', protect, async (req, res) => {
 
         // Determine user for the order (admin can specify a customer)
         let orderUser = req.user._id;
-        if (customerPhone && req.user.role === 'admin') {
-            const cleanPhone = customerPhone.replace(/\D/g, '');
-            let user = await User.findOne({ phone: cleanPhone });
-            if (!user) {
-                user = new User({
-                    phone: cleanPhone,
-                    name: customerName || 'Walk-in Customer',
+        if (req.user.role === 'admin' && (customerPhone || customerName)) {
+            if (customerPhone) {
+                const cleanPhone = customerPhone.replace(/\D/g, '');
+                let user = await User.findOne({ phone: cleanPhone });
+                if (!user) {
+                    user = new User({
+                        phone: cleanPhone,
+                        name: customerName || 'Walk-in Customer',
+                        role: 'customer',
+                        isVerified: true
+                    });
+                    await user.save();
+                } else if (customerName && user.name === 'Walk-in Customer') {
+                    // Update name if it was just a placeholder
+                    user.name = customerName;
+                    await user.save();
+                }
+                orderUser = user._id;
+            } else if (customerName) {
+                // Name only, no phone — create a walk-in record with unique ID
+                const walkinPhone = `WI${Date.now()}`;
+                const user = new User({
+                    phone: walkinPhone,
+                    name: customerName,
                     role: 'customer',
                     isVerified: true
                 });
                 await user.save();
+                orderUser = user._id;
             }
-            orderUser = user._id;
         }
 
         // Validate table(s) if provided - supports multiple tables for one customer

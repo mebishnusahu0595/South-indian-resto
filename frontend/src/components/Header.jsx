@@ -167,17 +167,6 @@ const Header = ({ title, showCart = true, showBack = false }) => {
                         </Link>
                     )}
 
-                    {/* History Button - Desktop */}
-                    {isAuthenticated && (
-                        <Link to="/orders" className="header-icon-btn history-btn" title="Order History">
-                            <FiClock />
-                        </Link>
-                    )}
-
-                    {/* Profile Button - Desktop Only */}
-                    <Link to="/profile" className="header-icon-btn profile-btn">
-                        <FiUser />
-                    </Link>
                 </div>
             </div>
         </header>
