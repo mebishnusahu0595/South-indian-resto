@@ -1,6 +1,10 @@
 // Central configuration for API URLs
 const getApiUrl = () => {
     const envUrl = import.meta.env.VITE_API_URL;
+    // In production, use the window location origin dynamically to support SSL/HTTPS on standard ports
+    if (import.meta.env.PROD) {
+        return typeof window !== 'undefined' ? window.location.origin : (envUrl || '');
+    }
     // If accessing via local network IP (e.g., 192.168.x.x), dynamically use host hostname for API
     if (typeof window !== 'undefined' && window.location && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
         return `http://${window.location.hostname}:5000`;

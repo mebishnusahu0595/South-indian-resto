@@ -1,8 +1,9 @@
 const multer = require('multer');
 const sharp = require('sharp');
-const { uploadToR2 } = require('../utils/r2');
+const fs = require('fs');
+const path = require('path');
 
-// Use memory storage for R2 uploads
+// Use memory storage for local uploads processing
 const memoryStorage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
@@ -23,7 +24,7 @@ const uploadMemory = multer({
 });
 
 /**
- * Middleware to process and upload image to R2
+ * Middleware to process and save image to local folder instead of R2
  * Converts image to WebP format for optimization
  */
 const processAndUploadToR2 = (folder = 'uploads') => {
@@ -42,16 +43,27 @@ const processAndUploadToR2 = (folder = 'uploads') => {
                 })
                 .toBuffer();
 
-            // Upload to R2
-            const publicUrl = await uploadToR2(
-                webpBuffer,
-                req.file.originalname,
-                'image/webp',
-                folder
-            );
+            // Generate clean, unique filename
+            const timestamp = Date.now();
+            const originalName = path.parse(req.file.originalname).name
+                .replace(/[^a-zA-Z0-9]/g, '_') // sanitize filename
+                .toLowerCase();
+            const uniqueName = `${originalName}_${timestamp}.webp`;
 
-            // Attach the URL to request for use in route
-            req.fileUrl = publicUrl;
+            // Local uploads folder definition
+            const uploadDir = path.join(__dirname, '..', 'uploads');
+            
+            // Ensure uploads directory exists
+            if (!fs.existsSync(uploadDir)) {
+                fs.mkdirSync(uploadDir, { recursive: true });
+            }
+
+            // Save webp file locally
+            const filePath = path.join(uploadDir, uniqueName);
+            fs.writeFileSync(filePath, webpBuffer);
+
+            // Attach the local URL to the request (e.g. /uploads/image_name.webp)
+            req.fileUrl = `/uploads/${uniqueName}`;
             next();
         } catch (error) {
             console.error('Image processing error:', error);

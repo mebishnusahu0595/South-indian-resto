@@ -64,7 +64,7 @@ const ebStyles = StyleSheet.create({
 // ─── Main App ──────────────────────────────────────────────
 function MainApp() {
   const [activeScreen, setActiveScreen] = useState('login');
-  const [serverUrl, setServerUrl] = useState('http://10.0.2.2:5000');
+  const [serverUrl, setServerUrl] = useState('https://keabythepool.com');
   const [token, setToken] = useState(null);
   const [staffName, setStaffName] = useState('Staff');
 

@@ -82,7 +82,7 @@ const UserLayout = ({ children }) => {
     );
   }
 
-  const showLogin = !isAuthenticated && !skippedLogin;
+  const showLogin = false; // Disable login modal for customer web client
 
   return (
     <>

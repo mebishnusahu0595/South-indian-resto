@@ -188,8 +188,8 @@ apt-get install -y gnupg curl
 curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
     gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
 
-# Ubuntu 24.04 (noble) - use jammy packages as they work
-echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+# Ubuntu 24.04 (noble)
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/7.0 multiverse" | \
     tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 
 apt-get update

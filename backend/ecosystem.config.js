@@ -38,8 +38,8 @@ module.exports = {
 
             // Logging
             log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-            error_file: '/home/sammy/logs/kea-api-error.log',
-            out_file: '/home/sammy/logs/kea-api-out.log',
+            error_file: '/root/logs/kea-api-error.log',
+            out_file: '/root/logs/kea-api-out.log',
             merge_logs: true,
 
             // Graceful Shutdown
