@@ -86,6 +86,10 @@ const orderSchema = new mongoose.Schema({
         ref: 'Table',
         default: null
     },
+    tables: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Table'
+    }],
     specialInstructions: {
         type: String,
         default: ''
@@ -98,6 +102,19 @@ const orderSchema = new mongoose.Schema({
     pointsRedeemed: {
         type: Number,
         default: 0
+    },
+    placedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Employee',
+        default: null
+    },
+    billerName: {
+        type: String,
+        default: ''
+    },
+    discountName: {
+        type: String,
+        default: ''
     },
     createdAt: {
         type: Date,

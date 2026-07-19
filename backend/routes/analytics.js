@@ -3,13 +3,48 @@ const router = express.Router();
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
-const { protect, admin } = require('../middleware/auth');
+const { protect, admin, superadmin } = require('../middleware/auth');
 const { getDateRange } = require('../utils/helpers');
+
+const getStartDateForUser = (user, period) => {
+    if (user && user.role === 'admin') {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    }
+    return getDateRange(period);
+};
+
+const resolveDateRange = (user, period, reqStartDate, reqEndDate) => {
+    let start;
+    let end = reqEndDate ? new Date(reqEndDate) : new Date();
+    end.setHours(23, 59, 59, 999);
+    
+    if (reqStartDate) {
+        start = new Date(reqStartDate);
+        start.setHours(0, 0, 0, 0);
+    } else {
+        start = getStartDateForUser(user, period);
+    }
+    
+    if (user && user.role === 'admin') {
+        const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1, 0, 0, 0, 0);
+        if (start < startOfMonth) {
+            start = startOfMonth;
+        }
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        if (end > todayEnd) {
+            end = todayEnd;
+        }
+    }
+    
+    return { start, end };
+};
 
 // @route   GET /api/analytics/customers
 // @desc    Get all customers with spending data (searchable, sortable)
-// @access  Private/Admin
-router.get('/customers', protect, admin, async (req, res) => {
+// @access  Private/Superadmin
+router.get('/customers', protect, superadmin, async (req, res) => {
     try {
         const { search, sortBy = 'totalSpent', order = 'desc', page = 1, limit = 20 } = req.query;
 
@@ -100,7 +135,7 @@ router.get('/customers', protect, admin, async (req, res) => {
 });
 
 // @route   GET /api/analytics/customer/:id
-router.get('/customer/:id', protect, admin, async (req, res) => {
+router.get('/customer/:id', protect, superadmin, async (req, res) => {
     try {
         const user = await User.findById(req.params.id).select('-otp -otpExpiry');
         if (!user) return res.status(404).json({ message: 'Customer not found' });
@@ -192,14 +227,14 @@ router.get('/dashboard', protect, admin, async (req, res) => {
 // Get revenue chart data
 router.get('/revenue', protect, admin, async (req, res) => {
     try {
-        const { period = 'week' } = req.query;
-        const startDate = getDateRange(period);
+        const { period = 'week', startDate, endDate } = req.query;
+        const { start, end } = resolveDateRange(req.user, period, startDate, endDate);
 
         // Get profit margin from settings (default to 30%)
         const profitMargin = await Settings.getSetting('profit_margin', 30) / 100;
 
         const orders = await Order.aggregate([
-            { $match: { createdAt: { $gte: startDate }, status: 'paid' } },
+            { $match: { createdAt: { $gte: start, $lte: end }, status: 'paid' } },
             {
                 $group: {
                     _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
@@ -220,11 +255,11 @@ router.get('/revenue', protect, admin, async (req, res) => {
 // Get category-wise sales
 router.get('/category-sales', protect, admin, async (req, res) => {
     try {
-        const { period = 'month' } = req.query;
-        const startDate = getDateRange(period);
+        const { period = 'month', startDate, endDate } = req.query;
+        const { start, end } = resolveDateRange(req.user, period, startDate, endDate);
 
         const sales = await Order.aggregate([
-            { $match: { createdAt: { $gte: startDate }, status: 'paid' } },
+            { $match: { createdAt: { $gte: start, $lte: end }, status: 'paid' } },
             { $unwind: '$items' },
             {
                 $lookup: {
@@ -262,8 +297,15 @@ router.get('/category-sales', protect, admin, async (req, res) => {
 // Get top selling items
 router.get('/top-items', protect, admin, async (req, res) => {
     try {
+        const { period = 'month', startDate, endDate } = req.query;
+        const { start, end } = resolveDateRange(req.user, period, startDate, endDate);
+
+        const matchStage = { 
+            createdAt: { $gte: start, $lte: end },
+            status: 'paid' 
+        };
         const topItems = await Order.aggregate([
-            { $match: { status: 'paid' } },
+            { $match: matchStage },
             { $unwind: '$items' },
             {
                 $group: {
@@ -287,7 +329,7 @@ router.get('/top-items', protect, admin, async (req, res) => {
 router.get('/users', protect, admin, async (req, res) => {
     try {
         const { period = 'month' } = req.query;
-        const startDate = getDateRange(period);
+        const startDate = getStartDateForUser(req.user, period);
 
         const totalUsers = await User.countDocuments({ role: 'customer' });
         const newUsers = await User.countDocuments({ role: 'customer', createdAt: { $gte: startDate } });
@@ -340,10 +382,32 @@ router.get('/orders/search', protect, admin, async (req, res) => {
         const { search, status, startDate, endDate, minAmount, maxAmount, page = 1, limit = 20 } = req.query;
         let matchQuery = {};
 
-        if (startDate || endDate) {
-            matchQuery.createdAt = {};
-            if (startDate) matchQuery.createdAt.$gte = new Date(startDate);
-            if (endDate) matchQuery.createdAt.$lte = new Date(endDate);
+        if (req.user.role === 'admin') {
+            const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1, 0, 0, 0, 0);
+            const currentToday = new Date();
+            
+            let finalStart = startOfMonth;
+            if (startDate) {
+                const reqStart = new Date(startDate);
+                finalStart = reqStart > startOfMonth ? reqStart : startOfMonth;
+            }
+            
+            let finalEnd = currentToday;
+            if (endDate) {
+                const reqEnd = new Date(endDate);
+                finalEnd = reqEnd < currentToday ? reqEnd : currentToday;
+            }
+            
+            matchQuery.createdAt = {
+                $gte: finalStart,
+                $lte: finalEnd
+            };
+        } else {
+            if (startDate || endDate) {
+                matchQuery.createdAt = {};
+                if (startDate) matchQuery.createdAt.$gte = new Date(startDate);
+                if (endDate) matchQuery.createdAt.$lte = new Date(endDate);
+            }
         }
         if (status) matchQuery.status = status;
         if (minAmount || maxAmount) {

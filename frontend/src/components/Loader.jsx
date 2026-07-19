@@ -1,25 +1,16 @@
 import React from 'react';
 import './Loader.css';
 
-const Loader = ({ fullScreen = true, message = "Preparing your delicious meal..." }) => {
+const Loader = ({ fullScreen = true, message = "Loading poolside goodies..." }) => {
     return (
         <div className={`loader-overlay ${fullScreen ? 'full-screen' : 'inline'}`}>
             <div className="loader-container">
-                <div className="kitchen">
-                    {/* Tawa with Flipping Dosa */}
-                    <div className="tawa">
-                        <div className="dosa"></div>
-                    </div>
-
-                    {/* Plate with Steaming Idlis */}
-                    <div className="plate">
-                        <div className="idli idli-1">
-                            <div className="steam"></div>
-                        </div>
-                        <div className="idli idli-2">
-                            <div className="steam"></div>
-                        </div>
-                    </div>
+                <div className="pool-wrapper">
+                    {/* Water waves loader */}
+                    <div className="wave wave-1"></div>
+                    <div className="wave wave-2"></div>
+                    <div className="wave wave-3"></div>
+                    <div className="float-ring"></div>
                 </div>
 
                 <div className="loader-text">

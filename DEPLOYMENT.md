@@ -1,4 +1,4 @@
-# Chetta's Dosa - Deployment Guide
+# Kea By The Pool - Deployment Guide
 
 ## 🚀 Deployment Overview
 
@@ -18,7 +18,7 @@ PORT=5000
 NODE_ENV=production
 
 # MongoDB Atlas
-MONGODB_URI=mongodb+srv://The_Archive_Admin_DB:<PASSWORD>@thearchive.eodczdc.mongodb.net/chettas-dosa?appName=TheArchive
+MONGODB_URI=mongodb+srv://The_Archive_Admin_DB:<PASSWORD>@thearchive.eodczdc.mongodb.net/keabythepool?appName=TheArchive
 
 # JWT
 JWT_SECRET=<YOUR_STRONG_SECRET>
@@ -26,7 +26,7 @@ JWT_EXPIRES_IN=30d
 
 # Twilio (for OTP)
 TWILIO_ACCOUNT_SID=<YOUR_TWILIO_SID>
-TWILIO_AUTH_TOKEN=<YOUR_TWILIO_TOKEN>
+TWILIO_AUTH_TOKEN=<YOUR_TWILIO_TOKEN>![alt text](image.png)
 TWILIO_PHONE_NUMBER=<YOUR_TWILIO_NUMBER>
 
 # Cloudflare R2 Storage
@@ -54,8 +54,8 @@ VITE_API_URL=https://your-backend.railway.app
 
 ```bash
 # Add both remotes
-git remote add deepak https://github.com/Deepakscripts/chettas-dosa-website.git
-git remote add chandan https://github.com/chandanrandiveofficial/chettas-dosa-website.git
+git remote add deepak https://github.com/Deepakscripts/kea-by-the-pool-website.git
+git remote add chandan https://github.com/chandanrandiveofficial/kea-by-the-pool-website.git
 
 # Push to both
 git add .
@@ -71,7 +71,7 @@ git push chandan main
 1. **Go to**: [railway.app](https://railway.app)
 2. **Login with GitHub** (chandanrandiveofficial account)
 3. **New Project** → **Deploy from GitHub repo**
-4. **Select**: `chandanrandiveofficial/chettas-dosa-website`
+4. **Select**: `chandanrandiveofficial/kea-by-the-pool-website`
 5. **Configure**:
    - Root Directory: `backend`
    - Start Command: `npm start`
@@ -85,7 +85,7 @@ git push chandan main
 1. **Go to**: [pages.cloudflare.com](https://pages.cloudflare.com)
 2. **Login with GitHub** (chandanrandiveofficial account)
 3. **Create a project** → **Connect to Git**
-4. **Select**: `chandanrandiveofficial/chettas-dosa-website`
+4. **Select**: `chandanrandiveofficial/kea-by-the-pool-website`
 5. **Configure Build**:
    - Framework preset: `Vite`
    - Root directory: `frontend`
@@ -106,7 +106,7 @@ After getting your Cloudflare Pages URL, update the `FRONTEND_URL` environment v
 ## 📁 File Structure for Deployment
 
 ```
-chettas-dosa-website/
+kea-by-the-pool-website/
 ├── backend/           # Deploy to Railway
 │   ├── package.json
 │   ├── server.js

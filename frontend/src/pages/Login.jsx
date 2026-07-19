@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Doodles from '../components/Doodles';
 import './Login.css';
 
 const Login = () => {
@@ -16,7 +17,7 @@ const Login = () => {
     const [otpLength, setOtpLength] = useState(4);
     const isSubmittingRef = useRef(false);
 
-    const { sendOTP, verifyOTP, isAuthenticated } = useAuth();
+    const { sendOTP, verifyOTP, isAuthenticated, skipLogin } = useAuth();
     const navigate = useNavigate();
 
     // Redirect if already logged in
@@ -123,14 +124,15 @@ const Login = () => {
     };
 
     return (
-        <div className="login-page">
-            <div className="login-header">
-                <img src="/logo.png" alt="Chetta's Dosa" className="login-logo-img" />
-                <h1>Chetta's Dosa</h1>
-                <p>Authentic South Indian Cuisine</p>
+        <div className="login-page" style={{ position: 'relative' }}>
+            <Doodles />
+            <div className="login-header" style={{ position: 'relative', zIndex: 1 }}>
+                <img src="/logo.jpg" alt="keabythepool" className="login-logo-img" />
+                <h1>keabythepool</h1>
+                <p>Eat • Chill • Repeat</p>
             </div>
 
-            <div className="login-card">
+            <div className="login-card sketch-border sketch-shadow" style={{ position: 'relative', zIndex: 1 }}>
                 {step === 'phone' && (
                     <form onSubmit={handleSendOTP}>
                         <h2>Welcome!</h2>
@@ -152,6 +154,17 @@ const Login = () => {
 
                         <button type="submit" className="btn btn-primary btn-full" disabled={loading || phone.length !== 10}>
                             {loading ? 'Sending...' : 'Get OTP'}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-secondary btn-full"
+                            style={{ marginTop: '10px' }}
+                            onClick={() => {
+                                skipLogin();
+                                navigate('/');
+                            }}
+                        >
+                            Browse as Guest
                         </button>
                     </form>
                 )}

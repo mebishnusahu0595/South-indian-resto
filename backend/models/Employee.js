@@ -38,6 +38,15 @@ const employeeSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    password: {
+        type: String,
+        required: true,
+        default: 'staff123'
+    },
+    assignedTables: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Table'
+    }],
     createdAt: {
         type: Date,
         default: Date.now

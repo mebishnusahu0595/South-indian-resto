@@ -1,19 +1,19 @@
 /**
  * PM2 Ecosystem Configuration
- * Chetta's Dosa - Production Process Management
+ * Kea By The Pool - Production Process Management
  * 
  * Usage:
  *   pm2 start ecosystem.config.js --env production
  *   pm2 reload ecosystem.config.js --env production
- *   pm2 logs chettas-api
+ *   pm2 logs kea-api
  */
 
 module.exports = {
     apps: [
         {
-            name: 'chettas-api',
+            name: 'kea-api',
             script: 'server.js',
-            cwd: '/root/chettas-dosa-website/backend',
+            cwd: '/root/kea-by-the-pool-website/backend',
 
             // Instances & Mode
             instances: 'max', // Use all CPU cores
@@ -38,8 +38,8 @@ module.exports = {
 
             // Logging
             log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-            error_file: '/home/sammy/logs/chettas-api-error.log',
-            out_file: '/home/sammy/logs/chettas-api-out.log',
+            error_file: '/home/sammy/logs/kea-api-error.log',
+            out_file: '/home/sammy/logs/kea-api-out.log',
             merge_logs: true,
 
             // Graceful Shutdown
@@ -48,10 +48,6 @@ module.exports = {
 
             // Auto-restart on specific exit codes
             autorestart: true,
-
-            // Health Check (optional - requires PM2 Plus)
-            // health_check_interval: 30000,
-            // health_check_grace_period: 10000
         }
     ],
 
@@ -61,8 +57,8 @@ module.exports = {
             user: 'sammy',
             host: ['YOUR_VPS_IP'],
             ref: 'origin/main',
-            repo: 'git@github.com:Deepakscripts/chettas-dosa-website.git',
-            path: '/root/chettas-dosa-website',
+            repo: 'git@github.com:Deepakscripts/kea-by-the-pool-website.git',
+            path: '/root/kea-by-the-pool-website',
             'pre-deploy-local': '',
             'post-deploy': 'cd backend && npm install && pm2 reload ecosystem.config.js --env production',
             'pre-setup': ''

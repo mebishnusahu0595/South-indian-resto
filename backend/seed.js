@@ -25,90 +25,78 @@ const seedData = async () => {
         ]);
         console.log('Cleared existing data');
 
-        // Create Admin User
-        const admin = await User.create({
+        // Create Superadmin User
+        const superadmin = await User.create({
             phone: '9999999999',
-            name: 'Admin',
-            email: 'admin@chettas.com',
+            name: 'Superadmin',
+            email: 'superadmin@keabythepool.com',
+            role: 'superadmin',
+            password: 'admin123',
+            isVerified: true
+        });
+        console.log('Superadmin user created');
+
+        // Create Standard Admin User
+        const admin = await User.create({
+            phone: '8888888888',
+            name: 'Manager Admin',
+            email: 'admin@keabythepool.com',
             role: 'admin',
+            password: 'admin123',
             isVerified: true
         });
         console.log('Admin user created');
 
         // Create Categories
         const categories = await Category.insertMany([
-            { name: 'Dosa', description: 'Crispy South Indian crepes', order: 1 },
-            { name: 'Idli', description: 'Soft steamed rice cakes', order: 2 },
-            { name: 'Vada', description: 'Crispy fried lentil donuts', order: 3 },
-            { name: 'Uttapam', description: 'Thick savory pancakes', order: 4 },
-            { name: 'Beverages', description: 'Hot and cold drinks', order: 5 },
-            { name: 'Sweets', description: 'Traditional Indian desserts', order: 6 },
-            { name: 'Combos', description: 'Value meal combinations', order: 7 }
+            { name: 'Coolers & Mocktails', description: 'Refreshing pool-side drinks', order: 1, image: '/uploads/category_coolers.jpg' },
+            { name: 'Finger Food', description: 'Quick bites and appetizers', order: 2, image: '/uploads/category_finger_food.jpg' },
+            { name: 'Pizzas & Pastas', description: 'Fresh oven pizzas and creamy pastas', order: 3, image: '/uploads/category_pizza_pasta.jpg' },
+            { name: 'Burgers & Wraps', description: 'Hearty burgers and grilled wraps', order: 4, image: '/uploads/category_burgers_wraps.jpg' },
+            { name: 'Desserts', description: 'Decadent sweet treats', order: 5, image: '/uploads/category_desserts.jpg' }
         ]);
         console.log('Categories created:', categories.length);
 
         // Get category IDs
-        const dosaId = categories.find(c => c.name === 'Dosa')._id;
-        const idliId = categories.find(c => c.name === 'Idli')._id;
-        const vadaId = categories.find(c => c.name === 'Vada')._id;
-        const uttapamId = categories.find(c => c.name === 'Uttapam')._id;
-        const beveragesId = categories.find(c => c.name === 'Beverages')._id;
-        const sweetsId = categories.find(c => c.name === 'Sweets')._id;
-        const combosId = categories.find(c => c.name === 'Combos')._id;
+        const mocktailsId = categories.find(c => c.name === 'Coolers & Mocktails')._id;
+        const fingerFoodId = categories.find(c => c.name === 'Finger Food')._id;
+        const pizzaPastaId = categories.find(c => c.name === 'Pizzas & Pastas')._id;
+        const burgersWrapsId = categories.find(c => c.name === 'Burgers & Wraps')._id;
+        const dessertsId = categories.find(c => c.name === 'Desserts')._id;
 
         // Create Menu Items
         const menuItems = await MenuItem.insertMany([
-            // Dosas
-            { name: 'Plain Dosa', description: 'Classic crispy dosa', price: 60, category: dosaId, isVeg: true, isBestSeller: true },
-            { name: 'Masala Dosa', description: 'Dosa with spiced potato filling', price: 80, category: dosaId, isVeg: true, isBestSeller: true },
-            { name: 'Ghee Roast Dosa', description: 'Extra crispy dosa with ghee', price: 90, category: dosaId, isVeg: true },
-            { name: 'Mysore Masala Dosa', description: 'Spicy red chutney with masala', price: 100, category: dosaId, isVeg: true, isBestSeller: true },
-            { name: 'Rava Dosa', description: 'Crispy semolina dosa', price: 85, category: dosaId, isVeg: true },
-            { name: 'Onion Dosa', description: 'Dosa topped with onions', price: 75, category: dosaId, isVeg: true },
-            { name: 'Paper Dosa', description: 'Extra thin and crispy', price: 90, category: dosaId, isVeg: true },
-            { name: 'Set Dosa', description: 'Soft spongy dosas (3 pcs)', price: 70, category: dosaId, isVeg: true },
-            { name: 'Cheese Dosa', description: 'Dosa with melted cheese', price: 110, category: dosaId, isVeg: true, isNew: true },
-            { name: 'Paneer Dosa', description: 'Dosa with paneer filling', price: 120, category: dosaId, isVeg: true, isNew: true },
+            // Mocktails & Coolers
+            { name: 'Virgin Mojito', description: 'Refreshing lime and mint with soda', price: 90, category: mocktailsId, isVeg: true, isBestSeller: true, image: '/uploads/virgin_mojito.jpg' },
+            { name: 'Blue Lagoon', description: 'Curacao syrup with lemonade and soda', price: 95, category: mocktailsId, isVeg: true, isBestSeller: true, image: '/uploads/blue_lagoon.jpg' },
+            { name: 'Watermelon Mint Cooler', description: 'Fresh watermelon juice muddled with mint', price: 110, category: mocktailsId, isVeg: true, isNewItem: true, image: '/uploads/watermelon_cooler.jpg' },
+            { name: 'Peach Iced Tea', description: 'Brewed black tea with peach flavor', price: 80, category: mocktailsId, isVeg: true, image: '/uploads/peach_iced_tea.jpg' },
+            { name: 'Cold Coffee', description: 'Rich blended coffee with vanilla ice cream', price: 100, category: mocktailsId, isVeg: true, isNewItem: true, image: '/uploads/cold_coffee.jpg' },
+            { name: 'Water Bottle', description: '500ml packaged drinking water', price: 20, category: mocktailsId, isVeg: true, isRecommended: true, image: '/uploads/water_bottle.jpg' },
+            { name: 'Soft Drink', description: 'Cola / Sprite / Fanta', price: 40, category: mocktailsId, isVeg: true, isRecommended: true, image: '/uploads/soft_drink.jpg' },
 
-            // Idlis
-            { name: 'Idli (2 pcs)', description: 'Soft steamed rice cakes', price: 40, category: idliId, isVeg: true },
-            { name: 'Idli (4 pcs)', description: 'Soft steamed rice cakes', price: 70, category: idliId, isVeg: true, isBestSeller: true },
-            { name: 'Ghee Podi Idli', description: 'Idli with ghee and spice powder', price: 80, category: idliId, isVeg: true },
-            { name: 'Mini Idli Sambar', description: 'Small idlis in sambar', price: 90, category: idliId, isVeg: true, isBestSeller: true },
-            { name: 'Rava Idli', description: 'Semolina idli', price: 60, category: idliId, isVeg: true },
+            // Finger Food
+            { name: 'French Fries', description: 'Salted golden potato fries', price: 80, category: fingerFoodId, isVeg: true, isRecommended: true, image: '/uploads/french_fries.jpg' },
+            { name: 'Multani Paneer Tikka', description: 'Spiced paneer stuffed with herbs, grilled in tandoor', price: 180, category: fingerFoodId, isVeg: true, isBestSeller: true, image: '/uploads/paneer_tikka.jpg' },
+            { name: 'Garlic Bread with Cheese', description: 'Toasted baguette with garlic butter and melted cheese', price: 110, category: fingerFoodId, isVeg: true, image: '/uploads/garlic_bread.jpg' },
+            { name: 'Loaded Nachos', description: 'Tortilla chips topped with cheese sauce, salsa and jalapeños', price: 130, category: fingerFoodId, isVeg: true, isNewItem: true, image: '/uploads/loaded_nachos.jpg' },
+            { name: 'Chilli Chicken', description: 'Spicy stir-fried chicken with bell peppers and onions', price: 190, category: fingerFoodId, isVeg: false, isBestSeller: true, image: '/uploads/chilli_chicken.jpg' },
 
-            // Vadas
-            { name: 'Medu Vada (2 pcs)', description: 'Crispy lentil donuts', price: 50, category: vadaId, isVeg: true, isBestSeller: true },
-            { name: 'Sambar Vada', description: 'Vada soaked in sambar', price: 60, category: vadaId, isVeg: true },
-            { name: 'Curd Vada', description: 'Vada with curd and spices', price: 65, category: vadaId, isVeg: true },
-            { name: 'Masala Vada', description: 'Spiced chana dal vada', price: 55, category: vadaId, isVeg: true },
+            // Pizzas & Pastas
+            { name: 'Margherita Pizza', description: 'Classic pizza with tomato sauce, mozzarella and fresh basil', price: 199, category: pizzaPastaId, isVeg: true, isBestSeller: true, image: '/uploads/margherita_pizza.jpg' },
+            { name: 'Poolside Special Pizza', description: 'Topped with mushrooms, olives, onions, paneer and bell peppers', price: 249, category: pizzaPastaId, isVeg: true, isNewItem: true, image: '/uploads/poolside_pizza.jpg' },
+            { name: 'Alfredo Pasta (Veg)', description: 'Penne pasta tossed in rich and creamy white sauce', price: 169, category: pizzaPastaId, isVeg: true, image: '/uploads/alfredo_pasta.jpg' },
+            { name: 'Arrabbiata Pasta (Non-Veg)', description: 'Spicy tomato sauce pasta with grilled chicken chunks', price: 199, category: pizzaPastaId, isVeg: false, isBestSeller: true, image: '/uploads/arrabbiata_pasta.jpg' },
 
-            // Uttapam
-            { name: 'Plain Uttapam', description: 'Thick savory pancake', price: 65, category: uttapamId, isVeg: true },
-            { name: 'Onion Uttapam', description: 'Topped with onions', price: 75, category: uttapamId, isVeg: true, isBestSeller: true },
-            { name: 'Tomato Uttapam', description: 'Topped with tomatoes', price: 75, category: uttapamId, isVeg: true },
-            { name: 'Mixed Uttapam', description: 'Onion, tomato & capsicum', price: 85, category: uttapamId, isVeg: true },
+            // Burgers & Wraps
+            { name: 'Veggie Crunch Burger', description: 'Crispy vegetable patty with lettuce, tomato and mayo', price: 99, category: burgersWrapsId, isVeg: true, image: '/uploads/veggie_burger.jpg' },
+            { name: 'Double Cheese Burger', description: 'Double potato patty with extra cheddar slice', price: 139, category: burgersWrapsId, isVeg: true, isBestSeller: true, image: '/uploads/double_cheese_burger.jpg' },
+            { name: 'Grilled Chicken Wrap', description: 'Tortilla wrap stuffed with grilled chicken and salad', price: 149, category: burgersWrapsId, isVeg: false, isNewItem: true, image: '/uploads/chicken_wrap.jpg' },
 
-            // Beverages
-            { name: 'Filter Coffee', description: 'Traditional South Indian coffee', price: 30, category: beveragesId, isVeg: true, isBestSeller: true },
-            { name: 'Masala Tea', description: 'Spiced Indian tea', price: 25, category: beveragesId, isVeg: true },
-            { name: 'Badam Milk', description: 'Almond flavored milk', price: 50, category: beveragesId, isVeg: true },
-            { name: 'Lassi', description: 'Sweet yogurt drink', price: 45, category: beveragesId, isVeg: true },
-            { name: 'Buttermilk', description: 'Spiced traditional chaas', price: 30, category: beveragesId, isVeg: true },
-            { name: 'Water Bottle', description: '500ml packaged water', price: 20, category: beveragesId, isVeg: true, isRecommended: true },
-            { name: 'Soft Drink', description: 'Cola / Sprite / Fanta', price: 40, category: beveragesId, isVeg: true, isRecommended: true },
-
-            // Sweets
-            { name: 'Gulab Jamun (2 pcs)', description: 'Sweet milk dumplings', price: 50, category: sweetsId, isVeg: true },
-            { name: 'Rasmalai (2 pcs)', description: 'Cottage cheese in milk', price: 70, category: sweetsId, isVeg: true },
-            { name: 'Kesari', description: 'Semolina sweet', price: 45, category: sweetsId, isVeg: true },
-            { name: 'Payasam', description: 'Rice pudding', price: 55, category: sweetsId, isVeg: true, isNew: true },
-
-            // Combos
-            { name: 'Breakfast Combo', description: '2 Idli + 1 Vada + Coffee', price: 99, category: combosId, isVeg: true, isBestSeller: true },
-            { name: 'Dosa Combo', description: 'Masala Dosa + Coffee', price: 99, category: combosId, isVeg: true, isBestSeller: true },
-            { name: 'Family Pack', description: '4 Dosa + 4 Idli + 2 Vada', price: 350, category: combosId, isVeg: true },
-            { name: 'Mini Meals', description: 'Rice + Sambar + Curd + Papad', price: 120, category: combosId, isVeg: true }
+            // Desserts
+            { name: 'Brownie with Ice Cream', description: 'Warm fudge brownie topped with vanilla ice cream', price: 120, category: dessertsId, isVeg: true, isBestSeller: true, image: '/uploads/brownie.jpg' },
+            { name: 'Fresh Fruit Platter', description: 'Slices of seasonal fresh fruits by the pool', price: 110, category: dessertsId, isVeg: true, isRecommended: true, image: '/uploads/fruit_platter.jpg' },
+            { name: 'Blueberry Cheesecake', description: 'Creamy cold cheesecake topped with blueberry compote', price: 150, category: dessertsId, isVeg: true, isNewItem: true, image: '/uploads/cheesecake.jpg' }
         ]);
         console.log('Menu items created:', menuItems.length);
 
@@ -126,34 +114,23 @@ const seedData = async () => {
                 isActive: true
             },
             {
-                code: 'DOSA20',
-                description: 'Flat ₹20 off on all dosas',
+                code: 'POOL20',
+                description: 'Flat ₹20 off on your poolside snacks',
                 discountType: 'fixed',
                 discountValue: 20,
-                minOrderAmount: 80,
+                minOrderAmount: 150,
                 validFrom: new Date(),
                 validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
                 isActive: true
             },
             {
-                code: 'COMBO50',
-                description: 'Get ₹50 off on combo meals',
+                code: 'MOCKTAIL50',
+                description: 'Get ₹50 off on orders above ₹300',
                 discountType: 'fixed',
                 discountValue: 50,
-                minOrderAmount: 200,
+                minOrderAmount: 300,
                 validFrom: new Date(),
                 validUntil: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
-                isActive: true
-            },
-            {
-                code: 'FAMILY15',
-                description: '15% off on orders above ₹500',
-                discountType: 'percentage',
-                discountValue: 15,
-                minOrderAmount: 500,
-                maxDiscount: 150,
-                validFrom: new Date(),
-                validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
                 isActive: true
             }
         ]);
@@ -161,32 +138,30 @@ const seedData = async () => {
 
         // Create Inventory Items
         const inventory = await Inventory.insertMany([
-            { name: 'Rice', category: 'ingredient', unit: 'kg', currentStock: 50, minimumStock: 20, costPerUnit: 45, supplier: 'Local Supplier' },
-            { name: 'Urad Dal', category: 'ingredient', unit: 'kg', currentStock: 25, minimumStock: 10, costPerUnit: 120, supplier: 'Local Supplier' },
-            { name: 'Potato', category: 'ingredient', unit: 'kg', currentStock: 30, minimumStock: 15, costPerUnit: 30, supplier: 'Vegetable Market' },
-            { name: 'Onion', category: 'ingredient', unit: 'kg', currentStock: 20, minimumStock: 10, costPerUnit: 35, supplier: 'Vegetable Market' },
-            { name: 'Tomato', category: 'ingredient', unit: 'kg', currentStock: 15, minimumStock: 8, costPerUnit: 40, supplier: 'Vegetable Market' },
-            { name: 'Ghee', category: 'ingredient', unit: 'kg', currentStock: 10, minimumStock: 5, costPerUnit: 550, supplier: 'Dairy Supplier' },
-            { name: 'Coconut Oil', category: 'ingredient', unit: 'liter', currentStock: 15, minimumStock: 8, costPerUnit: 180, supplier: 'Oil Supplier' },
-            { name: 'Coffee Powder', category: 'ingredient', unit: 'kg', currentStock: 5, minimumStock: 2, costPerUnit: 400, supplier: 'Coffee Supplier' },
+            { name: 'Paneer', category: 'ingredient', unit: 'kg', currentStock: 15, minimumStock: 5, costPerUnit: 350, supplier: 'Dairy Supplier' },
+            { name: 'Chicken Breast', category: 'ingredient', unit: 'kg', currentStock: 20, minimumStock: 8, costPerUnit: 240, supplier: 'Poultry Supplier' },
+            { name: 'Cheese (Mozzarella)', category: 'ingredient', unit: 'kg', currentStock: 25, minimumStock: 10, costPerUnit: 420, supplier: 'Dairy Supplier' },
+            { name: 'Pizza Base', category: 'ingredient', unit: 'pieces', currentStock: 50, minimumStock: 20, costPerUnit: 15, supplier: 'Bakery Supplier' },
+            { name: 'Penne Pasta', category: 'ingredient', unit: 'kg', currentStock: 15, minimumStock: 5, costPerUnit: 110, supplier: 'Local Supplier' },
+            { name: 'Potatoes (Fries)', category: 'ingredient', unit: 'kg', currentStock: 40, minimumStock: 15, costPerUnit: 40, supplier: 'Vegetable Market' },
+            { name: 'Fresh Mint Leaves', category: 'ingredient', unit: 'kg', currentStock: 5, minimumStock: 2, costPerUnit: 80, supplier: 'Vegetable Market' },
+            { name: 'Lemons', category: 'ingredient', unit: 'pieces', currentStock: 100, minimumStock: 30, costPerUnit: 3, supplier: 'Vegetable Market' },
+            { name: 'Mocktail Syrups', category: 'ingredient', unit: 'bottles', currentStock: 12, minimumStock: 4, costPerUnit: 250, supplier: 'Beverage Supplier' },
             { name: 'Sugar', category: 'ingredient', unit: 'kg', currentStock: 20, minimumStock: 10, costPerUnit: 45, supplier: 'Local Supplier' },
-            { name: 'Salt', category: 'ingredient', unit: 'kg', currentStock: 10, minimumStock: 5, costPerUnit: 20, supplier: 'Local Supplier' },
-            { name: 'Chana Dal', category: 'ingredient', unit: 'kg', currentStock: 8, minimumStock: 5, costPerUnit: 90, supplier: 'Local Supplier' },
-            { name: 'Mustard Seeds', category: 'ingredient', unit: 'kg', currentStock: 2, minimumStock: 1, costPerUnit: 150, supplier: 'Spice Supplier' },
-            { name: 'Paper Napkins', category: 'packaging', unit: 'pack', currentStock: 50, minimumStock: 20, costPerUnit: 25, supplier: 'Packaging Supplier' },
-            { name: 'Takeaway Boxes', category: 'packaging', unit: 'pack', currentStock: 100, minimumStock: 50, costPerUnit: 150, supplier: 'Packaging Supplier' },
-            { name: 'Water Bottles', category: 'other', unit: 'pieces', currentStock: 100, minimumStock: 50, costPerUnit: 10, supplier: 'Beverage Supplier' }
+            { name: 'Water Bottles', category: 'other', unit: 'pieces', currentStock: 100, minimumStock: 50, costPerUnit: 10, supplier: 'Beverage Supplier' },
+            { name: 'Paper Napkins', category: 'packaging', unit: 'pack', currentStock: 40, minimumStock: 15, costPerUnit: 30, supplier: 'Packaging Supplier' },
+            { name: 'Takeaway Boxes', category: 'packaging', unit: 'pack', currentStock: 80, minimumStock: 30, costPerUnit: 160, supplier: 'Packaging Supplier' }
         ]);
         console.log('Inventory items created:', inventory.length);
 
         // Create Employees
         const employees = await Employee.insertMany([
-            { name: 'Raju Kumar', phone: '9876543210', role: 'chef', salary: 25000, email: 'raju@chettas.com' },
-            { name: 'Suresh Nair', phone: '9876543211', role: 'chef', salary: 22000, email: 'suresh@chettas.com' },
-            { name: 'Priya Sharma', phone: '9876543212', role: 'waiter', salary: 15000, email: 'priya@chettas.com' },
-            { name: 'Ankit Verma', phone: '9876543213', role: 'waiter', salary: 15000, email: 'ankit@chettas.com' },
-            { name: 'Meena Devi', phone: '9876543214', role: 'cashier', salary: 18000, email: 'meena@chettas.com' },
-            { name: 'Ramesh Iyer', phone: '9876543215', role: 'manager', salary: 35000, email: 'ramesh@chettas.com' },
+            { name: 'Raju Kumar', phone: '9876543210', role: 'chef', salary: 25000, email: 'raju@keabythepool.com' },
+            { name: 'Suresh Nair', phone: '9876543211', role: 'chef', salary: 22000, email: 'suresh@keabythepool.com' },
+            { name: 'Priya Sharma', phone: '9876543212', role: 'waiter', salary: 15000, email: 'priya@keabythepool.com' },
+            { name: 'Ankit Verma', phone: '9876543213', role: 'waiter', salary: 15000, email: 'ankit@keabythepool.com' },
+            { name: 'Meena Devi', phone: '9876543214', role: 'cashier', salary: 18000, email: 'meena@keabythepool.com' },
+            { name: 'Ramesh Iyer', phone: '9876543215', role: 'manager', salary: 35000, email: 'ramesh@keabythepool.com' },
             { name: 'Sunita Kumari', phone: '9876543216', role: 'cleaner', salary: 12000 }
         ]);
         console.log('Employees created:', employees.length);
@@ -199,7 +174,7 @@ const seedData = async () => {
         const createdTables = await Table.insertMany(tables);
         console.log('Tables created:', createdTables.length);
 
-        console.log('\n✅ Database seeded successfully!');
+        console.log('\n✅ Kea By The Pool database seeded successfully!');
         console.log('\n📊 Summary:');
         console.log('- Admin: phone: 9999999999, password: admin123');
         console.log('- Categories:', categories.length);

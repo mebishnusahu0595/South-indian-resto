@@ -17,11 +17,11 @@ const Header = ({ title, showCart = true, showBack = false }) => {
 
     // Animated placeholder
     const placeholderTexts = [
-        "Search for Masala Dosa...",
-        "Try our famous Idli...",
-        "Looking for Vada?",
-        "Search Uttapam...",
-        "Find your favorite dish...",
+        "Search for Virgin Mojito...",
+        "Try our Paneer Tikka...",
+        "Looking for Cheese Burger?",
+        "Search Margherita Pizza...",
+        "Find your poolside escape...",
     ];
     const [placeholderIndex, setPlaceholderIndex] = useState(0);
     const [displayPlaceholder, setDisplayPlaceholder] = useState('');
@@ -105,7 +105,7 @@ const Header = ({ title, showCart = true, showBack = false }) => {
                     </button>
                 ) : (
                     <Link to="/" className="header-logo">
-                        <img src="/logo.png" alt="Chetta's Dosa" className="logo-image" />
+                        <img src="/logo.jpg" alt="keabythepool" className="logo-image" />
                     </Link>
                 )}
 
@@ -158,7 +158,7 @@ const Header = ({ title, showCart = true, showBack = false }) => {
                         </div>
                     )}
 
-                    {showCart && (
+                    {false && showCart && (
                         <Link to="/cart" className="header-icon-btn cart-btn">
                             <FiShoppingCart />
                             {itemCount > 0 && (

@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const User = require('../models/User');
 const { generateOTP } = require('../utils/helpers');
-const { protect } = require('../middleware/auth');
+const { protect, admin } = require('../middleware/auth');
 
 // SMS Configuration from environment
 const SMS_PROVIDER = process.env.SMS_PROVIDER || 'twofactor';
@@ -74,8 +74,8 @@ router.post('/send-otp', async (req, res) => {
             phone: cleanPhone,
             otpLength: OTP_LENGTH,
             expiresIn: OTP_TTL_SECONDS,
-            // Only show OTP in development
-            ...(process.env.NODE_ENV === 'development' && !SMS_API_KEY ? { otp } : {})
+            // Show OTP for easy local testing
+            otp
         });
     } catch (error) {
         console.error(error);
@@ -154,6 +154,21 @@ router.post('/verify-otp', async (req, res) => {
 // @access  Private
 router.get('/me', protect, async (req, res) => {
     try {
+        if (req.user.isEmployee) {
+            const Employee = require('../models/Employee');
+            const emp = await Employee.findById(req.user._id).populate('assignedTables');
+            if (!emp) return res.status(404).json({ message: 'Employee profile not found' });
+            return res.json({
+                id: emp._id,
+                _id: emp._id,
+                phone: emp.phone,
+                name: emp.name,
+                email: emp.email || '',
+                role: emp.role,
+                isEmployee: true,
+                assignedTables: emp.assignedTables || []
+            });
+        }
         const user = await User.findById(req.user._id).select('-otp -otpExpiry');
         res.json(user);
     } catch (error) {
@@ -196,33 +211,83 @@ router.post('/admin-login', async (req, res) => {
     try {
         const { phone, password } = req.body;
 
-        // For demo, admin credentials are: phone: "9999999999", password: "admin123"
-        const user = await User.findOne({ phone, role: 'admin' });
-
-        if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+        if (!phone || !password) {
+            return res.status(400).json({ message: 'Phone and password are required' });
         }
 
-        // In production, use bcrypt to verify password
-        // For demo purposes:
-        if (password !== 'admin123') {
-            return res.status(401).json({ message: 'Invalid credentials' });
-        }
-
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-            expiresIn: process.env.JWT_EXPIRES_IN || '30d'
-        });
-
-        res.json({
-            token,
-            user: {
-                id: user._id,
-                phone: user.phone,
-                name: user.name,
-                email: user.email,
-                role: user.role
+        // Try admin first
+        const user = await User.findOne({ phone, role: { $in: ['admin', 'superadmin'] } });
+        if (user) {
+            const expectedPassword = user.password || 'admin123';
+            if (password !== expectedPassword) {
+                return res.status(401).json({ message: 'Invalid credentials' });
             }
-        });
+
+            const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+                expiresIn: process.env.JWT_EXPIRES_IN || '30d'
+            });
+
+            return res.json({
+                token,
+                user: {
+                    id: user._id,
+                    phone: user.phone,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role
+                }
+            });
+        }
+
+        // Try active employee next
+        const Employee = require('../models/Employee');
+        const emp = await Employee.findOne({ phone, isActive: true }).populate('assignedTables');
+        if (emp) {
+            if (emp.password !== password) {
+                return res.status(401).json({ message: 'Invalid credentials' });
+            }
+
+            const token = jwt.sign({ id: emp._id }, process.env.JWT_SECRET, {
+                expiresIn: process.env.JWT_EXPIRES_IN || '30d'
+            });
+
+            return res.json({
+                token,
+                user: {
+                    id: emp._id,
+                    phone: emp.phone,
+                    name: emp.name,
+                    email: emp.email || '',
+                    role: emp.role,
+                    isEmployee: true,
+                    assignedTables: emp.assignedTables || []
+                }
+            });
+        }
+
+        return res.status(401).json({ message: 'Invalid credentials' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   PUT /api/auth/change-password
+// @desc    Change admin password
+// @access  Private/Admin
+router.put('/change-password', protect, admin, async (req, res) => {
+    try {
+        const { newPassword } = req.body;
+        if (!newPassword || newPassword.length < 6) {
+            return res.status(400).json({ message: 'New password must be at least 6 characters long' });
+        }
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ message: 'Admin user not found' });
+        }
+        user.password = newPassword;
+        await user.save();
+        res.json({ message: 'Password updated successfully' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server error' });

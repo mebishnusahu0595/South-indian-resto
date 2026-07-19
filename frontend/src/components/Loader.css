@@ -2,8 +2,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 250, 239, 0.9);
-    /* var(--bg-secondary) with opacity */
+    background: rgba(255, 250, 239, 0.95);
     z-index: 9999;
 }
 
@@ -25,184 +24,93 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 30px;
+    gap: 20px;
 }
 
-.kitchen {
+/* Pool themed Loader Container */
+.pool-wrapper {
     position: relative;
-    width: 200px;
-    height: 100px;
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
-}
-
-/* Tawa Styling */
-.tawa {
-    position: relative;
-    width: 100px;
-    height: 6px;
-    background: #333;
-    border-radius: 10px;
-    margin-right: 20px;
-}
-
-.tawa::after {
-    content: '';
-    position: absolute;
-    right: -20px;
-    top: -4px;
-    width: 25px;
-    height: 4px;
-    background: #333;
-    border-radius: 4px;
-    transform: rotate(-10deg);
-}
-
-/* Dosa Flipping Animation */
-.dosa {
-    position: absolute;
-    bottom: 6px;
-    left: 10px;
-    width: 80px;
-    height: 80px;
-    background: #E08A2E;
-    /* var(--primary-light) */
-    border: 3px solid #C87316;
-    /* var(--primary) */
+    width: 120px;
+    height: 120px;
+    background: #EDE9FE; /* soft light purple */
+    border: 3px solid #111111;
     border-radius: 50%;
-    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
-    animation: flip-dosa 2s infinite ease-in-out;
-    transform-origin: center bottom;
-}
-
-@keyframes flip-dosa {
-
-    0%,
-    100% {
-        transform: translateY(0) rotateX(0deg);
-        opacity: 1;
-    }
-
-    45% {
-        transform: translateY(-80px) rotateX(180deg);
-        opacity: 0.8;
-    }
-
-    55% {
-        transform: translateY(-80px) rotateX(180deg);
-    }
-}
-
-/* Plate with Idlis */
-.plate {
-    position: relative;
-    width: 80px;
-    height: 4px;
-    background: #ddd;
-    border-radius: 10px;
+    overflow: hidden;
     display: flex;
-    justify-content: space-around;
-    padding: 0 5px;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 4px 4px 0px #111111;
 }
 
-.idli {
+/* Wave styling & animations */
+.wave {
     position: absolute;
-    bottom: 4px;
-    width: 40px;
-    height: 35px;
-    background: #fff;
-    border-radius: 50% 50% 40% 40%;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    bottom: 0;
+    left: 0;
+    width: 200%;
+    height: 60%;
+    background: rgba(124, 58, 237, 0.4); /* purple theme */
+    border-radius: 38%;
+    animation: wave-motion 6s infinite linear;
 }
 
-.idli-1 {
-    left: 5px;
-    animation: steam-bounce 2s infinite 0.2s;
+.wave-1 {
+    animation-delay: 0s;
 }
 
-.idli-2 {
-    right: 5px;
-    animation: steam-bounce 2s infinite 0.7s;
+.wave-2 {
+    background: rgba(124, 58, 237, 0.7);
+    border-radius: 40%;
+    animation: wave-motion 4s infinite linear;
+    height: 50%;
 }
 
-@keyframes steam-bounce {
-
-    0%,
-    100% {
-        transform: scale(1);
-    }
-
-    50% {
-        transform: scale(1.05);
-    }
+.wave-3 {
+    background: #7C3AED; /* primary deep purple */
+    border-radius: 42%;
+    animation: wave-motion 3s infinite linear;
+    height: 35%;
 }
 
-/* Steam Animation */
-.steam {
-    position: absolute;
-    top: -15px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 2px;
-    height: 15px;
-    background: rgba(200, 200, 200, 0.4);
-    border-radius: 2px;
-}
-
-.steam::before,
-.steam::after {
-    content: '';
-    position: absolute;
-    width: 2px;
-    height: 10px;
-    background: inherit;
-    border-radius: inherit;
-}
-
-.steam::before {
-    left: -6px;
-    top: 4px;
-}
-
-.steam::after {
-    right: -6px;
-    top: 4px;
-}
-
-.idli-1 .steam {
-    animation: rising-steam 2s infinite;
-}
-
-.idli-2 .steam {
-    animation: rising-steam 2s infinite 0.5s;
-}
-
-@keyframes rising-steam {
+@keyframes wave-motion {
     0% {
-        transform: translate(-50%, 0) scaleY(0.5);
-        opacity: 0;
+        transform: rotate(0deg) translateX(-25%);
     }
-
-    50% {
-        transform: translate(-50%, -10px) scaleY(1);
-        opacity: 0.5;
-    }
-
     100% {
-        transform: translate(-50%, -20px) scaleY(1.2);
-        opacity: 0;
+        transform: rotate(360deg) translateX(-25%);
     }
 }
 
-/* Text and Dots */
+/* Floating Ring in pool */
+.float-ring {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border: 8px solid #FFFAEF;
+    border-radius: 50%;
+    top: 30%;
+    box-shadow: 0 0 0 3px #111111;
+    background: #7C3AED;
+    animation: ring-bob 2s infinite ease-in-out;
+}
+
+@keyframes ring-bob {
+    0%, 100% {
+        transform: translateY(0) rotate(0deg);
+    }
+    50% {
+        transform: translateY(-8px) rotate(15deg);
+    }
+}
+
 .loader-text {
     text-align: center;
-    color: var(--text-primary);
+    color: #111111;
 }
 
 .loader-text h3 {
-    font-size: 1.1rem;
+    font-family: 'Patrick Hand', cursive;
+    font-size: 1.3rem;
     font-weight: 500;
     margin-bottom: 8px;
 }
@@ -210,13 +118,14 @@
 .loading-dots {
     display: flex;
     justify-content: center;
-    gap: 4px;
+    gap: 5px;
 }
 
 .loading-dots span {
-    width: 6px;
-    height: 6px;
-    background: var(--primary);
+    width: 8px;
+    height: 8px;
+    background: #7C3AED;
+    border: 1px solid #111111;
     border-radius: 50%;
     animation: dot-pulse 1.5s infinite ease-in-out;
 }
@@ -230,13 +139,10 @@
 }
 
 @keyframes dot-pulse {
-
-    0%,
-    100% {
+    0%, 100% {
         transform: scale(0.8);
         opacity: 0.5;
     }
-
     50% {
         transform: scale(1.2);
         opacity: 1;

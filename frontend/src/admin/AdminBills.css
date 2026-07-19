@@ -1,0 +1,139 @@
+.admin-bills-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.bills-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.admin-bills-page h1 {
+    font-family: 'Patrick Hand', cursive;
+    font-size: 2.2rem;
+    margin: 0;
+    color: var(--primary);
+}
+
+/* Date filter control styling */
+.date-filter-control {
+    display: flex;
+    align-items: center;
+    background: white;
+    border-radius: 20px;
+    padding: 2px;
+}
+
+.date-arrow-btn {
+    background: transparent;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    transition: color 0.15s ease;
+}
+
+.date-arrow-btn:hover {
+    color: var(--primary-dark);
+}
+
+.date-display-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    border-left: 2px solid #111111;
+    border-right: 2px solid #111111;
+}
+
+.date-display-box input[type="date"] {
+    border: none;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+}
+
+/* Bills registry table */
+.bills-table-container {
+    background: white;
+    padding: 20px;
+    overflow-x: auto;
+}
+
+.no-bills-message {
+    text-align: center;
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    padding: 40px 0;
+}
+
+.bills-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.bills-table th, 
+.bills-table td {
+    padding: 14px 16px;
+    border-bottom: 2px solid #EEEEEE;
+    font-size: 0.95rem;
+}
+
+.bills-table th {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+    color: #4B5563;
+    border-bottom: 2px solid #111111;
+}
+
+.bills-table tbody tr:hover {
+    background-color: var(--bg-secondary);
+}
+
+/* Action button configurations */
+.actions-cell {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-action {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 2px solid #111111;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: white;
+    transition: all 0.15s ease;
+}
+
+.btn-action.reissue:hover {
+    background: #EDE9FE;
+    color: #7C3AED;
+}
+
+.btn-action.delete {
+    color: var(--error);
+}
+
+.btn-action.delete:hover {
+    background: #FEE2E2;
+    color: var(--error);
+}

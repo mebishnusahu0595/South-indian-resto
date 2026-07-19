@@ -15,9 +15,9 @@ const seedCollections = async () => {
             console.log('Creating default collections...');
 
             // Get menu items for each type
-            const bestsellers = await MenuItem.find({ bestseller: true, inStock: true }).limit(10);
-            const newItems = await MenuItem.find({ isNew: true, inStock: true }).limit(10);
-            const recommended = await MenuItem.find({ recommended: true, inStock: true }).limit(10);
+            const bestsellers = await MenuItem.find({ isBestSeller: true, isAvailable: true }).limit(10);
+            const newItems = await MenuItem.find({ isNewItem: true, isAvailable: true }).limit(10);
+            const recommended = await MenuItem.find({ isRecommended: true, isAvailable: true }).limit(10);
 
             // Create default collections
             const collections = [
@@ -63,11 +63,11 @@ const seedCollections = async () => {
                 let products = [];
 
                 if (collection.type === 'bestseller') {
-                    products = await MenuItem.find({ bestseller: true, inStock: true }).limit(10);
+                    products = await MenuItem.find({ isBestSeller: true, isAvailable: true }).limit(10);
                 } else if (collection.type === 'new') {
-                    products = await MenuItem.find({ isNew: true, inStock: true }).limit(10);
+                    products = await MenuItem.find({ isNewItem: true, isAvailable: true }).limit(10);
                 } else if (collection.type === 'recommended') {
-                    products = await MenuItem.find({ recommended: true, inStock: true }).limit(10);
+                    products = await MenuItem.find({ isRecommended: true, isAvailable: true }).limit(10);
                 }
 
                 collection.products = products.map(item => item._id);

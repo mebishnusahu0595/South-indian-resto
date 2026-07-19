@@ -1,15 +1,64 @@
 const express = require('express');
 const router = express.Router();
 const Table = require('../models/Table');
+const Settings = require('../models/Settings');
 const { protect, admin } = require('../middleware/auth');
 
-// Get all tables (public - for dropdown)
+// Get all tables (public - for dropdown and visual layout)
 router.get('/', async (req, res) => {
     try {
         const tables = await Table.find({ isActive: true })
             .populate('currentOrder', 'orderNumber status')
-            .sort('tableNumber');
+            .sort('section tableNumber');
         res.json(tables);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Get all sections (custom sections from settings merged with table-derived sections)
+router.get('/sections', async (req, res) => {
+    try {
+        const derived = await Table.distinct('section', { isActive: true });
+        const custom = await Settings.getSetting('custom_sections', []);
+        const merged = [...new Set([...(custom || []), ...derived])].filter(Boolean);
+        res.json(merged);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Admin: Add a custom section
+router.post('/sections', protect, admin, async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name || !name.trim()) {
+            return res.status(400).json({ message: 'Section name is required' });
+        }
+        const trimmed = name.trim();
+        const custom = (await Settings.getSetting('custom_sections', [])) || [];
+        if (!custom.includes(trimmed)) {
+            custom.push(trimmed);
+            await Settings.setSetting('custom_sections', custom, 'Custom table sections');
+        }
+        const derived = await Table.distinct('section', { isActive: true });
+        const merged = [...new Set([...custom, ...derived])].filter(Boolean);
+        res.status(201).json(merged);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Admin: Remove a custom section (does not delete tables; they keep their section value)
+router.delete('/sections/:name', protect, admin, async (req, res) => {
+    try {
+        const name = decodeURIComponent(req.params.name);
+        let custom = (await Settings.getSetting('custom_sections', [])) || [];
+        custom = custom.filter(s => s !== name);
+        await Settings.setSetting('custom_sections', custom, 'Custom table sections');
+        const derived = await Table.distinct('section', { isActive: true });
+        const merged = [...new Set([...custom, ...derived])].filter(Boolean);
+        res.json(merged);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -19,7 +68,7 @@ router.get('/', async (req, res) => {
 router.get('/available', async (req, res) => {
     try {
         const tables = await Table.find({ isActive: true, status: 'available' })
-            .sort('tableNumber');
+            .sort('section tableNumber');
         res.json(tables);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -29,14 +78,21 @@ router.get('/available', async (req, res) => {
 // Admin: Create table
 router.post('/', protect, admin, async (req, res) => {
     try {
-        const { tableNumber, capacity } = req.body;
+        const { tableNumber, name, capacity, section, areaType, shape } = req.body;
 
         const existing = await Table.findOne({ tableNumber });
         if (existing) {
             return res.status(400).json({ message: 'Table number already exists' });
         }
 
-        const table = await Table.create({ tableNumber, capacity });
+        const table = await Table.create({
+            tableNumber,
+            name: name || '',
+            capacity: capacity || 4,
+            section: section || 'Main Hall',
+            areaType: areaType || 'table',
+            shape: shape || 'square'
+        });
         res.status(201).json(table);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -46,14 +102,20 @@ router.post('/', protect, admin, async (req, res) => {
 // Admin: Bulk create tables
 router.post('/bulk', protect, admin, async (req, res) => {
     try {
-        const { startNumber, endNumber, capacity } = req.body;
+        const { startNumber, endNumber, capacity, section, areaType, shape } = req.body;
         const tables = [];
 
         for (let i = startNumber; i <= endNumber; i++) {
             const tableNumber = i.toString();
             const existing = await Table.findOne({ tableNumber });
             if (!existing) {
-                tables.push({ tableNumber, capacity: capacity || 4 });
+                tables.push({
+                    tableNumber,
+                    capacity: capacity || 4,
+                    section: section || 'Main Hall',
+                    areaType: areaType || 'table',
+                    shape: shape || 'square'
+                });
             }
         }
 

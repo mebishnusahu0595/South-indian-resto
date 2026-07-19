@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
     FiHome, FiGrid, FiShoppingBag, FiTag, FiPackage,
-    FiUsers, FiBarChart2, FiLogOut, FiMenu, FiX, FiLayout, FiActivity, FiSettings
+    FiUsers, FiBarChart2, FiLogOut, FiMenu, FiX, FiLayout,
+    FiActivity, FiSettings, FiPlus, FiFileText
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import './AdminLayout.css';
@@ -26,15 +27,21 @@ const AdminLayout = () => {
                 playNotificationSound();
             });
 
+            socket.on('new-booking', (booking) => {
+                setNotifications(prev => [...prev, { type: 'booking', message: `New booking: ${booking.guestName} (${booking.guestCount} guests) at ${booking.bookingTime}`, id: booking._id }]);
+                playNotificationSound();
+            });
+
             return () => {
                 socket.off('new-order');
                 socket.off('bill-requested');
+                socket.off('new-booking');
             };
         }
     }, [socket]);
 
     const playNotificationSound = () => {
-        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQkSZ6Hl/J1dFgxTpfX/oGcbGFGq+v+gaBwYT6r6/59pGxlOq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr');
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQkSZ6Hl/J1dFgxTpfX/oGcbGFGq+v+gaBwYT6r6/59pGxlOq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr+v+eaxsZTKv6/55rGxlMq/r/nmsbGUyr');
         audio.play().catch(() => { });
     };
 
@@ -46,6 +53,9 @@ const AdminLayout = () => {
     const menuItems = [
         { path: '/admin', icon: FiHome, label: 'Dashboard', exact: true },
         { path: '/admin/orders', icon: FiShoppingBag, label: 'Orders' },
+        { path: '/admin/create-order', icon: FiPlus, label: 'Create Order' },
+        { path: '/admin/bills', icon: FiFileText, label: 'Bills' },
+        { path: '/admin/bookings', icon: FiLayout, label: 'Pre-Bookings' },
         { path: '/admin/history', icon: FiActivity, label: 'History' },
         { path: '/admin/menu', icon: FiGrid, label: 'Menu' },
         { path: '/admin/categories', icon: FiGrid, label: 'Categories' },
@@ -60,6 +70,22 @@ const AdminLayout = () => {
         { path: '/admin/settings', icon: FiSettings, label: 'Settings' },
     ];
 
+    const filteredMenuItems = menuItems.filter(item => {
+        if (!user) return false;
+        if (user.role === 'superadmin') return true;
+        
+        // Admin role: operational access only.
+        // Analytics + sensitive config are superadmin-only. Settings IS available to admin (password + basics).
+        const restrictedPaths = [
+            '/admin/customers',
+            '/admin/loyalty',
+            '/admin/coupons',
+            '/admin/collections',
+            '/admin/analytics',
+        ];
+        return !restrictedPaths.includes(item.path);
+    });
+
     const isActive = (path, exact) => {
         if (exact) return location.pathname === path;
         return location.pathname.startsWith(path);
@@ -70,15 +96,15 @@ const AdminLayout = () => {
             {/* Sidebar */}
             <aside className={`admin-sidebar ${sidebarOpen ? 'open' : ''}`}>
                 <div className="sidebar-header">
-                    <span className="sidebar-logo">🍽️</span>
-                    <h2>Chetta's Dosa</h2>
+                    <img src="/logo.jpg" alt="Logo" className="sidebar-logo-img" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #111111', marginRight: '10px' }} />
+                    <h2>keabythepool</h2>
                     <button className="sidebar-close" onClick={() => setSidebarOpen(false)}>
                         <FiX />
                     </button>
                 </div>
 
                 <nav className="sidebar-nav">
-                    {menuItems.map(item => (
+                    {filteredMenuItems.map(item => (
                         <Link
                             key={item.path}
                             to={item.path}

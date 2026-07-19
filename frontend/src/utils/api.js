@@ -43,6 +43,8 @@ export const createOrder = (data) => axios.post(`${API_URL}/orders`, data);
 export const updateOrderStatus = (id, status) => axios.put(`${API_URL}/orders/${id}/status`, { status });
 export const requestBill = (id) => axios.put(`${API_URL}/orders/${id}/request-bill`);
 export const updatePayment = (id, paymentMethod, amountPaid) => axios.put(`${API_URL}/orders/${id}/payment`, { paymentMethod, amountPaid });
+export const deleteOrder = (id) => axios.delete(`${API_URL}/orders/${id}`);
+export const updateOrderItems = (id, items) => axios.put(`${API_URL}/orders/${id}/items`, { items });
 
 // Coupons
 export const getCoupons = () => axios.get(`${API_URL}/coupons`);
@@ -74,13 +76,16 @@ export const deleteHoliday = (id) => axios.delete(`${API_URL}/employees/holidays
 
 // Analytics
 export const getDashboardStats = () => axios.get(`${API_URL}/analytics/dashboard`);
-export const getRevenueData = (period) => axios.get(`${API_URL}/analytics/revenue`, { params: { period } });
-export const getCategorySales = (period) => axios.get(`${API_URL}/analytics/category-sales`, { params: { period } });
-export const getTopItems = () => axios.get(`${API_URL}/analytics/top-items`);
+export const getRevenueData = (period, params = {}) => axios.get(`${API_URL}/analytics/revenue`, { params: { period, ...params } });
+export const getCategorySales = (period, params = {}) => axios.get(`${API_URL}/analytics/category-sales`, { params: { period, ...params } });
+export const getTopItems = (params = {}) => axios.get(`${API_URL}/analytics/top-items`, { params });
 export const getUserAnalytics = (period) => axios.get(`${API_URL}/analytics/users`, { params: { period } });
 
 // Tables
 export const getTables = () => axios.get(`${API_URL}/tables`);
+export const getTableSections = () => axios.get(`${API_URL}/tables/sections`);
+export const createSection = (name) => axios.post(`${API_URL}/tables/sections`, { name });
+export const deleteSection = (name) => axios.delete(`${API_URL}/tables/sections/${encodeURIComponent(name)}`);
 export const getAvailableTables = () => axios.get(`${API_URL}/tables/available`);
 export const createTable = (data) => axios.post(`${API_URL}/tables`, data);
 export const createBulkTables = (data) => axios.post(`${API_URL}/tables/bulk`, data);
@@ -92,6 +97,8 @@ export const getSettings = () => axios.get(`${API_URL}/settings`);
 export const getAllSettings = () => axios.get(`${API_URL}/settings`); // Alias for getSettings
 export const getGstRate = () => axios.get(`${API_URL}/settings/gst`);
 export const updateGstRate = (gstRate) => axios.put(`${API_URL}/settings/gst`, { gstRate });
+export const getMaxDiscount = () => axios.get(`${API_URL}/settings/max-discount`);
+export const updateMaxDiscount = (maxDiscountPercent) => axios.put(`${API_URL}/settings/max-discount`, { maxDiscountPercent });
 export const updateSetting = (key, value) => axios.put(`${API_URL}/settings/${key}`, { value });
 
 // Collections (Custom Homepage Sections)
@@ -122,3 +129,29 @@ export const getCustomerAnalytics = (params) => axios.get(`${API_URL}/analytics/
 export const getCustomerDetail = (id) => axios.get(`${API_URL}/analytics/customer/${id}`);
 export const searchOrders = (params) => axios.get(`${API_URL}/analytics/orders/search`, { params });
 
+// Bills
+export const getBills = (date) => axios.get(`${API_URL}/bills`, { params: { date } });
+export const getBillerSuggestions = () => axios.get(`${API_URL}/bills/billers/suggestions`);
+export const generateBill = (data) => axios.post(`${API_URL}/bills/generate`, data);
+export const deleteBill = (id) => axios.delete(`${API_URL}/bills/${id}`);
+export const bulkDeleteBills = (billIds) => axios.post(`${API_URL}/bills/bulk-delete`, { billIds });
+
+// Employee performance
+export const getEmployeePerformance = (id) => axios.get(`${API_URL}/employees/${id}/performance`);
+
+// Admin Auth
+export const changeAdminPassword = (newPassword) => axios.put(`${API_URL}/auth/change-password`, { newPassword });
+
+// Bookings (Pre-booking)
+export const getBookings = (params) => axios.get(`${API_URL}/bookings`, { params });
+export const getUpcomingBookingsCount = () => axios.get(`${API_URL}/bookings/upcoming-count`);
+export const createBooking = (data) => axios.post(`${API_URL}/bookings`, data);
+export const updateBookingStatus = (id, status) => axios.put(`${API_URL}/bookings/${id}/status`, { status });
+export const updateBooking = (id, data) => axios.put(`${API_URL}/bookings/${id}`, data);
+export const deleteBooking = (id) => axios.delete(`${API_URL}/bookings/${id}`);
+
+// Ratings
+export const getRatings = (params) => axios.get(`${API_URL}/ratings`, { params });
+export const getRatingStats = () => axios.get(`${API_URL}/ratings/stats`);
+export const submitRating = (data) => axios.post(`${API_URL}/ratings`, data);
+export const checkRating = (orderId) => axios.get(`${API_URL}/ratings/check/${orderId}`);

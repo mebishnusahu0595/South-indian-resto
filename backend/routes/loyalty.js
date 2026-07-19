@@ -4,7 +4,7 @@ const LoyaltySettings = require('../models/LoyaltySettings');
 const User = require('../models/User');
 const MenuItem = require('../models/MenuItem');
 const LoyaltyOffer = require('../models/LoyaltyOffer');
-const { protect, admin } = require('../middleware/auth');
+const { protect, admin, superadmin } = require('../middleware/auth');
 
 // @route   GET /api/loyalty/settings
 // @desc    Get loyalty settings
@@ -20,8 +20,8 @@ router.get('/settings', async (req, res) => {
 
 // @route   PUT /api/loyalty/settings
 // @desc    Update loyalty settings
-// @access  Private/Admin
-router.put('/settings', protect, admin, async (req, res) => {
+// @access  Private/Superadmin
+router.put('/settings', protect, superadmin, async (req, res) => {
     try {
         const {
             pointsPerRupee,
@@ -132,8 +132,8 @@ router.get('/all-users', protect, admin, async (req, res) => {
 
 // @route   PUT /api/loyalty/adjust-points/:userId
 // @desc    Manually adjust user points (admin)
-// @access  Private/Admin
-router.put('/adjust-points/:userId', protect, admin, async (req, res) => {
+// @access  Private/Superadmin
+router.put('/adjust-points/:userId', protect, superadmin, async (req, res) => {
     try {
         const { points, reason } = req.body;
         const user = await User.findById(req.params.userId);
@@ -165,8 +165,8 @@ router.put('/adjust-points/:userId', protect, admin, async (req, res) => {
 
 // @route   PUT /api/loyalty/product/:productId
 // @desc    Set bonus loyalty points for a product
-// @access  Private/Admin
-router.put('/product/:productId', protect, admin, async (req, res) => {
+// @access  Private/Superadmin
+router.put('/product/:productId', protect, superadmin, async (req, res) => {
     try {
         const { bonusLoyaltyPoints } = req.body;
 
@@ -202,8 +202,8 @@ router.get('/offers', async (req, res) => {
 
 // @route   POST /api/loyalty/offers
 // @desc    Create a new loyalty offer
-// @access  Private/Admin
-router.post('/offers', protect, admin, async (req, res) => {
+// @access  Private/Superadmin
+router.post('/offers', protect, superadmin, async (req, res) => {
     try {
         const offer = new LoyaltyOffer(req.body);
         await offer.save();
@@ -215,8 +215,8 @@ router.post('/offers', protect, admin, async (req, res) => {
 
 // @route   PUT /api/loyalty/offers/:id
 // @desc    Update a loyalty offer
-// @access  Private/Admin
-router.put('/offers/:id', protect, admin, async (req, res) => {
+// @access  Private/Superadmin
+router.put('/offers/:id', protect, superadmin, async (req, res) => {
     try {
         const offer = await LoyaltyOffer.findByIdAndUpdate(req.params.id, req.body, { new: true });
         if (!offer) return res.status(404).json({ message: 'Offer not found' });
@@ -228,8 +228,8 @@ router.put('/offers/:id', protect, admin, async (req, res) => {
 
 // @route   DELETE /api/loyalty/offers/:id
 // @desc    Delete a loyalty offer
-// @access  Private/Admin
-router.delete('/offers/:id', protect, admin, async (req, res) => {
+// @access  Private/Superadmin
+router.delete('/offers/:id', protect, superadmin, async (req, res) => {
     try {
         const offer = await LoyaltyOffer.findByIdAndDelete(req.params.id);
         if (!offer) return res.status(404).json({ message: 'Offer not found' });

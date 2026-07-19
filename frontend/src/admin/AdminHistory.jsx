@@ -1,24 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiFileText, FiClock, FiCheckCircle, FiXCircle, FiDownload, FiCalendar, FiX } from 'react-icons/fi';
-import { getAllOrders } from '../utils/api';
+import { FiSearch, FiFileText, FiClock, FiCheckCircle, FiXCircle, FiDownload, FiCalendar, FiX, FiTrash2 } from 'react-icons/fi';
+import { getAllOrders, deleteOrder } from '../utils/api';
 import { exportToCSV, orderExportColumns, getFilenameDate } from '../utils/exportUtils';
+import { useAuth } from '../context/AuthContext';
 import OrderBill from '../components/OrderBill';
 import './AdminHistory.css';
 
+const getLocalDateString = (date = new Date()) => {
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+};
+
 const AdminHistory = () => {
+    const { user } = useAuth();
+    const isSuperadmin = user?.role === 'superadmin';
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [allTime, setAllTime] = useState(false);
     const [filters, setFilters] = useState({
         status: '',
-        date: new Date().toISOString().split('T')[0]
+        date: getLocalDateString()
     });
     const [showExportModal, setShowExportModal] = useState(false);
     const [exportRange, setExportRange] = useState({
         startDate: '',
         endDate: ''
     });
+
+    // Bulk select for superadmin
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
 
     useEffect(() => {
         fetchOrders();
@@ -37,6 +50,48 @@ const AdminHistory = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleDeleteOrder = async (orderId) => {
+        if (!window.confirm('Are you absolutely sure you want to permanently delete this order? This will remove all records.')) {
+            return;
+        }
+
+        try {
+            await deleteOrder(orderId);
+            setOrders(prev => prev.filter(o => o._id !== orderId));
+            setSelectedIds(prev => prev.filter(id => id !== orderId));
+        } catch (error) {
+            console.error('Delete error:', error);
+            alert('Failed to delete order');
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.length === 0) return;
+        if (!window.confirm(`Delete ${selectedIds.length} orders permanently? This cannot be undone.`)) return;
+        setBulkDeleting(true);
+        try {
+            for (const id of selectedIds) {
+                await deleteOrder(id);
+            }
+            setOrders(prev => prev.filter(o => !selectedIds.includes(o._id)));
+            setSelectedIds([]);
+        } catch (error) {
+            alert('Some orders failed to delete');
+            fetchOrders();
+        } finally {
+            setBulkDeleting(false);
+        }
+    };
+
+    const toggleSelect = (id) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === orders.length) setSelectedIds([]);
+        else setSelectedIds(orders.map(o => o._id));
     };
 
     const getStatusIcon = (status) => {
@@ -81,15 +136,29 @@ const AdminHistory = () => {
                         >
                             Daily
                         </button>
-                        <button
-                            className={`tab-btn ${allTime ? 'active' : ''}`}
-                            onClick={() => setAllTime(true)}
-                        >
-                            All Time
-                        </button>
-                        <button className="btn btn-primary export-btn" onClick={() => setShowExportModal(true)}>
-                            <FiDownload /> Export
-                        </button>
+                        {isSuperadmin && (
+                            <button
+                                className={`tab-btn ${allTime ? 'active' : ''}`}
+                                onClick={() => setAllTime(true)}
+                            >
+                                All Time
+                            </button>
+                        )}
+                        {isSuperadmin && (
+                            <button className="btn btn-primary export-btn" onClick={() => setShowExportModal(true)}>
+                                <FiDownload /> Export
+                            </button>
+                        )}
+                        {isSuperadmin && selectedIds.length > 0 && (
+                            <button
+                                className="btn btn-danger export-btn"
+                                onClick={handleBulkDelete}
+                                disabled={bulkDeleting}
+                                style={{ marginLeft: 8 }}
+                            >
+                                <FiTrash2 /> {bulkDeleting ? 'Deleting...' : `Delete (${selectedIds.length})`}
+                            </button>
+                        )}
                     </div>
                 </div>
                 <div className="filters">
@@ -99,6 +168,9 @@ const AdminHistory = () => {
                             className="input"
                             value={filters.date}
                             onChange={(e) => setFilters({ ...filters, date: e.target.value })}
+                            max={!isSuperadmin ? getLocalDateString() : undefined}
+                            min={!isSuperadmin ? getLocalDateString() : undefined}
+                            disabled={!isSuperadmin}
                         />
                     )}
                     <select
@@ -121,6 +193,11 @@ const AdminHistory = () => {
                     <table className="admin-table">
                         <thead>
                             <tr>
+                                {isSuperadmin && (
+                                    <th style={{ width: '40px' }}>
+                                        <input type="checkbox" checked={selectedIds.length === orders.length && orders.length > 0} onChange={toggleSelectAll} />
+                                    </th>
+                                )}
                                 <th>Order #</th>
                                 <th>Customer</th>
                                 <th>Items</th>
@@ -133,6 +210,9 @@ const AdminHistory = () => {
                         <tbody>
                             {orders.map(order => (
                                 <tr key={order._id}>
+                                    {isSuperadmin && (
+                                        <td><input type="checkbox" checked={selectedIds.includes(order._id)} onChange={() => toggleSelect(order._id)} /></td>
+                                    )}
                                     <td className="font-bold">{order.orderNumber}</td>
                                     <td>
                                         <div className="cust-info">
@@ -163,12 +243,24 @@ const AdminHistory = () => {
                                         )}
                                     </td>
                                     <td>
-                                        <button
-                                            className="btn-view-bill"
-                                            onClick={() => setSelectedOrder(order)}
-                                        >
-                                            <FiFileText /> Bill
-                                        </button>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button
+                                                className="btn-view-bill"
+                                                onClick={() => setSelectedOrder(order)}
+                                            >
+                                                <FiFileText /> Bill
+                                            </button>
+                                            {isSuperadmin && (
+                                                <button
+                                                    className="btn-view-bill"
+                                                    onClick={() => handleDeleteOrder(order._id)}
+                                                    style={{ backgroundColor: '#EF4444', borderColor: '#EF4444', color: 'white' }}
+                                                    title="Delete Order Permanently"
+                                                >
+                                                    <FiTrash2 /> Delete
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

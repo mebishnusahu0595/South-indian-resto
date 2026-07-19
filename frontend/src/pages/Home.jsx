@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import Loader from '../components/Loader';
 import FloatingCartBtn from '../components/FloatingCartBtn';
+import Doodles from '../components/Doodles';
 import './Home.css';
 
 const Home = () => {
@@ -40,46 +41,53 @@ const Home = () => {
     };
 
     if (loading) {
-        return <Loader message="Loading delicious items..." />;
+        return <Loader message="Setting up your poolside escape..." />;
     }
 
     return (
-        <div className="home-page">
+        <div className="home-page" style={{ position: 'relative' }}>
+            <Doodles />
             <Header />
 
             {/* Hero Section */}
             <section className="hero-section">
                 <div className="hero-content">
                     <div className="hero-text">
-                        <span className="hero-badge">🍽️ Authentic South Indian</span>
+                        <span className="hero-badge sketch-border-subtle font-sketch">🍹 Eat • Chill • Repeat</span>
                         <h1 className="hero-title">
-                            Experience the <span className="highlight">Taste</span> of
-                            <span className="animate-text"> Tradition</span>
+                            Welcome to <span className="highlight">keabythepool</span>
                         </h1>
                         <p className="hero-description">
-                            From crispy dosas to fluffy idlis, every dish is crafted with love
-                            and authentic spices. Taste the flavors of South India!
+                            Sip on refreshing mocktails, enjoy our signature Multani Paneer Tikka, or dive into hot pizzas and burgers. Your perfect poolside foodie escape is here!
                         </p>
                         <div className="hero-stats">
                             <div className="stat-item">
-                                <span className="stat-number">50+</span>
-                                <span className="stat-label">Dishes</span>
+                                <span className="stat-number">30+</span>
+                                <span className="stat-label">Mocktails & Bites</span>
                             </div>
                             <div className="stat-item">
-                                <span className="stat-number">4.8</span>
+                                <span className="stat-number">4.9</span>
                                 <span className="stat-label">Rating</span>
                             </div>
                             <div className="stat-item">
-                                <span className="stat-number">15k+</span>
-                                <span className="stat-label">Orders</span>
+                                <span className="stat-number">10k+</span>
+                                <span className="stat-label">Escapes</span>
                             </div>
                         </div>
-                        <Link to="/menu" className="hero-cta">
+                        <Link to="/menu" className="hero-cta sketch-border sketch-shadow">
                             Explore Menu <FiArrowRight />
                         </Link>
                     </div>
-                    <div className="hero-image-container">
-                        <img src="/hero-image.png" alt="South Indian Cuisine" className="hero-image" />
+                    <div className="hero-image-container" id="hero-img-wrap">
+                        <img
+                            src="/logo.jpg"
+                            alt="Kea By The Pool"
+                            className="hero-image sketch-border sketch-shadow"
+                            onError={(e) => {
+                                const wrap = document.getElementById('hero-img-wrap');
+                                if (wrap) wrap.style.display = 'none';
+                            }}
+                        />
                         <div className="hero-image-decoration"></div>
                     </div>
                 </div>
@@ -135,9 +143,6 @@ const Home = () => {
                 )
             ))}
 
-            {/* Floating Cart Button */}
-            {/* Floating Cart Button */}
-            <FloatingCartBtn />
 
             {/* Footer */}
             <Footer />

@@ -6,6 +6,7 @@ import Header from '../components/Header';
 import AnimatedSearchInput from '../components/AnimatedSearchInput';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import Doodles from '../components/Doodles';
 import {
     createOrder,
     validateCoupon,
@@ -227,13 +228,14 @@ const Cart = () => {
 
     if (cart.length === 0) {
         return (
-            <div className="cart-page">
+            <div className="cart-page" style={{ position: 'relative' }}>
+                <Doodles />
                 <Header title="Cart" showBack showCart={false} />
-                <div className="empty-cart">
+                <div className="empty-cart" style={{ zIndex: 1, position: 'relative' }}>
                     <div className="empty-cart-icon"><FiShoppingCart /></div>
                     <h2>Your cart is empty</h2>
                     <p>Add some delicious items from our menu</p>
-                    <button onClick={() => navigate('/menu')} className="btn btn-primary">
+                    <button onClick={() => navigate('/menu')} className="btn btn-primary sketch-border sketch-shadow">
                         Browse Menu
                     </button>
                 </div>
@@ -242,7 +244,8 @@ const Cart = () => {
     }
 
     return (
-        <div className="cart-page">
+        <div className="cart-page" style={{ position: 'relative' }}>
+            <Doodles />
             <Header title="Cart" showBack showCart={false} />
 
             <div className="cart-content">
@@ -534,7 +537,7 @@ const Cart = () => {
             <div className="cart-footer">
                 <button
                     onClick={handlePlaceOrder}
-                    className="place-order-btn"
+                    className="place-order-btn sketch-border sketch-shadow"
                     disabled={loading || cart.length === 0}
                 >
                     {loading ? 'Placing Order...' : `Place Order • ₹${total.toFixed(2)}`}
@@ -544,10 +547,10 @@ const Cart = () => {
             {/* Error Popup Modal */}
             {error && (
                 <div className="error-modal-overlay" onClick={() => setError('')}>
-                    <div className="error-modal" onClick={e => e.stopPropagation()}>
+                    <div className="error-modal sketch-border sketch-shadow" onClick={e => e.stopPropagation()}>
                         <div className="error-icon"><FiAlertTriangle /></div>
                         <p className="error-text">{error}</p>
-                        <button className="error-close-btn" onClick={() => setError('')}>
+                        <button className="error-close-btn sketch-border-subtle sketch-shadow" onClick={() => setError('')}>
                             OK
                         </button>
                     </div>

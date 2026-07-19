@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['customer', 'admin'],
+        enum: ['customer', 'admin', 'superadmin'],
         default: 'customer'
     },
     loyaltyPoints: {
@@ -38,6 +38,10 @@ const userSchema = new mongoose.Schema({
     totalPointsEarned: {
         type: Number,
         default: 0
+    },
+    password: {
+        type: String,
+        default: 'admin123'
     },
     createdAt: {
         type: Date,

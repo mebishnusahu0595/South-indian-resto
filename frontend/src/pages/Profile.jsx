@@ -36,9 +36,9 @@ const Profile = () => {
                 <Header title="Profile" />
                 <div className="login-prompt">
                     <div className="login-prompt-icon">👤</div>
-                    <h2>Welcome to Chetta's Dosa</h2>
+                    <h2>Welcome to keabythepool</h2>
                     <p>Login to manage your profile and track orders</p>
-                    <Link to="/login" className="btn btn-primary">Login / Sign Up</Link>
+                    <Link to="/login" className="btn btn-primary sketch-border sketch-shadow">Login / Sign Up</Link>
                 </div>
             </div>
         );

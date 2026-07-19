@@ -7,6 +7,7 @@ import MenuCard from '../components/MenuCard';
 import MenuCardSkeleton from '../components/MenuCardSkeleton';
 import { getCategories, getMenuItems } from '../utils/api';
 import FloatingCartBtn from '../components/FloatingCartBtn';
+import Doodles from '../components/Doodles';
 import './Menu.css';
 
 const ITEMS_PER_PAGE = 10;
@@ -173,11 +174,11 @@ const Menu = () => {
 
     // Animated placeholder for search
     const placeholderTexts = [
-        "Search for Masala Dosa...",
-        "Try our famous Idli...",
-        "Looking for Vada?",
-        "Search Uttapam...",
-        "Find your favorite dish...",
+        "Search for Virgin Mojito...",
+        "Try our Paneer Tikka...",
+        "Looking for Cheese Burger?",
+        "Search Margherita Pizza...",
+        "Find your poolside escape...",
     ];
     const [placeholderIndex, setPlaceholderIndex] = React.useState(0);
     const [displayPlaceholder, setDisplayPlaceholder] = React.useState('');
@@ -215,7 +216,8 @@ const Menu = () => {
     };
 
     return (
-        <div className="menu-page">
+        <div className="menu-page" style={{ position: 'relative' }}>
+            <Doodles />
             <Header title="Menu" showBack />
 
             {/* Search Bar */}
@@ -235,7 +237,7 @@ const Menu = () => {
             {/* Categories Horizontal Scroll */}
             <div className="categories-container">
                 <div
-                    className={`category-card ${!selectedCategory ? 'active' : ''}`}
+                    className={`category-card ${!selectedCategory ? 'active' : ''} sketch-border-subtle sketch-shadow`}
                     onClick={() => handleCategoryClick('')}
                     style={{ marginLeft: '16px' }}
                 >
@@ -303,8 +305,6 @@ const Menu = () => {
                 )}
             </div>
 
-            {/* Floating Cart Button */}
-            <FloatingCartBtn />
         </div>
     );
 };

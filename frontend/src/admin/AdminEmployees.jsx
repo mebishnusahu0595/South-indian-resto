@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { FiPlus, FiEdit2, FiTrash2, FiCalendar } from 'react-icons/fi';
 import Calendar from 'react-calendar';
-import { getEmployees, createEmployee, updateEmployee, deleteEmployee, getEmployeeAttendance, markAttendance, getHolidays, addHoliday } from '../utils/api';
+import { getEmployees, createEmployee, updateEmployee, deleteEmployee, getEmployeeAttendance, markAttendance, getHolidays, addHoliday, getTables } from '../utils/api';
 import 'react-calendar/dist/Calendar.css';
 import './AdminEmployees.css';
 
 const AdminEmployees = () => {
     const [employees, setEmployees] = useState([]);
+    const [tables, setTables] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [showAttendance, setShowAttendance] = useState(null);
@@ -14,17 +15,21 @@ const AdminEmployees = () => {
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [editItem, setEditItem] = useState(null);
     const [formData, setFormData] = useState({
-        name: '', phone: '', email: '', role: 'waiter', salary: 0, address: '', emergencyContact: ''
+        name: '', phone: '', email: '', role: 'waiter', salary: 0, address: '', emergencyContact: '', password: 'staff123', assignedTables: []
     });
 
     useEffect(() => { fetchData(); }, []);
 
     const fetchData = async () => {
         try {
-            const res = await getEmployees();
-            setEmployees(res.data);
+            const [empRes, tableRes] = await Promise.all([
+                getEmployees(),
+                getTables()
+            ]);
+            setEmployees(empRes.data);
+            setTables(tableRes.data || []);
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Error fetching employees and tables:', error);
         } finally {
             setLoading(false);
         }
@@ -98,14 +103,18 @@ const AdminEmployees = () => {
 
     const openEdit = (item) => {
         setEditItem(item);
-        setFormData({ ...item });
+        setFormData({
+            ...item,
+            password: item.password || 'staff123',
+            assignedTables: item.assignedTables ? item.assignedTables.map(t => typeof t === 'object' ? (t._id || t) : t) : []
+        });
         setShowModal(true);
     };
 
     const resetForm = () => {
         setEditItem(null);
         setFormData({
-            name: '', phone: '', email: '', role: 'waiter', salary: 0, address: '', emergencyContact: ''
+            name: '', phone: '', email: '', role: 'waiter', salary: 0, address: '', emergencyContact: '', password: 'staff123', assignedTables: []
         });
     };
 
@@ -128,6 +137,27 @@ const AdminEmployees = () => {
                             <h3>{emp.name}</h3>
                             <span className="employee-role">{emp.role}</span>
                             <p>{emp.phone}</p>
+                            {emp.assignedTables && emp.assignedTables.length > 0 && (
+                                <p style={{ fontSize: '12px', color: 'var(--primary)', marginTop: '4px', fontWeight: 'bold' }}>
+                                    Assigned: {emp.assignedTables.map(t => typeof t === 'object' ? `T-${t.tableNumber}` : t).join(', ')}
+                                </p>
+                            )}
+                            {emp.performance && (
+                                <div style={{ marginTop: '10px', background: '#EDE9FE', padding: '8px', borderRadius: '6px', fontSize: '12px', border: '1.5px solid #111111', color: '#111111' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', borderBottom: '1px dashed #111111', paddingBottom: '2px' }}>
+                                        <span>Total Sales:</span>
+                                        <strong>₹{emp.performance.totalSales.toFixed(0)}</strong>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span>Sent: {emp.performance.totalOrders}</span>
+                                        <span style={{ color: '#059669', fontWeight: 'bold' }}>Done: {emp.performance.servedOrders}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#D97706' }}>Pend: {emp.performance.pendingOrders}</span>
+                                        <span style={{ color: '#DC2626' }}>Can: {emp.performance.cancelledOrders}</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div className="employee-actions">
                             <button onClick={() => openAttendance(emp)} className="icon-btn calendar"><FiCalendar /></button>
@@ -160,6 +190,11 @@ const AdminEmployees = () => {
                                             onChange={e => setFormData({ ...formData, phone: e.target.value })} required />
                                     </div>
                                     <div className="input-group">
+                                        <label>Password (For Mobile Login) *</label>
+                                        <input type="text" className="input" value={formData.password}
+                                            onChange={e => setFormData({ ...formData, password: e.target.value })} required />
+                                    </div>
+                                    <div className="input-group">
                                         <label>Email</label>
                                         <input type="email" className="input" value={formData.email}
                                             onChange={e => setFormData({ ...formData, email: e.target.value })} />
@@ -185,6 +220,30 @@ const AdminEmployees = () => {
                                         <label>Emergency Contact</label>
                                         <input type="tel" className="input" value={formData.emergencyContact}
                                             onChange={e => setFormData({ ...formData, emergencyContact: e.target.value })} />
+                                    </div>
+                                    <div className="input-group" style={{ gridColumn: 'span 2', marginTop: '10px' }}>
+                                        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Assign Tables to Waiter/Staff</label>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', maxHeight: '100px', overflowY: 'auto', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+                                            {[...tables].sort((a,b) => a.tableNumber - b.tableNumber).map(table => {
+                                                const isChecked = formData.assignedTables?.includes(table._id);
+                                                return (
+                                                    <label key={table._id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', width: '100px', cursor: 'pointer' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={() => {
+                                                                const current = formData.assignedTables || [];
+                                                                const updated = isChecked 
+                                                                    ? current.filter(id => id !== table._id)
+                                                                    : [...current, table._id];
+                                                                setFormData({ ...formData, assignedTables: updated });
+                                                            }}
+                                                        />
+                                                        T-{table.tableNumber}
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="input-group">

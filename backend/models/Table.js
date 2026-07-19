@@ -6,9 +6,34 @@ const tableSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    name: {
+        type: String,
+        default: ''
+    },
     capacity: {
         type: Number,
         default: 4
+    },
+    section: {
+        type: String,
+        default: 'Main Hall'
+    },
+    areaType: {
+        type: String,
+        default: 'table'
+    },
+    shape: {
+        type: String,
+        enum: ['round', 'square', 'rectangle'],
+        default: 'square'
+    },
+    posX: {
+        type: Number,
+        default: null
+    },
+    posY: {
+        type: Number,
+        default: null
     },
     isOccupied: {
         type: Boolean,

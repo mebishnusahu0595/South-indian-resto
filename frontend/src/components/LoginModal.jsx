@@ -15,7 +15,7 @@ const LoginModal = () => {
     const [otpLength, setOtpLength] = useState(6);
     const isSubmittingRef = useRef(false);
 
-    const { sendOTP, verifyOTP } = useAuth();
+    const { sendOTP, verifyOTP, skipLogin } = useAuth();
 
     // Resend timer countdown
     useEffect(() => {
@@ -110,10 +110,10 @@ const LoginModal = () => {
 
     return (
         <div className="login-modal-overlay">
-            <div className="login-modal">
+            <div className="login-modal sketch-border sketch-shadow">
                 <div className="login-modal-header">
-                    <img src="/logo.png" alt="Chetta's Dosa" className="modal-logo" />
-                    <h2>Chetta's Dosa</h2>
+                    <img src="/logo.jpg" alt="keabythepool" className="modal-logo" />
+                    <h2>keabythepool</h2>
                 </div>
 
                 <div className="login-modal-content">
@@ -138,6 +138,14 @@ const LoginModal = () => {
 
                             <button type="submit" className="btn btn-primary btn-full" disabled={loading || phone.length !== 10}>
                                 {loading ? 'Sending...' : 'Get OTP'}
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-secondary btn-full"
+                                style={{ marginTop: '10px' }}
+                                onClick={skipLogin}
+                            >
+                                Browse as Guest
                             </button>
                         </form>
                     )}

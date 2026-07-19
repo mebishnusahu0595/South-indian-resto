@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Chetta's Dosa - Automated Backup Script
+# Kea By The Pool - Automated Backup Script
 # Backs up MongoDB database and syncs to Cloudflare R2
 # =============================================================================
 #
@@ -8,7 +8,7 @@
 #   1. chmod +x backup.sh
 #   2. Configure rclone: rclone config (add R2 remote named 'r2_backup')
 #   3. Add to crontab: crontab -e
-#      0 2 * * * /home/sammy/chettas-dosa-website/deployment/scripts/backup.sh >> /var/log/backup.log 2>&1
+#      0 2 * * * /home/sammy/kea-by-the-pool-website/deployment/scripts/backup.sh >> /var/log/backup.log 2>&1
 # =============================================================================
 
 set -e  # Exit on error
@@ -16,12 +16,12 @@ set -e  # Exit on error
 # Configuration
 BACKUP_DIR="/root/backups"
 DATE=$(date +%Y-%m-%d_%H-%M-%S)
-MONGO_DB="chettas-dosa"
+MONGO_DB="kea-by-the-pool"
 MONGO_URI="mongodb://localhost:27017"  # Update if using auth
 R2_REMOTE="r2_backup"  # Name from rclone config
-R2_BUCKET="chettasdosabackupbucket"
+R2_BUCKET="keabythepoolbackupbucket"
 RETENTION_DAYS=7
-LOG_FILE="/var/log/chettas-backup.log"
+LOG_FILE="/var/log/kea-backup.log"
 
 # Email notification (optional - requires msmtp)
 NOTIFY_EMAIL="your_email@gmail.com"
@@ -69,8 +69,7 @@ mkdir -p "$BACKUP_PATH"
 log "Step 1: Dumping MongoDB database..."
 
 # If using authentication (recommended for production):
-# If using authentication (recommended for production):
-# mongodump --uri="mongodb://myAdmin:PASSWORD@localhost:27017/chettas-dosa?authSource=admin" --out "$BACKUP_PATH/mongo"
+# mongodump --uri="mongodb://myAdmin:PASSWORD@localhost:27017/kea-by-the-pool?authSource=admin" --out "$BACKUP_PATH/mongo"
 
 mongodump --uri="$MONGO_URI" --db="$MONGO_DB" --out "$BACKUP_PATH/mongo"
 
@@ -78,7 +77,7 @@ if [ $? -eq 0 ]; then
     log "MongoDB dump successful."
 else
     log "ERROR: MongoDB dump failed!"
-    send_notification "[BACKUP FAILED] Chetta's Dosa" "MongoDB dump failed on $(hostname) at $(date)"
+    send_notification "[BACKUP FAILED] Kea By The Pool" "MongoDB dump failed on $(hostname) at $(date)"
     exit 1
 fi
 
@@ -87,7 +86,7 @@ fi
 # -----------------------------------------------------------------------------
 log "Step 2: Backing up uploaded files..."
 
-UPLOADS_DIR="/root/chettas-dosa-website/backend/uploads"
+UPLOADS_DIR="/root/kea-by-the-pool-website/backend/uploads"
 if [ -d "$UPLOADS_DIR" ]; then
     cp -r "$UPLOADS_DIR" "$BACKUP_PATH/uploads"
     log "Uploads backup complete."
@@ -100,7 +99,7 @@ fi
 # -----------------------------------------------------------------------------
 log "Step 3: Backing up configuration..."
 
-ENV_FILE="/root/chettas-dosa-website/backend/.env"
+ENV_FILE="/root/kea-by-the-pool-website/backend/.env"
 if [ -f "$ENV_FILE" ]; then
     # Create encrypted backup of .env (optional - requires gpg)
     # gpg --symmetric --cipher-algo AES256 -o "$BACKUP_PATH/env.gpg" "$ENV_FILE"
@@ -116,7 +115,7 @@ fi
 # -----------------------------------------------------------------------------
 log "Step 4: Compressing backup..."
 
-ARCHIVE_NAME="chettas-backup-$DATE.tar.gz"
+ARCHIVE_NAME="kea-backup-$DATE.tar.gz"
 tar -zcf "$BACKUP_DIR/$ARCHIVE_NAME" -C "$BACKUP_DIR" "$DATE"
 
 # Get archive size
@@ -138,7 +137,7 @@ if command -v rclone &> /dev/null; then
         log "R2 sync successful."
     else
         log "WARNING: R2 sync failed! Backup is still available locally."
-        send_notification "[BACKUP WARNING] Chetta's Dosa" "R2 sync failed. Local backup available at $BACKUP_DIR/$ARCHIVE_NAME"
+        send_notification "[BACKUP WARNING] Kea By The Pool" "R2 sync failed. Local backup available at $BACKUP_DIR/$ARCHIVE_NAME"
     fi
 else
     log "WARNING: rclone not installed. Skipping R2 sync."
@@ -158,7 +157,7 @@ log "Local: $BACKUP_DIR/$ARCHIVE_NAME"
 log "Remote: $R2_REMOTE:$R2_BUCKET/vps-backups/$ARCHIVE_NAME"
 log "=========================================="
 
-send_notification "[BACKUP SUCCESS] Chetta's Dosa" "Backup completed successfully.
+send_notification "[BACKUP SUCCESS] Kea By The Pool" "Backup completed successfully.
 Archive: $ARCHIVE_NAME
 Size: $ARCHIVE_SIZE
 Time: $(date)"

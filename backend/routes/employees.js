@@ -5,6 +5,105 @@ const Attendance = require('../models/Attendance');
 const Holiday = require('../models/Holiday');
 const { protect, admin } = require('../middleware/auth');
 
+// Mark self attendance (Check-in/Check-out for staff)
+router.post('/attendance/self', protect, async (req, res) => {
+    try {
+        if (!req.user.isEmployee) {
+            return res.status(403).json({ message: 'Only staff can mark self attendance' });
+        }
+        
+        const { action } = req.body; // 'check-in' or 'check-out'
+        const today = new Date();
+        today.setHours(12, 0, 0, 0); // safe date at noon
+
+        // Format current local time nicely (e.g. 10:30 AM)
+        const timeStr = new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' });
+
+        let attendance = await Attendance.findOne({ employee: req.user._id, date: today });
+
+        if (action === 'check-in') {
+            if (attendance) {
+                return res.status(400).json({ message: 'Already checked in for today' });
+            }
+            attendance = new Attendance({
+                employee: req.user._id,
+                date: today,
+                status: 'present',
+                checkIn: timeStr,
+                checkOut: ''
+            });
+        } else if (action === 'check-out') {
+            if (!attendance) {
+                return res.status(400).json({ message: 'Must check in first before checking out' });
+            }
+            attendance.checkOut = timeStr;
+        } else {
+            return res.status(400).json({ message: 'Invalid action. Use check-in or check-out' });
+        }
+
+        await attendance.save();
+        res.json(attendance);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Get self today's attendance
+router.get('/attendance/today', protect, async (req, res) => {
+    try {
+        if (!req.user.isEmployee) {
+            return res.status(403).json({ message: 'Only staff can check self attendance' });
+        }
+        const today = new Date();
+        today.setHours(12, 0, 0, 0);
+
+        const attendance = await Attendance.findOne({ employee: req.user._id, date: today });
+        res.json(attendance || null);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Get employee performance metrics (accessible by employee self or admin)
+router.get('/:id/performance', protect, async (req, res) => {
+    try {
+        const mongoose = require('mongoose');
+        const Order = require('../models/Order');
+        const employeeId = req.params.id;
+
+        // Verify if admin, or the employee themselves is querying
+        if (req.user._id.toString() !== employeeId && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Not authorized to view these performance metrics' });
+        }
+
+        const [totalCount, pendingCount, servedCount, cancelledCount, salesResult] = await Promise.all([
+            Order.countDocuments({ placedBy: employeeId }),
+            Order.countDocuments({ placedBy: employeeId, status: { $in: ['pending', 'confirmed', 'preparing', 'ready'] } }),
+            Order.countDocuments({ placedBy: employeeId, status: { $in: ['served', 'bill_requested', 'bill_generated', 'paid'] } }),
+            Order.countDocuments({ placedBy: employeeId, status: 'cancelled' }),
+            Order.aggregate([
+                { $match: { placedBy: new mongoose.Types.ObjectId(employeeId), status: { $ne: 'cancelled' } } },
+                { $group: { _id: null, totalSales: { $sum: '$total' } } }
+            ])
+        ]);
+
+        const totalSales = salesResult.length > 0 ? salesResult[0].totalSales : 0;
+
+        res.json({
+            totalOrders: totalCount,
+            pendingOrders: pendingCount,
+            servedOrders: servedCount,
+            cancelledOrders: cancelledCount,
+            totalSales: totalSales
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Get all employees
 router.get('/', protect, admin, async (req, res) => {
     try {
@@ -12,8 +111,36 @@ router.get('/', protect, admin, async (req, res) => {
         let query = {};
         if (role) query.role = role;
         if (isActive !== undefined) query.isActive = isActive === 'true';
-        const employees = await Employee.find(query).sort('name');
-        res.json(employees);
+        const employees = await Employee.find(query).populate('assignedTables').sort('name');
+        
+        const Order = require('../models/Order');
+        const populatedEmployees = await Promise.all(employees.map(async (emp) => {
+            const [totalCount, pendingCount, servedCount, cancelledCount, salesResult] = await Promise.all([
+                Order.countDocuments({ placedBy: emp._id }),
+                Order.countDocuments({ placedBy: emp._id, status: { $in: ['pending', 'confirmed', 'preparing', 'ready'] } }),
+                Order.countDocuments({ placedBy: emp._id, status: { $in: ['served', 'bill_requested', 'bill_generated', 'paid'] } }),
+                Order.countDocuments({ placedBy: emp._id, status: 'cancelled' }),
+                Order.aggregate([
+                    { $match: { placedBy: emp._id, status: { $ne: 'cancelled' } } },
+                    { $group: { _id: null, totalSales: { $sum: '$total' } } }
+                ])
+            ]);
+
+            const totalSales = salesResult.length > 0 ? salesResult[0].totalSales : 0;
+            
+            return {
+                ...emp.toObject(),
+                performance: {
+                    totalOrders: totalCount,
+                    pendingOrders: pendingCount,
+                    servedOrders: servedCount,
+                    cancelledOrders: cancelledCount,
+                    totalSales: totalSales
+                }
+            };
+        }));
+
+        res.json(populatedEmployees);
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -22,7 +149,7 @@ router.get('/', protect, admin, async (req, res) => {
 // Get employee by ID
 router.get('/:id', protect, admin, async (req, res) => {
     try {
-        const employee = await Employee.findById(req.params.id);
+        const employee = await Employee.findById(req.params.id).populate('assignedTables');
         if (!employee) return res.status(404).json({ message: 'Employee not found' });
         res.json(employee);
     } catch (error) {

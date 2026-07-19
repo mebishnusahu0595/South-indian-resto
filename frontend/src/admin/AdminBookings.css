@@ -1,0 +1,152 @@
+.admin-bookings {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.bookings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.bookings-header h1 {
+    font-family: 'Patrick Hand', cursive;
+    font-size: 2rem;
+    color: var(--primary);
+}
+
+.no-bookings {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.no-bookings h3 {
+    margin: 16px 0 8px;
+}
+
+.bookings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+.booking-card {
+    background: white;
+    border-radius: 12px;
+    padding: 18px;
+    border-left: 4px solid #7C3AED;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.2s ease;
+}
+
+.booking-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.booking-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.booking-card-header h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.booking-card .status-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    border: 1px solid;
+}
+
+.booking-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+}
+
+.detail-row {
+    display: flex;
+    gap: 8px;
+    font-size: 0.85rem;
+}
+
+.detail-label {
+    font-weight: 600;
+    color: var(--text-muted);
+    min-width: 70px;
+}
+
+.booking-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 12px;
+    border-top: 1px solid #F3F4F6;
+}
+
+.booking-actions .btn-sm {
+    font-size: 0.75rem;
+    padding: 5px 10px;
+}
+
+/* Complete button */
+.btn-complete {
+    background: #059669;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn-complete:hover {
+    background: #047857;
+}
+
+/* Chips for sections/tables in edit modal */
+.chips-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.chips-wrap .chip {
+    padding: 5px 12px;
+    border-radius: 16px;
+    border: 1px solid #D1D5DB;
+    background: #F9FAFB;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: #6B7280;
+    transition: all 0.15s ease;
+}
+
+.chips-wrap .chip:hover {
+    border-color: #7C3AED;
+    color: #7C3AED;
+}
+
+.chips-wrap .chip.active {
+    background: #7C3AED;
+    border-color: #7C3AED;
+    color: white;
+}

@@ -18,6 +18,7 @@ import AdminLogin from './admin/AdminLogin';
 import AdminLayout from './admin/AdminLayout';
 import AdminDashboard from './admin/AdminDashboard';
 import AdminOrders from './admin/AdminOrders';
+import AdminCreateOrder from './admin/AdminCreateOrder';
 import AdminMenu from './admin/AdminMenu';
 import AdminCategories from './admin/AdminCategories';
 import AdminCoupons from './admin/AdminCoupons';
@@ -30,6 +31,8 @@ import AdminHistory from './admin/AdminHistory';
 import AdminSettings from './admin/AdminSettings';
 import AdminLoyalty from './admin/AdminLoyalty';
 import AdminCustomers from './admin/AdminCustomers';
+import AdminBills from './admin/AdminBills';
+import AdminBookings from './admin/AdminBookings';
 
 import './index.css';
 
@@ -48,9 +51,9 @@ const AdminRoute = ({ children }) => {
   return isAdmin ? children : <Navigate to="/admin/login" />;
 };
 
-// User Layout with Bottom Nav and Login Modal
-const UserLayout = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+// Protected Route for Superadmin-only pages
+const SuperadminOnly = ({ children }) => {
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -60,13 +63,34 @@ const UserLayout = ({ children }) => {
     );
   }
 
+  if (!user || user.role !== 'superadmin') {
+    return <Navigate to="/admin" />;
+  }
+
+  return children;
+};
+
+// User Layout with Bottom Nav and Login Modal
+const UserLayout = ({ children }) => {
+  const { isAuthenticated, skippedLogin, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="spinner"></div>
+      </div>
+    );
+  }
+
+  const showLogin = !isAuthenticated && !skippedLogin;
+
   return (
     <>
-      <div className={!isAuthenticated ? 'page-blurred' : ''}>
+      <div className={showLogin ? 'page-blurred' : ''}>
         {children}
         <BottomNav />
       </div>
-      {!isAuthenticated && <LoginModal />}
+      {showLogin && <LoginModal />}
     </>
   );
 };
@@ -92,18 +116,21 @@ function AppRoutes() {
       }>
         <Route index element={<AdminDashboard />} />
         <Route path="orders" element={<AdminOrders />} />
+        <Route path="create-order" element={<AdminCreateOrder />} />
+        <Route path="bills" element={<AdminBills />} />
+        <Route path="bookings" element={<AdminBookings />} />
         <Route path="menu" element={<AdminMenu />} />
         <Route path="categories" element={<AdminCategories />} />
-        <Route path="collections" element={<AdminCollections />} />
-        <Route path="coupons" element={<AdminCoupons />} />
+        <Route path="collections" element={<SuperadminOnly><AdminCollections /></SuperadminOnly>} />
+        <Route path="coupons" element={<SuperadminOnly><AdminCoupons /></SuperadminOnly>} />
         <Route path="inventory" element={<AdminInventory />} />
         <Route path="employees" element={<AdminEmployees />} />
         <Route path="tables" element={<AdminTables />} />
-        <Route path="analytics" element={<AdminAnalytics />} />
+        <Route path="analytics" element={<SuperadminOnly><AdminAnalytics /></SuperadminOnly>} />
         <Route path="history" element={<AdminHistory />} />
         <Route path="settings" element={<AdminSettings />} />
-        <Route path="loyalty" element={<AdminLoyalty />} />
-        <Route path="customers" element={<AdminCustomers />} />
+        <Route path="loyalty" element={<SuperadminOnly><AdminLoyalty /></SuperadminOnly>} />
+        <Route path="customers" element={<SuperadminOnly><AdminCustomers /></SuperadminOnly>} />
       </Route>
 
       {/* Fallback */}

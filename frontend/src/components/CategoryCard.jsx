@@ -7,7 +7,7 @@ const CategoryCard = ({ category, isActive, onClick }) => {
 
     return (
         <div
-            className={`category-card ${isActive ? 'active' : ''}`}
+            className={`category-card ${isActive ? 'active' : ''} sketch-border-subtle sketch-shadow`}
             onClick={() => onClick(category._id)}
         >
             <div className="category-image-wrapper">

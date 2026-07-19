@@ -110,10 +110,19 @@ const AdminMenu = () => {
                     <div key={item._id} className={`item-card ${!item.isAvailable ? 'out-of-stock' : ''}`}>
                         <div className="item-image">
                             {item.image ? (
-                                <img src={getImageUrl(item.image)} alt={item.name} />
-                            ) : (
-                                <div className="no-image"><FiImage /></div>
-                            )}
+                                <img
+                                    src={getImageUrl(item.image)}
+                                    alt={item.name}
+                                    onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+                                    }}
+                                />
+                            ) : null}
+                            <div className="no-image" style={{ display: item.image ? 'none' : 'flex' }}>
+                                <FiImage />
+                                <span style={{ fontSize: '0.7rem', marginTop: '4px', color: 'var(--text-muted)' }}>No Image</span>
+                            </div>
                             {item.isBestSeller && <span className="badge bestseller">Bestseller</span>}
                             {item.isNewItem && <span className="badge new">New</span>}
                         </div>

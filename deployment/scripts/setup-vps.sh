@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Chetta's Dosa - VPS Initial Setup Script
+# Kea By The Pool - VPS Initial Setup Script
 # Run this as root on a fresh Ubuntu 22.04 VPS
 # =============================================================================
 #
@@ -30,7 +30,7 @@ SSH_PORT=22  # Change if you want non-standard SSH port
 
 echo ""
 echo "==========================================="
-echo "  Chetta's Dosa - VPS Setup Script"
+echo "  Kea By The Pool - VPS Setup Script"
 echo "==========================================="
 echo ""
 
@@ -126,7 +126,7 @@ log_info "Phase 6: Applying network hardening..."
 
 cat >> /etc/sysctl.conf << 'EOF'
 
-# Chetta's Dosa - Network Hardening
+# Kea By The Pool - Network Hardening
 net.ipv4.conf.all.accept_redirects = 0
 net.ipv6.conf.all.accept_redirects = 0
 net.ipv4.conf.all.send_redirects = 0
@@ -229,7 +229,7 @@ log_success "rclone installed. Run 'rclone config' to set up R2."
 # =============================================================================
 log_info "Phase 13: Configuring log rotation..."
 
-cat > /etc/logrotate.d/chettas-dosa << 'EOF'
+cat > /etc/logrotate.d/kea-by-the-pool << 'EOF'
 /root/logs/*.log {
     daily
     missingok
@@ -274,7 +274,7 @@ echo "  ✅ rclone (Backup sync)"
 echo "  ✅ Lynis (Security Audit)"
 echo ""
 echo "Next Steps:"
-echo "  1. Clone your repo: git clone https://github.com/Deepakscripts/chettas-dosa-website.git"
+echo "  1. Clone your repo: git clone https://github.com/Deepakscripts/kea-by-the-pool-website.git"
 echo "  2. Set up Nginx config: /etc/nginx/sites-available/"
 echo "  3. Get SSL: sudo certbot --nginx -d yourdomain.com"
 echo "  4. Secure MongoDB with authentication"

@@ -14,8 +14,8 @@ const OrderBill = ({ order, orders, onCancel }) => {
 
     // Use restaurant info from the first order or defaults
     const restaurant = ordersList[0].restaurantInfo || {
-        name: "Chetta's Dosa",
-        address: "Near IIT Bhilai, Khamariya",
+        name: "Kea By The Pool",
+        address: "Dhanora, Risali, Bhilai",
         phone: "+91 98765 43210",
         gstNumber: ""
     };
@@ -71,7 +71,7 @@ const OrderBill = ({ order, orders, onCancel }) => {
             <div className="bill-container print-bill-overlay" onClick={e => e.stopPropagation()}>
                 <div className="bill-header">
                     <h2>{restaurant.name}</h2>
-                    <p>Authentic South Indian Cuisine</p>
+                    <p>Eat • Chill • Repeat</p>
                     <p>{restaurant.address}</p>
                     <p>Ph: {restaurant.phone}</p>
                     {restaurant.gstNumber && <p>GSTIN: {restaurant.gstNumber}</p>}
@@ -119,7 +119,7 @@ const OrderBill = ({ order, orders, onCancel }) => {
                     </div>
                     {aggregated.discount > 0 && (
                         <div className="bill-total-row">
-                            <span>Discount</span>
+                            <span>Discount {mainOrder.discountName ? `(${mainOrder.discountName})` : ''}</span>
                             <span>- ₹{aggregated.discount.toFixed(2)}</span>
                         </div>
                     )}
@@ -146,6 +146,7 @@ const OrderBill = ({ order, orders, onCancel }) => {
                 </div>
 
                 <div className="bill-footer">
+                    {mainOrder.billerName && <p style={{ fontWeight: '600', margin: '4px 0', borderTop: '1px dotted #DDD', paddingTop: '4px' }}>Biller: {mainOrder.billerName}</p>}
                     <p>Payment: {mainOrder.paymentMethod?.toUpperCase() || 'NOT PAID'}</p>
                     <p>Thank you for visiting!</p>
                     <p>Visit again soon!</p>

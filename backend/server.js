@@ -19,6 +19,9 @@ const tableRoutes = require('./routes/tables');
 const settingsRoutes = require('./routes/settings');
 const collectionRoutes = require('./routes/collections');
 const loyaltyRoutes = require('./routes/loyalty');
+const billRoutes = require('./routes/bills');
+const bookingRoutes = require('./routes/bookings');
+const ratingRoutes = require('./routes/ratings');
 
 const app = express();
 app.set('trust proxy', 1); // Enable proxy trust for Nginx
@@ -56,6 +59,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
+
 // Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -72,10 +80,13 @@ app.use('/api/tables', tableRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
+app.use('/api/bills', billRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/ratings', ratingRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: "Chetta's Dosa API is running" });
+    res.json({ status: 'OK', message: "Kea By The Pool API is running" });
 });
 
 // Socket.IO connection handling
@@ -119,11 +130,24 @@ const createDefaultAdmin = async () => {
             await User.create({
                 phone: '9999999999',
                 name: 'Admin',
-                email: 'admin@chettas.com',
+                email: 'admin@keabythepool.com',
                 role: 'admin',
                 isVerified: true
             });
             console.log('Default admin created: phone: 9999999999, password: admin123');
+        }
+
+        // Create default superadmin if not exists
+        const superadminExists = await User.findOne({ role: 'superadmin' });
+        if (!superadminExists) {
+            await User.create({
+                phone: '8888888888',
+                name: 'Super Admin',
+                email: 'superadmin@keabythepool.com',
+                role: 'superadmin',
+                isVerified: true
+            });
+            console.log('Default superadmin created: phone: 8888888888, password: admin123');
         }
     } catch (error) {
         console.error('Error creating default admin:', error);

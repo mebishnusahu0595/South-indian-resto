@@ -10,7 +10,7 @@ import './AdminAnalytics.css';
 const COLORS = ['#C87316', '#E08A2E', '#22C55E', '#3B82F6', '#9333EA', '#EC4899'];
 
 const AdminAnalytics = () => {
-    const { socket } = useAuth();
+    const { user, socket } = useAuth();
     const [period, setPeriod] = useState('week');
     const [stats, setStats] = useState(null);
     const [revenueData, setRevenueData] = useState([]);
@@ -22,8 +22,12 @@ const AdminAnalytics = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchData();
-    }, [period]);
+        if (user && user.role === 'admin' && period !== 'month') {
+            setPeriod('month');
+        } else {
+            fetchData();
+        }
+    }, [period, user]);
 
     useEffect(() => {
         if (socket) {
@@ -89,17 +93,23 @@ const AdminAnalytics = () => {
                     <button className="btn btn-secondary export-btn" onClick={handleExportRevenue}>
                         <FiDownload /> Export CSV
                     </button>
-                    <div className="period-selector">
-                        {['today', 'week', 'month', 'year'].map(p => (
-                            <button
-                                key={p}
-                                className={`period-btn ${period === p ? 'active' : ''}`}
-                                onClick={() => setPeriod(p)}
-                            >
-                                {p.charAt(0).toUpperCase() + p.slice(1)}
-                            </button>
-                        ))}
-                    </div>
+                    {user && user.role === 'superadmin' ? (
+                        <div className="period-selector">
+                            {['today', 'week', 'month', 'year'].map(p => (
+                                <button
+                                    key={p}
+                                    className={`period-btn ${period === p ? 'active' : ''}`}
+                                    onClick={() => setPeriod(p)}
+                                >
+                                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="period-restricted-label" style={{ background: 'var(--bg-secondary)', border: '2.5px solid #111111', padding: '6px 12px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '2px 2px 0px #111111' }}>
+                            📅 Current Month (1st to Present)
+                        </div>
+                    )}
                 </div>
             </div>
 

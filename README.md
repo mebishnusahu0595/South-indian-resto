@@ -1,6 +1,6 @@
-# Chetta's Dosa - Restaurant Management System
+# Kea By The Pool - Restaurant Management System
 
-A comprehensive full-stack restaurant management system for **Chetta's Dosa** featuring customer ordering, real-time order tracking, admin dashboard, inventory management, employee attendance, and analytics.
+A comprehensive full-stack restaurant management system for **Kea By The Pool** featuring customer ordering, real-time order tracking, admin dashboard, inventory management, employee attendance, and analytics.
 
 ## 🌟 Features
 
@@ -14,7 +14,7 @@ A comprehensive full-stack restaurant management system for **Chetta's Dosa** fe
 
 ### Admin Features
 - **Dashboard**: Real-time stats, revenue, pending orders
-- **Orders Management**: Confirm, prepare, serve, generate bill, mark paid
+- **Orders Management**: Confirm, prepare, serve, generate bill, mark paid, delete orders
 - **Menu Management**: Add/edit categories and items with images
 - **Stock Control**: Mark items as out of stock
 - **Coupons & Offers**: Create percentage/fixed discount coupons
@@ -24,11 +24,10 @@ A comprehensive full-stack restaurant management system for **Chetta's Dosa** fe
 
 ## 🎨 Design
 
-- **Primary Color**: `#C87316` (Orange/Brown)
-- **Off-white Background**: `#FFFAEF`
-- **Mobile-first responsive design**
-- **Bottom navigation for mobile**
-- **Horizontal scrolling categories**
+- **Primary Color**: `#7C3AED` (Purple)
+- **Background**: Soft light purple & white sketch theme
+- **Design**: Hand-drawn wobbly sketch borders with animated floating food doodles
+- **Typography**: `Patrick Hand` & `Caveat` (Google Fonts)
 
 ## 🛠️ Tech Stack
 
@@ -62,7 +61,7 @@ npm install
 Edit `backend/.env`:
 ```env
 PORT=5000
-MONGODB_URI=mongodb://localhost:27017/chettas_dosa
+MONGODB_URI=mongodb://localhost:27017/keabythepool
 JWT_SECRET=your_secret_key
 FRONTEND_URL=http://localhost:5173
 ```
@@ -109,7 +108,7 @@ npm run dev
 ## 🔧 Admin Flow
 
 1. Login at `/admin/login`
-2. **Orders**: Confirm → Prepare → Ready → Served → Bill → Paid
+2. **Orders**: Confirm → Prepare → Ready → Served → Bill → Paid (Delete option available)
 3. **Menu**: Add categories, add items, set bestseller/new
 4. **Inventory**: Track stock, restock items
 5. **Employees**: Add staff, mark daily attendance
@@ -135,6 +134,11 @@ npm run dev
 │   │   ├── pages/       # Customer pages
 │   │   └── utils/       # API functions
 │   └── index.html
+│
+└── staff-app/
+    ├── src/             # Staff React Native screens (Login, Table Select, Menu, Cart)
+    ├── App.js           # Expo App entry point
+    └── package.json     # Expo config
 ```
 
 ## 🔌 API Endpoints
@@ -151,10 +155,11 @@ npm run dev
 - `GET /api/menu/recommended` - Recommendations
 
 ### Orders
-- `POST /api/orders` - Create order
+- `POST /api/orders` - Create order (Manual creation supported)
 - `GET /api/orders/current` - Current order
 - `PUT /api/orders/:id/status` - Update status
 - `PUT /api/orders/:id/request-bill` - Request bill
+- `DELETE /api/orders/:id` - Hard delete order
 
 ### Admin
 - `GET /api/analytics/dashboard` - Stats
@@ -176,4 +181,4 @@ MIT License
 
 ---
 
-**Built for Chetta's Dosa** 🍽️
+**Built for Kea By The Pool** 🍹

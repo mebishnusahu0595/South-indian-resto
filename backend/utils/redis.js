@@ -1,6 +1,6 @@
 /**
  * Redis Cache Utility
- * Chetta's Dosa - Server-side caching for high-performance API
+ * Kea By The Pool - Server-side caching for high-performance API
  * 
  * Installation:
  *   npm install ioredis

@@ -1,19 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { FiCheck, FiX, FiFileText, FiAlertTriangle } from 'react-icons/fi';
-import { getActiveOrders, updateOrderStatus, updatePayment } from '../utils/api';
+import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, FiSearch, FiEdit2 } from 'react-icons/fi';
+import { 
+    getActiveOrders, updateOrderStatus, updatePayment, deleteOrder, 
+    getAllMenuItems, getBillerSuggestions, generateBill, updateOrderItems,
+    getCoupons, getMaxDiscount
+} from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import OrderBill from '../components/OrderBill';
 import Loader from '../components/Loader';
+import AdminBills from './AdminBills';
 import './AdminOrders.css';
 
 const AdminOrders = () => {
-    const { socket } = useAuth();
+    const { user, socket } = useAuth();
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [selectedOrdersForBill, setSelectedOrdersForBill] = useState([]);
     const [showBill, setShowBill] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState({});
+
+    // Prepare Bill state
+    const [showPrepareModal, setShowPrepareModal] = useState(false);
+    const [prepareOrders, setPrepareOrders] = useState([]);
+    const [prepareSelectedOrderIds, setPrepareSelectedOrderIds] = useState([]);
+    const [prepareBillerName, setPrepareBillerName] = useState('');
+    const [prepareDiscountInput, setPrepareDiscountInput] = useState('');
+    const [prepareSuggestions, setPrepareSuggestions] = useState([]);
+    const [showPrepareSuggestions, setShowPrepareSuggestions] = useState(false);
+    const [allMenuItems, setAllMenuItems] = useState([]);
+    const [searchQueryByOrder, setSearchQueryByOrder] = useState({});
+    const [isSavingBill, setIsSavingBill] = useState(false);
+    const [coupons, setCoupons] = useState([]);
+    const [prepareDiscountName, setPrepareDiscountName] = useState('');
+
+    // Payment Biller Modal state
+    const [showPaymentBillerModal, setShowPaymentBillerModal] = useState(false);
+    const [paymentBillerOrderId, setPaymentBillerOrderId] = useState('');
+    const [paymentBillerMethod, setPaymentBillerMethod] = useState('cash');
+    const [paymentBillerAmount, setPaymentBillerAmount] = useState(0);
+    const [paymentBillerName, setPaymentBillerName] = useState('');
+    const [showPaymentBillerSuggestions, setShowPaymentBillerSuggestions] = useState(false);
+
+    // Max discount cap
+    const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
 
     const handlePartialPayment = async (orderId, total) => {
         const amount = paymentAmount[orderId];
@@ -37,7 +67,37 @@ const AdminOrders = () => {
 
     useEffect(() => {
         fetchOrders();
+        fetchMenuItems();
+        fetchCoupons();
+        fetchMaxDiscountSetting();
     }, []);
+
+    const fetchMaxDiscountSetting = async () => {
+        try {
+            const res = await getMaxDiscount();
+            setMaxDiscountPercent(res.data.maxDiscountPercent);
+        } catch (err) {
+            console.error('Failed to fetch max discount:', err);
+        }
+    };
+
+    const fetchMenuItems = async () => {
+        try {
+            const res = await getAllMenuItems();
+            setAllMenuItems(res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch menu items:', err);
+        }
+    };
+
+    const fetchCoupons = async () => {
+        try {
+            const res = await getCoupons();
+            setCoupons(res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch coupons:', err);
+        }
+    };
 
     useEffect(() => {
         if (socket) {
@@ -58,13 +118,32 @@ const AdminOrders = () => {
                     o._id.toString() === order._id.toString() ? order : o
                 ));
             });
+            socket.on('order-deleted', (orderId) => {
+                console.log('Order deleted:', orderId);
+                setOrders(prev => prev.filter(o => o._id.toString() !== orderId.toString()));
+            });
             return () => {
                 socket.off('new-order');
                 socket.off('order-updated');
                 socket.off('bill-requested');
+                socket.off('order-deleted');
             };
         }
     }, [socket]);
+
+    const handleDeleteOrder = async (orderId) => {
+        if (!window.confirm('Are you absolutely sure you want to permanently delete this order? This will remove all records.')) {
+            return;
+        }
+
+        try {
+            await deleteOrder(orderId);
+            setOrders(prev => prev.filter(o => o._id.toString() !== orderId.toString()));
+        } catch (error) {
+            console.error('Delete order error:', error);
+            alert('Failed to delete order');
+        }
+    };
 
     const fetchOrders = async () => {
         try {
@@ -110,28 +189,10 @@ const AdminOrders = () => {
 
     const handleStatusChange = async (orderId, status) => {
         try {
-            // Auto-grouping for Bill Generation
+            // Redirect to prepare bill flow for generation
             if (status === 'bill_generated') {
-                const targetOrder = orders.find(o => o._id === orderId);
-                if (targetOrder) {
-                    const sessionOrders = getSessionOrders(targetOrder, orders);
-
-                    // Update ALL session orders to 'bill_generated'
-                    await Promise.all(sessionOrders.map(o => {
-                        if (o.status !== 'bill_generated') {
-                            return updateOrderStatus(o._id, 'bill_generated');
-                        }
-                        return Promise.resolve();
-                    }));
-
-                    // Show Combined Bill
-                    setSelectedOrdersForBill(sessionOrders);
-                    setShowBill(true);
-
-                    // Refresh Orders to reflect specific status changes
-                    fetchOrders();
-                    return;
-                }
+                handleOpenPrepareBill(orderId);
+                return;
             }
 
             await updateOrderStatus(orderId, status);
@@ -140,22 +201,215 @@ const AdminOrders = () => {
         }
     };
 
-    const handlePayment = async (orderId, method, amount) => {
+    const handleOpenPrepareBill = async (orderId) => {
+        const targetOrder = orders.find(o => o._id === orderId);
+        if (!targetOrder) return;
+
+        const sessionOrders = getSessionOrders(targetOrder, orders);
+        setPrepareOrders(sessionOrders);
+        setPrepareSelectedOrderIds(sessionOrders.map(o => o._id));
+        setPrepareBillerName(localStorage.getItem('lastBillerName') || '');
+        setPrepareDiscountInput('');
+        setPrepareDiscountName('');
+        setShowPrepareModal(true);
+
         try {
-            const res = await updatePayment(orderId, method, amount);
-            // After payment, refresh to see updated status
+            const sug = await getBillerSuggestions();
+            setPrepareSuggestions(sug.data || []);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleUpdateItemQuantity = async (orderId, menuItemId, delta) => {
+        const order = prepareOrders.find(o => o._id === orderId);
+        if (!order) return;
+
+        const updatedItems = order.items.map(item => {
+            const isMatch = (item.menuItem?._id || item.menuItem) === menuItemId;
+            if (isMatch) {
+                const newQty = item.quantity + delta;
+                return { ...item, quantity: newQty };
+            }
+            return item;
+        }).filter(item => item.quantity > 0);
+
+        try {
+            const res = await updateOrderItems(orderId, updatedItems.map(i => ({
+                menuItem: i.menuItem?._id || i.menuItem,
+                quantity: i.quantity
+            })));
+            
+            setPrepareOrders(prev => prev.map(o => o._id === orderId ? res.data : o));
+            setOrders(prev => prev.map(o => o._id === orderId ? res.data : o));
+        } catch (err) {
+            alert('Failed to update item quantity');
+        }
+    };
+
+    const handleRemoveItem = async (orderId, menuItemId) => {
+        const order = prepareOrders.find(o => o._id === orderId);
+        if (!order) return;
+
+        const updatedItems = order.items.filter(item => (item.menuItem?._id || item.menuItem) !== menuItemId);
+
+        try {
+            const res = await updateOrderItems(orderId, updatedItems.map(i => ({
+                menuItem: i.menuItem?._id || i.menuItem,
+                quantity: i.quantity
+            })));
+            setPrepareOrders(prev => prev.map(o => o._id === orderId ? res.data : o));
+            setOrders(prev => prev.map(o => o._id === orderId ? res.data : o));
+        } catch (err) {
+            alert('Failed to remove item');
+        }
+    };
+
+    const handleAddItemToOrder = async (orderId, menuItem) => {
+        const order = prepareOrders.find(o => o._id === orderId);
+        if (!order) return;
+
+        const existing = order.items.find(i => (i.menuItem?._id || i.menuItem) === menuItem._id);
+        let updatedItems = [];
+        if (existing) {
+            updatedItems = order.items.map(i => 
+                (i.menuItem?._id || i.menuItem) === menuItem._id 
+                    ? { ...i, quantity: i.quantity + 1 }
+                    : i
+            );
+        } else {
+            updatedItems = [...order.items, {
+                menuItem: menuItem._id,
+                quantity: 1
+            }];
+        }
+
+        try {
+            const res = await updateOrderItems(orderId, updatedItems.map(i => ({
+                menuItem: i.menuItem?._id || i.menuItem,
+                quantity: i.quantity
+            })));
+            setPrepareOrders(prev => prev.map(o => o._id === orderId ? res.data : o));
+            setOrders(prev => prev.map(o => o._id === orderId ? res.data : o));
+            setSearchQueryByOrder(prev => ({ ...prev, [orderId]: '' }));
+        } catch (err) {
+            alert('Failed to add item');
+        }
+    };
+
+    const handleDeletePrepareOrder = async (orderId) => {
+        if (!window.confirm('Delete this order completely?')) return;
+        try {
+            await deleteOrder(orderId);
+            setPrepareOrders(prev => prev.filter(o => o._id !== orderId));
+            setPrepareSelectedOrderIds(prev => prev.filter(id => id !== orderId));
+            setOrders(prev => prev.filter(o => o._id !== orderId));
+        } catch (err) {
+            alert('Failed to delete order');
+        }
+    };
+
+    const parseDiscount = (input, baseAmt) => {
+        if (!input) return 0;
+        const trimmed = input.trim();
+        if (trimmed.endsWith('%')) {
+            const pct = parseFloat(trimmed.replace('%', '')) || 0;
+            return (baseAmt * pct) / 100;
+        }
+        return parseFloat(trimmed) || 0;
+    };
+
+    const handleConfirmPrepareBill = async (e) => {
+        e.preventDefault();
+        if (prepareSelectedOrderIds.length === 0) {
+            alert('Please select at least one order to bill.');
+            return;
+        }
+        if (!prepareBillerName.trim()) {
+            alert('Please enter a biller name.');
+            return;
+        }
+
+        setIsSavingBill(true);
+        try {
+            const res = await generateBill({
+                orderIds: prepareSelectedOrderIds,
+                billerName: prepareBillerName,
+                discount: parseDiscount(prepareDiscountInput, getSelectedSubtotal()),
+                discountName: prepareDiscountName
+            });
+
+            localStorage.setItem('lastBillerName', prepareBillerName);
+            setShowPrepareModal(false);
+            
+            setSelectedOrdersForBill([res.data.order]); 
+            setShowBill(true);
             fetchOrders();
-            // If still needs to show bill (e.g. partial payment), update selectedOrder
+        } catch (err) {
+            alert('Failed to generate bill');
+        } finally {
+            setIsSavingBill(false);
+        }
+    };
+
+    const getSelectedSubtotal = () => {
+        const selectedOrders = prepareOrders.filter(o => prepareSelectedOrderIds.includes(o._id));
+        return selectedOrders.reduce((sum, o) => sum + o.subtotal, 0);
+    };
+
+    const handleOpenPaymentBiller = (orderId, method, amount) => {
+        const order = orders.find(o => o._id === orderId);
+        setPaymentBillerOrderId(orderId);
+        setPaymentBillerMethod(method);
+        setPaymentBillerAmount(amount);
+        setPaymentBillerName(order?.billerName || localStorage.getItem('lastBillerName') || '');
+        setShowPaymentBillerModal(true);
+    };
+
+    const handleConfirmPaymentBiller = async (e) => {
+        if (e) e.preventDefault();
+        if (!paymentBillerName.trim()) {
+            alert('Please enter or select a biller name.');
+            return;
+        }
+
+        try {
+            const targetOrder = orders.find(o => o._id === paymentBillerOrderId);
+            const sessionOrders = targetOrder ? getSessionOrders(targetOrder, orders) : [];
+            const orderIds = sessionOrders.map(o => o._id);
+
+            // 1. Generate/Save the Bill document in DB first to persist billerName and create the invoice
+            const billRes = await generateBill({
+                orderIds: orderIds.length > 0 ? orderIds : [paymentBillerOrderId],
+                billerName: paymentBillerName,
+                discount: targetOrder?.discount || 0,
+                discountName: targetOrder?.discountName || ''
+            });
+
+            // 2. Complete payment
+            const res = await updatePayment(paymentBillerOrderId, paymentBillerMethod, paymentBillerAmount);
+            localStorage.setItem('lastBillerName', paymentBillerName);
+            setShowPaymentBillerModal(false);
+            fetchOrders();
             setSelectedOrder(res.data);
 
-            // Re-fetch session orders to keep bill up to date?
-            // Simplified: just refresh main list.
+            if (sessionOrders.length > 0) {
+                const updatedSessionOrders = sessionOrders.map(o => 
+                    o._id === paymentBillerOrderId ? { ...o, status: 'paid', paymentMethod: paymentBillerMethod, billerName: paymentBillerName } : { ...o, billerName: paymentBillerName }
+                );
+                setSelectedOrdersForBill(updatedSessionOrders);
+                setShowBill(true);
+            }
         } catch (error) {
-            alert('Failed to update payment');
+            alert('Failed to process payment and bill generation');
         }
     };
 
     const handleShowBill = (order) => {
+        if (order.status !== 'bill_generated' && order.status !== 'paid') {
+            handleOpenPrepareBill(order._id);
+            return;
+        }
         const sessionOrders = getSessionOrders(order, orders);
         setSelectedOrdersForBill(sessionOrders);
         setShowBill(true);
@@ -203,7 +457,12 @@ const AdminOrders = () => {
                                 </div>
 
                                 <div className="order-customer">
-                                    <strong>{order.user?.name || 'Customer'}</strong>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                                        <strong>{order.user?.name || 'Customer'}</strong>
+                                        <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: order.placedBy ? '#7C3AED' : '#0EA5E9', color: '#FFF', fontWeight: 'bold' }}>
+                                            {order.placedBy ? `Staff: ${order.placedBy.name || 'Staff'}` : 'User'}
+                                        </span>
+                                    </div>
                                     <span>{order.user?.phone}</span>
                                     {order.tableNumber && <span>Table: {order.tableNumber}</span>}
                                 </div>
@@ -253,7 +512,7 @@ const AdminOrders = () => {
                                 </div>
 
                                 <div className="order-actions">
-                                    {getNextStatus(order.status) && (
+                                    {getNextStatus(order.status) && order.status !== 'paid' && (
                                         <button
                                             className="btn btn-primary btn-sm"
                                             onClick={() => handleStatusChange(order._id, getNextStatus(order.status))}
@@ -262,17 +521,17 @@ const AdminOrders = () => {
                                         </button>
                                     )}
 
-                                    {order.status === 'bill_generated' && (
+                                    {['served', 'bill_requested', 'bill_generated'].includes(order.status) && order.status !== 'paid' && (
                                         <div className="payment-btns">
                                             <button
                                                 className="btn btn-success btn-sm"
-                                                onClick={() => handlePayment(order._id, 'cash', order.total)}
+                                                onClick={() => handleOpenPaymentBiller(order._id, 'cash', order.total)}
                                             >
                                                 Cash Paid
                                             </button>
                                             <button
                                                 className="btn btn-primary btn-sm"
-                                                onClick={() => handlePayment(order._id, 'online', order.total)}
+                                                onClick={() => handleOpenPaymentBiller(order._id, 'online', order.total)}
                                             >
                                                 Online Paid
                                             </button>
@@ -288,12 +547,37 @@ const AdminOrders = () => {
                                         </button>
                                     )}
 
+                                    {['confirmed', 'preparing', 'ready', 'served', 'bill_requested'].includes(order.status) && (
+                                        <button
+                                            className="btn btn-danger btn-sm"
+                                            onClick={() => {
+                                                if (window.confirm('Are you sure you want to cancel this order?')) {
+                                                    handleStatusChange(order._id, 'cancelled');
+                                                }
+                                            }}
+                                            style={{ opacity: 0.8 }}
+                                        >
+                                            <FiX /> Cancel
+                                        </button>
+                                    )}
+
                                     <button
                                         className="btn btn-secondary btn-sm"
                                         onClick={() => handleShowBill(order)}
                                     >
                                         <FiFileText /> Bill
                                     </button>
+
+                                    {user && user.role === 'superadmin' && (
+                                        <button
+                                            className="btn btn-danger btn-sm"
+                                            onClick={() => handleDeleteOrder(order._id)}
+                                            title="Delete Order Permanently"
+                                            style={{ backgroundColor: '#EF4444', color: 'white', border: 'none' }}
+                                        >
+                                            <FiTrash2 /> Delete
+                                        </button>
+                                    )}
                                 </div>
 
                                 <div className="order-time">
@@ -304,6 +588,319 @@ const AdminOrders = () => {
                     </div>
                 )}
             </div>
+
+            <div className="admin-orders-bills-section" style={{ marginTop: '40px', paddingTop: '30px', borderTop: '4px dashed #111111' }}>
+                <AdminBills />
+            </div>
+
+            {/* Prepare Bill Modal */}
+            {showPrepareModal && prepareOrders.length > 0 && (
+                <div className="bill-modal-overlay" onClick={() => setShowPrepareModal(false)}>
+                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #111111', paddingBottom: '10px' }}>
+                            <h2 style={{ margin: 0, fontSize: '1.4rem', fontFamily: "'Patrick Hand', cursive" }}>Prepare Table Bill</h2>
+                            <button onClick={() => setShowPrepareModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}><FiX /></button>
+                        </div>
+
+                        <p style={{ fontSize: '0.85rem', color: '#6B7280', margin: '-10px 0 15px 0' }}>
+                            Select which orders to include in this bill. You can edit quantities, add items or delete orders before generating the bill.
+                        </p>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '20px' }}>
+                            {prepareOrders.map(order => {
+                                const isSelected = prepareSelectedOrderIds.includes(order._id);
+                                const q = searchQueryByOrder[order._id] || '';
+                                return (
+                                    <div key={order._id} style={{ border: '2px solid #111111', borderRadius: '8px', padding: '14px', background: isSelected ? '#FAF5FF' : '#F9FAFB', opacity: isSelected ? 1 : 0.65 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px dashed #DDD', paddingBottom: '8px' }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={isSelected}
+                                                    onChange={() => {
+                                                        if (isSelected) {
+                                                            setPrepareSelectedOrderIds(prev => prev.filter(id => id !== order._id));
+                                                        } else {
+                                                            setPrepareSelectedOrderIds(prev => [...prev, order._id]);
+                                                        }
+                                                    }}
+                                                />
+                                                <span>Order #{order.orderNumber}</span>
+                                            </label>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <span style={{ fontSize: '0.85rem', background: '#E2E8F0', padding: '2px 8px', borderRadius: '4px' }}>Table {order.tableNumber || 'Takeaway'}</span>
+                                                {user && user.role === 'superadmin' && (
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => handleDeletePrepareOrder(order._id)}
+                                                        style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}
+                                                    >
+                                                        <FiTrash2 /> Delete
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Order Items */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                                            {order.items.map(item => (
+                                                <div key={item._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                                                    <span>{item.name} (₹{item.price})</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #111', borderRadius: '4px', overflow: 'hidden', background: '#FFF' }}>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => handleUpdateItemQuantity(order._id, item.menuItem?._id || item.menuItem, -1)}
+                                                                style={{ padding: '2px 8px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                                            >-</button>
+                                                            <span style={{ padding: '0 4px', fontWeight: 'bold' }}>{item.quantity}</span>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => handleUpdateItemQuantity(order._id, item.menuItem?._id || item.menuItem, 1)}
+                                                                style={{ padding: '2px 8px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                                            >+</button>
+                                                        </div>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleRemoveItem(order._id, item.menuItem?._id || item.menuItem)}
+                                                            style={{ border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer' }}
+                                                        >
+                                                            <FiX />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Quick Add Item Search for this Order */}
+                                        <div style={{ position: 'relative' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FFF', border: '1px solid #111', borderRadius: '6px', padding: '4px 8px' }}>
+                                                <FiSearch style={{ color: '#888', fontSize: '0.9rem' }} />
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Quick Add Item..."
+                                                    value={q}
+                                                    onChange={(e) => setSearchQueryByOrder(prev => ({ ...prev, [order._id]: e.target.value }))}
+                                                    style={{ border: 'none', outline: 'none', width: '100%', fontSize: '0.85rem' }}
+                                                />
+                                                {q && <FiX onClick={() => setSearchQueryByOrder(prev => ({ ...prev, [order._id]: '' }))} style={{ cursor: 'pointer', color: '#888' }} />}
+                                            </div>
+                                            
+                                            {q && (
+                                                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1000, background: '#FFF', border: '1px solid #111', borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: '150px', overflowY: 'auto', marginTop: '4px' }}>
+                                                    {allMenuItems
+                                                        .filter(m => m.name.toLowerCase().includes(q.toLowerCase()))
+                                                        .slice(0, 10)
+                                                        .map(m => (
+                                                            <div 
+                                                                key={m._id} 
+                                                                onClick={() => handleAddItemToOrder(order._id, m)}
+                                                                style={{ padding: '8px 12px', fontSize: '0.85rem', cursor: 'pointer', borderBottom: '1px solid #EEE', display: 'flex', justifyContent: 'space-between' }}
+                                                                className="suggestion-item"
+                                                            >
+                                                                <span>{m.name}</span>
+                                                                <span style={{ fontWeight: 'bold' }}>₹{m.price}</span>
+                                                            </div>
+                                                        ))
+                                                    }
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Biller Name & Discount Form */}
+                        <form onSubmit={handleConfirmPrepareBill} style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '2px dashed #111', paddingTop: '15px' }}>
+                            <div className="input-group" style={{ position: 'relative' }}>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Biller Name *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Type Biller Name..."
+                                    value={prepareBillerName}
+                                    onChange={(e) => {
+                                        setPrepareBillerName(e.target.value);
+                                        setShowPrepareSuggestions(true);
+                                    }}
+                                    onFocus={() => setShowPrepareSuggestions(true)}
+                                    className="input"
+                                    style={{ width: '100%', padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
+                                />
+                                {showPrepareSuggestions && prepareSuggestions.length > 0 && (
+                                    <div className="biller-suggestions-dropdown" style={{ zIndex: 1001 }}>
+                                        {prepareSuggestions
+                                            .filter(sug => sug.toLowerCase().includes(prepareBillerName.toLowerCase()))
+                                            .slice(0, 15)
+                                            .map((sug, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => {
+                                                        setPrepareBillerName(sug);
+                                                        setShowPrepareSuggestions(false);
+                                                    }}
+                                                    className="suggestion-item"
+                                                >
+                                                    {sug}
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Coupon Code Selector for Billing */}
+                            <div className="input-group">
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Apply Coupon (Optional)</label>
+                                <select
+                                    value={prepareDiscountInput}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setPrepareDiscountInput(val);
+                                        const matchedCoupon = coupons.find(c => (c.discountType === 'percentage' ? `${c.discountValue}%` : `${c.discountValue}`) === val);
+                                        if (matchedCoupon) {
+                                            setPrepareDiscountName(matchedCoupon.code);
+                                        } else {
+                                            setPrepareDiscountName('');
+                                        }
+                                    }}
+                                    className="input"
+                                    style={{ width: '100%', padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
+                                >
+                                    <option value="">-- No Coupon --</option>
+                                    {coupons.map(c => (
+                                        <option key={c._id} value={c.discountType === 'percentage' ? `${c.discountValue}%` : `${c.discountValue}`}>
+                                            {c.code} - {c.discountType === 'percentage' ? `${c.discountValue}%` : `₹${c.discountValue}`} Off (Min: ₹{c.minOrderAmount})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Custom discount text box */}
+                            <div className="input-group">
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Custom Discount (e.g. 50 or 10%)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 50 or 10%"
+                                    value={prepareDiscountInput}
+                                    onChange={(e) => setPrepareDiscountInput(e.target.value)}
+                                    className="input"
+                                    style={{ width: '100%', padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
+                                />
+                                {user?.role !== 'superadmin' && (
+                                    <span style={{ fontSize: '0.75rem', color: '#F59E0B', marginTop: '4px', display: 'block' }}>
+                                        Max allowed: {maxDiscountPercent}% (set by superadmin)
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Custom discount name / reason */}
+                            {parseDiscount(prepareDiscountInput, getSelectedSubtotal()) > 0 && (
+                                <div className="input-group">
+                                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Discount Reason / Name (e.g. Staff Discount, Birthday Special)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Birthday Offer"
+                                        value={prepareDiscountName}
+                                        onChange={(e) => setPrepareDiscountName(e.target.value)}
+                                        className="input"
+                                        style={{ width: '100%', padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Preview box */}
+                            <div style={{ background: '#F3F4F6', padding: '12px', borderRadius: '6px', border: '1px solid #E5E7EB', margin: '8px 0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px', color: '#111111' }}>
+                                    <span>Subtotal:</span>
+                                    <span>₹{getSelectedSubtotal().toFixed(2)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px', color: '#DC2626' }}>
+                                    <span>Discount:</span>
+                                    <span>- ₹{parseDiscount(prepareDiscountInput, getSelectedSubtotal()).toFixed(2)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '8px', color: '#111111' }}>
+                                    <span>GST (5%):</span>
+                                    <span>₹{((getSelectedSubtotal() - parseDiscount(prepareDiscountInput, getSelectedSubtotal())) * 0.05).toFixed(2)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.05rem', borderTop: '1px dashed #D1D5DB', paddingTop: '6px', color: '#7C3AED' }}>
+                                    <span>GRAND TOTAL:</span>
+                                    <span>₹{((getSelectedSubtotal() - parseDiscount(prepareDiscountInput, getSelectedSubtotal())) * 1.05).toFixed(2)}</span>
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={isSavingBill || prepareSelectedOrderIds.length === 0}
+                                className="btn btn-primary btn-full sketch-border sketch-shadow"
+                            >
+                                {isSavingBill ? 'Generating Bill...' : 'Confirm & Generate Bill'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+            {/* Payment Biller Selection Modal */}
+            {showPaymentBillerModal && (
+                <div className="bill-modal-overlay" onClick={() => setShowPaymentBillerModal(false)}>
+                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '400px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #111111', paddingBottom: '10px' }}>
+                            <h2 style={{ margin: 0, fontSize: '1.4rem', fontFamily: "'Patrick Hand', cursive" }}>Confirm Payment Biller</h2>
+                            <button onClick={() => setShowPaymentBillerModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}><FiX /></button>
+                        </div>
+                        <form onSubmit={handleConfirmPaymentBiller} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div style={{ fontSize: '0.95rem', color: '#555', marginBottom: '4px' }}>
+                                Mark payment as <strong style={{ color: 'var(--primary)' }}>{paymentBillerMethod.toUpperCase()}</strong> for order total <strong style={{ color: '#000' }}>₹{paymentBillerAmount.toFixed(2)}</strong>.
+                            </div>
+                            <div className="input-group" style={{ position: 'relative' }}>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px' }}>Biller Name *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Type or select biller..."
+                                    value={paymentBillerName}
+                                    onChange={(e) => {
+                                        setPaymentBillerName(e.target.value);
+                                        setShowPaymentBillerSuggestions(true);
+                                    }}
+                                    onFocus={() => setShowPaymentBillerSuggestions(true)}
+                                    className="input"
+                                    style={{ width: '100%', padding: '10px', border: '2px solid #111111', borderRadius: '6px' }}
+                                />
+                                {showPaymentBillerSuggestions && prepareSuggestions.length > 0 && (
+                                    <div className="biller-suggestions-dropdown" style={{ zIndex: 1004 }}>
+                                        {prepareSuggestions
+                                            .filter(sug => sug.toLowerCase().includes(paymentBillerName.toLowerCase()))
+                                            .slice(0, 15)
+                                            .map((sug, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => {
+                                                        setPaymentBillerName(sug);
+                                                        setShowPaymentBillerSuggestions(false);
+                                                    }}
+                                                    className="suggestion-item"
+                                                >
+                                                    {sug}
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+                                )}
+                            </div>
+
+                            <button
+                                type="submit"
+                                className="btn btn-primary btn-full sketch-border sketch-shadow"
+                                style={{ marginTop: '10px' }}
+                            >
+                                Confirm & Mark Paid
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {showBill && selectedOrdersForBill.length > 0 && (
                 <OrderBill

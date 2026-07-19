@@ -1,4 +1,4 @@
-# 🚀 Chetta's Dosa - VPS Deployment Guide (Contabo / Ubuntu 22.04)
+# 🚀 Kea By The Pool - VPS Deployment Guide (Contabo / Ubuntu 22.04)
 
 This is a comprehensive, production-ready deployment guide for self-hosting on a VPS.
 
@@ -28,7 +28,7 @@ If you want to set up everything quickly, run the automated setup script:
 ssh root@YOUR_VPS_IP
 
 # Download and run setup script
-wget https://raw.githubusercontent.com/Deepakscripts/chettas-dosa-website/main/deployment/scripts/setup-vps.sh
+wget https://raw.githubusercontent.com/Deepakscripts/kea-by-the-pool-website/main/deployment/scripts/setup-vps.sh
 chmod +x setup-vps.sh
 sudo ./setup-vps.sh
 ```
@@ -88,7 +88,7 @@ sudo ufw enable
 ### 1.6 Install Fail2Ban
 ```bash
 sudo apt install fail2ban -y
-sudo cp /home/bishnups/chettas-dosa-website/deployment/config/fail2ban-jail.conf /etc/fail2ban/jail.local
+sudo cp /home/bishnups/kea-by-the-pool-website/deployment/config/fail2ban-jail.conf /etc/fail2ban/jail.local
 sudo systemctl restart fail2ban
 sudo systemctl enable fail2ban
 ```
@@ -199,8 +199,8 @@ sudo systemctl enable redis.service
 ### 3.1 Clone Repository
 ```bash
 cd /home/sammy
-git clone https://github.com/Deepakscripts/chettas-dosa-website.git
-cd chettas-dosa-website
+git clone https://github.com/Deepakscripts/kea-by-the-pool-website.git
+cd kea-by-the-pool-website
 ```
 
 ### 3.2 Setup Backend
@@ -215,7 +215,7 @@ Paste your production environment variables:
 ```env
 PORT=5000
 NODE_ENV=production
-MONGODB_URI=mongodb://myAdmin:PASSWORD@localhost:27017/chettas-dosa?authSource=admin
+MONGODB_URI=mongodb://myAdmin:PASSWORD@localhost:27017/kea-by-the-pool?authSource=admin
 JWT_SECRET=your_super_secret_key_here
 JWT_EXPIRES_IN=30d
 TWILIO_ACCOUNT_SID=your_twilio_sid
@@ -224,7 +224,7 @@ TWILIO_PHONE_NUMBER=your_twilio_number
 R2_ENDPOINT=https://xxx.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=your_r2_key
 R2_SECRET_ACCESS_KEY=your_r2_secret
-R2_BUCKET_NAME=chettas-dosa
+R2_BUCKET_NAME=kea-by-the-pool
 R2_PUBLIC_URL=https://pub-xxx.r2.dev
 FRONTEND_URL=https://yourdomain.com
 REDIS_HOST=127.0.0.1
@@ -265,15 +265,15 @@ sudo apt install nginx -y
 ### 4.2 Configure Nginx
 ```bash
 # Copy config
-sudo cp /home/sammy/chettas-dosa-website/deployment/nginx/chettas-dosa.conf /etc/nginx/sites-available/chettas-dosa
+sudo cp /home/sammy/kea-by-the-pool-website/deployment/nginx/kea-by-the-pool.conf /etc/nginx/sites-available/kea-by-the-pool
 
 # Edit with your domain
-sudo nano /etc/nginx/sites-available/chettas-dosa
+sudo nano /etc/nginx/sites-available/kea-by-the-pool
 # Replace 'yourdomain.com' with your actual domain
 # Replace 'sammy' with your actual username if different
 
 # Enable site
-sudo ln -s /etc/nginx/sites-available/chettas-dosa /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/kea-by-the-pool /etc/nginx/sites-enabled/
 sudo rm /etc/nginx/sites-enabled/default
 
 # Test and restart
@@ -299,7 +299,7 @@ sudo certbot renew --dry-run
 sudo apt install msmtp msmtp-mta mailutils -y
 
 # Configure
-sudo cp /home/sammy/chettas-dosa-website/deployment/config/msmtprc.example /etc/msmtprc
+sudo cp /home/sammy/kea-by-the-pool-website/deployment/config/msmtprc.example /etc/msmtprc
 sudo nano /etc/msmtprc
 # Update with your Gmail and App Password
 
@@ -312,7 +312,7 @@ echo "Test from VPS" | mail -s "VPS Test" your_email@gmail.com
 ### 5.2 Daily System Digest (Logwatch)
 ```bash
 sudo apt install logwatch -y
-sudo cp /home/sammy/chettas-dosa-website/deployment/config/logwatch.conf /etc/logwatch/conf/logwatch.conf
+sudo cp /home/sammy/kea-by-the-pool-website/deployment/config/logwatch.conf /etc/logwatch/conf/logwatch.conf
 sudo nano /etc/logwatch/conf/logwatch.conf
 # Update email address
 ```
@@ -356,22 +356,22 @@ Follow prompts:
 
 ### 6.3 Setup Backup Script
 ```bash
-chmod +x /home/sammy/chettas-dosa-website/deployment/scripts/backup.sh
+chmod +x /home/sammy/kea-by-the-pool-website/deployment/scripts/backup.sh
 
 # Edit script with your settings
-nano /home/sammy/chettas-dosa-website/deployment/scripts/backup.sh
+nano /home/sammy/kea-by-the-pool-website/deployment/scripts/backup.sh
 
 # Add to crontab (runs daily at 2 AM)
 crontab -e
 ```
 Add line:
 ```
-0 2 * * * /home/sammy/chettas-dosa-website/deployment/scripts/backup.sh >> /var/log/backup.log 2>&1
+0 2 * * * /home/sammy/kea-by-the-pool-website/deployment/scripts/backup.sh >> /var/log/backup.log 2>&1
 ```
 
 ### 6.4 Manual Backup
 ```bash
-/home/sammy/chettas-dosa-website/deployment/scripts/backup.sh
+/home/sammy/kea-by-the-pool-website/deployment/scripts/backup.sh
 ```
 
 ---
@@ -406,9 +406,9 @@ router.get('/menu', async (req, res) => {
 ### PM2 Commands
 ```bash
 pm2 status              # View all processes
-pm2 logs chettas-api    # View logs
+pm2 logs kea-api        # View logs
 pm2 monit               # Real-time monitoring
-pm2 restart chettas-api # Restart app
+pm2 restart kea-api     # Restart app
 pm2 reload all          # Zero-downtime reload
 ```
 
@@ -416,7 +416,7 @@ pm2 reload all          # Zero-downtime reload
 ```bash
 sudo nginx -t                    # Test config
 sudo systemctl restart nginx     # Restart
-sudo tail -f /var/log/nginx/chettas-dosa-error.log  # View errors
+sudo tail -f /var/log/nginx/kea-by-the-pool-error.log  # View errors
 ```
 
 ### MongoDB Commands
@@ -470,7 +470,7 @@ pm2 save
 ## 📁 File Structure
 
 ```
-chettas-dosa-website/
+kea-by-the-pool-website/
 ├── backend/
 │   ├── ecosystem.config.js    # PM2 config
 │   ├── utils/redis.js         # Redis caching
@@ -479,7 +479,7 @@ chettas-dosa-website/
 │   └── dist/                  # Built files (served by Nginx)
 ├── deployment/
 │   ├── nginx/
-│   │   └── chettas-dosa.conf  # Nginx config
+│   │   └── kea-by-the-pool.conf  # Nginx config
 │   ├── config/
 │   │   ├── fail2ban-jail.conf
 │   │   ├── msmtprc.example
@@ -493,7 +493,7 @@ chettas-dosa-website/
 
 ---
 
-## ✅ Final Checklist
+## 🔐 Final Checklist
 
 - [ ] SSH keys configured, password auth disabled
 - [ ] UFW firewall enabled (SSH, HTTP, HTTPS only)
@@ -509,4 +509,4 @@ chettas-dosa-website/
 
 ---
 
-**Need help?** Check PM2 logs: `pm2 logs chettas-api`
+**Need help?** Check PM2 logs: `pm2 logs kea-api`

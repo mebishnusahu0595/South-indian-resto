@@ -1,18 +1,18 @@
 ================================================================================
-                    CHETTA'S DOSA - RESTAURANT MANAGEMENT SYSTEM
+                    KEA BY THE POOL - RESTAURANT MANAGEMENT SYSTEM
                           COMPLETE FEATURE DOCUMENTATION
 ================================================================================
 
 🏢 PROJECT OVERVIEW
 ===================
-Chetta's Dosa is a full-stack restaurant management system designed for dine-in 
+Kea By The Pool is a full-stack restaurant management system designed for dine-in 
 restaurants. It provides a complete digital solution for customers to browse menu, 
 place orders, track their orders in real-time, and for restaurant staff to manage 
 orders, inventory, employees, analytics, and overall operations.
 
-Primary Color: #C87316 (Orange/Brown - warm and inviting)
-Background: #FFFAEF (Off-white, easy on the eyes)
-Design: Mobile-first responsive design with bottom navigation
+Primary Color: #7C3AED (Purple)
+Background: Soft light purple and white sketch theme
+Design: Hand-drawn wobbly sketch borders with floating food doodles
 
 
 📱 CUSTOMER-FACING FEATURES
@@ -1099,7 +1099,7 @@ Root/
 │
 ├── deployment/
 │   ├── nginx/
-│   │   └── chettas-dosa.conf
+│   │   └── kea-by-the-pool.conf
 │   ├── scripts/
 │   │   ├── setup-vps.sh
 │   │   └── backup.sh
@@ -1123,7 +1123,7 @@ REQUIRED ENVIRONMENT VARIABLES:
 Backend (.env):
 - NODE_ENV=production
 - PORT=5000
-- MONGODB_URI=mongodb://localhost:27017/chettas-dosa
+- MONGODB_URI=mongodb://localhost:27017/keabythepool
 - JWT_SECRET=your-secret-key
 - FRONTEND_URL=https://yourdomain.com
 
@@ -1216,7 +1216,7 @@ Planned Features:
                                  SUMMARY
 ================================================================================
 
-Chetta's Dosa is a COMPLETE, PRODUCTION-READY restaurant management system with:
+Kea By The Pool is a COMPLETE, PRODUCTION-READY restaurant management system with:
 
 ✅ 25+ Major Feature Categories
 ✅ 100+ Individual Features

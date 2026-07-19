@@ -1,0 +1,144 @@
+.doodles-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Float Animation */
+@keyframes doodleFloat {
+  0% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-15px) rotate(5deg);
+  }
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+}
+
+@keyframes doodleFloatReverse {
+  0% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(15px) rotate(-8deg);
+  }
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+}
+
+.doodle {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  opacity: 0.18;
+  filter: drop-shadow(1px 1px 0px #111111);
+}
+
+.doodle-svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Individual placements */
+.doodle-1 {
+  top: 8%;
+  left: 5%;
+  animation: doodleFloat 6s ease-in-out infinite;
+}
+
+.doodle-2 {
+  top: 15%;
+  right: 6%;
+  animation: doodleFloatReverse 7s ease-in-out infinite;
+}
+
+.doodle-3 {
+  top: 40%;
+  left: 3%;
+  animation: doodleFloatReverse 8s ease-in-out infinite;
+  width: 60px;
+  height: 60px;
+}
+
+.doodle-4 {
+  top: 55%;
+  right: 4%;
+  animation: doodleFloat 9s ease-in-out infinite;
+  width: 65px;
+  height: 65px;
+}
+
+.doodle-5 {
+  top: 75%;
+  left: 6%;
+  animation: doodleFloat 5s ease-in-out infinite;
+  width: 50px;
+  height: 50px;
+}
+
+.doodle-6 {
+  bottom: 8%;
+  right: 8%;
+  animation: doodleFloatReverse 6s ease-in-out infinite;
+}
+
+.doodle-7 {
+  top: 28%;
+  right: 12%;
+  animation: doodleFloat 8s ease-in-out infinite;
+  width: 45px;
+  height: 45px;
+  opacity: 0.12;
+}
+
+.doodle-8 {
+  bottom: 25%;
+  left: 10%;
+  animation: doodleFloatReverse 9s ease-in-out infinite;
+  width: 55px;
+  height: 55px;
+  opacity: 0.12;
+}
+
+/* Accent Colors fill inside doodles */
+.color-pink path {
+  fill: #FBCFE8;
+}
+.color-yellow path {
+  fill: #FEF08A;
+}
+.color-orange path {
+  fill: #FED7AA;
+}
+.color-purple path {
+  fill: #E9D5FF;
+}
+.color-blue path {
+  fill: #BFDBFE;
+}
+.color-green path {
+  stroke: #86EFAC;
+}
+
+/* Responsive options */
+@media (max-width: 768px) {
+  .exclude-mobile {
+    display: none;
+  }
+  .doodle {
+    width: 50px;
+    height: 50px;
+    opacity: 0.12;
+  }
+  .doodle-7, .doodle-8 {
+    display: none;
+  }
+}

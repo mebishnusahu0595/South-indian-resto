@@ -8,10 +8,10 @@ const Footer = () => {
         <footer className="footer">
             <div className="footer-content">
                 <div className="footer-section footer-brand">
-                    <img src="/logo.png" alt="Chetta's Dosa" className="footer-logo" />
+                    <img src="/logo.jpg" alt="keabythepool" className="footer-logo" />
                     <p className="footer-tagline">
-                        Authentic South Indian Cuisine since 2020.
-                        Experience the taste of tradition.
+                        Eat • Chill • Repeat.
+                        Your ultimate poolside foodie escape.
                     </p>
                     <div className="footer-social">
                         <a href="#" className="social-link"><FiInstagram /></a>
@@ -35,7 +35,7 @@ const Footer = () => {
                     <ul className="footer-contact">
                         <li>
                             <FiMapPin className="contact-icon" />
-                            <span>Near IIT Bhilai, Khamariya</span>
+                            <span>Dhanora, Risali, Bhilai</span>
                         </li>
                         <li>
                             <FiPhone className="contact-icon" />
@@ -43,7 +43,7 @@ const Footer = () => {
                         </li>
                         <li>
                             <FiMail className="contact-icon" />
-                            <span>hello@chettasdosa.com</span>
+                            <span>hello@keabythepool.com</span>
                         </li>
                     </ul>
                 </div>
@@ -55,7 +55,7 @@ const Footer = () => {
                             <FiClock className="contact-icon" />
                             <div>
                                 <span>Mon - Sun</span>
-                                <span>7:00 AM - 2:00 PM</span>
+                                <span>11:00 AM - 11:00 PM</span>
                             </div>
                         </li>
                     </ul>
@@ -63,7 +63,7 @@ const Footer = () => {
             </div>
 
             <div className="footer-bottom">
-                <p>© 2024 Chetta's Dosa. All rights reserved.</p>
+                <p>© 2026 keabythepool. All rights reserved.</p>
             </div>
         </footer>
     );

@@ -15,6 +15,9 @@ export const AuthProvider = ({ children }) => {
     const [token, setToken] = useState(localStorage.getItem('token'));
     const [loading, setLoading] = useState(true);
     const [socket, setSocket] = useState(null);
+    const [skippedLogin, setSkippedLogin] = useState(
+        localStorage.getItem('skippedLogin') === 'true'
+    );
 
     useEffect(() => {
         if (token) {
@@ -61,9 +64,11 @@ export const AuthProvider = ({ children }) => {
         const res = await axios.post(`${API_URL}/auth/verify-otp`, { phone, otp, name, email });
         const { token: newToken, user: userData } = res.data;
         localStorage.setItem('token', newToken);
+        localStorage.removeItem('skippedLogin');
         axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
         setToken(newToken);
         setUser(userData);
+        setSkippedLogin(false);
         return userData;
     };
 
@@ -71,17 +76,26 @@ export const AuthProvider = ({ children }) => {
         const res = await axios.post(`${API_URL}/auth/admin-login`, { phone, password });
         const { token: newToken, user: userData } = res.data;
         localStorage.setItem('token', newToken);
+        localStorage.removeItem('skippedLogin');
         axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
         setToken(newToken);
         setUser(userData);
+        setSkippedLogin(false);
         return userData;
     };
 
     const logout = () => {
         localStorage.removeItem('token');
+        localStorage.removeItem('skippedLogin');
         delete axios.defaults.headers.common['Authorization'];
         setToken(null);
         setUser(null);
+        setSkippedLogin(false);
+    };
+
+    const skipLogin = () => {
+        localStorage.setItem('skippedLogin', 'true');
+        setSkippedLogin(true);
     };
 
     const updateProfile = async (data) => {
@@ -101,8 +115,10 @@ export const AuthProvider = ({ children }) => {
             adminLogin,
             logout,
             updateProfile,
+            skippedLogin,
+            skipLogin,
             isAuthenticated: !!user,
-            isAdmin: user?.role === 'admin'
+            isAdmin: user?.role === 'admin' || user?.role === 'superadmin'
         }}>
             {children}
         </AuthContext.Provider>
