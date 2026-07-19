@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 
 export default function CartScreen({ api, cart, selectedTable, customerPhone, customerName, instructions, onUpdateInstructions, onUpdateCart, onBack, onSubmitSuccess }) {
   const [submitting, setSubmitting] = useState(false);
@@ -57,103 +57,108 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onClick={onBack}>
-          <Text style={styles.backBtnText}>← Menu</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Review Order</Text>
-        <View style={{ width: 60 }} />
-      </View>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backBtn} onPress={onBack}>
+            <Text style={styles.backBtnText}>← Menu</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Review Order</Text>
+          <View style={{ width: 60 }} />
+        </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Destination Summary */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Order Destination</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Table:</Text>
-            <Text style={styles.infoValue}>Table {selectedTable?.tableNumber}</Text>
-          </View>
-          {customerPhone ? (
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* Destination Summary */}
+          <View style={styles.infoCard}>
+            <Text style={styles.infoTitle}>Order Destination</Text>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Customer:</Text>
-              <Text style={styles.infoValue}>
-                {customerName || 'Guest'} (+91 {customerPhone})
-              </Text>
+              <Text style={styles.infoLabel}>Table:</Text>
+              <Text style={styles.infoValue}>Table {selectedTable?.tableNumber}</Text>
             </View>
-          ) : null}
-        </View>
-
-        {/* Selected Items */}
-        <Text style={styles.sectionTitle}>Cart Items</Text>
-        <View style={styles.itemsCard}>
-          {cart.map((item) => (
-            <View key={item._id} style={styles.itemRow}>
-              <View style={styles.itemDetails}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                <Text style={styles.itemPrice}>₹{item.price} each</Text>
+            {customerPhone ? (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Customer:</Text>
+                <Text style={styles.infoValue}>
+                  {customerName || 'Guest'} (+91 {customerPhone})
+                </Text>
               </View>
-              <View style={styles.itemActions}>
-                <View style={styles.qtyContainer}>
-                  <TouchableOpacity style={styles.qtyBtn} onClick={() => updateQuantity(item._id, item.quantity - 1)}>
-                    <Text style={styles.qtyBtnText}>-</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.qtyVal}>{item.quantity}</Text>
-                  <TouchableOpacity style={styles.qtyBtn} onClick={() => updateQuantity(item._id, item.quantity + 1)}>
-                    <Text style={styles.qtyBtnText}>+</Text>
-                  </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Selected Items */}
+          <Text style={styles.sectionTitle}>Cart Items</Text>
+          <View style={styles.itemsCard}>
+            {cart.map((item) => (
+              <View key={item._id} style={styles.itemRow}>
+                <View style={styles.itemDetails}>
+                  <Text style={styles.itemName}>{item.name}</Text>
+                  <Text style={styles.itemPrice}>₹{item.price} each</Text>
                 </View>
-                <Text style={styles.itemTotal}>₹{item.price * item.quantity}</Text>
+                <View style={styles.itemActions}>
+                  <View style={styles.qtyContainer}>
+                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item._id, item.quantity - 1)}>
+                      <Text style={styles.qtyBtnText}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.qtyVal}>{item.quantity}</Text>
+                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item._id, item.quantity + 1)}>
+                      <Text style={styles.qtyBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.itemTotal}>₹{item.price * item.quantity}</Text>
+                </View>
               </View>
+            ))}
+          </View>
+
+          {/* Special Instructions */}
+          <Text style={styles.sectionTitle}>Special Notes</Text>
+          <TextInput
+            style={styles.notesInput}
+            placeholder="e.g. No ice in mocktails, extra spicy, etc."
+            value={instructions}
+            onChangeText={onUpdateInstructions}
+            multiline
+            numberOfLines={3}
+          />
+
+          {/* Price Breakdown */}
+          <Text style={styles.sectionTitle}>Bill Breakdown</Text>
+          <View style={styles.billCard}>
+            <View style={styles.billRow}>
+              <Text style={styles.billLabel}>Subtotal</Text>
+              <Text style={styles.billVal}>₹{subtotal.toFixed(2)}</Text>
             </View>
-          ))}
+            <View style={styles.billRow}>
+              <Text style={styles.billLabel}>GST (5%)</Text>
+              <Text style={styles.billVal}>₹{gst.toFixed(2)}</Text>
+            </View>
+            <View style={[styles.billRow, styles.grandTotalRow]}>
+              <Text style={styles.grandTotalLabel}>GRAND TOTAL</Text>
+              <Text style={styles.grandTotalVal}>₹{total.toFixed(2)}</Text>
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Place Order Button */}
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+            disabled={submitting || cart.length === 0}
+            onPress={handlePlaceOrder}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitBtnText}>SUBMIT ORDER (₹{total.toFixed(2)})</Text>
+            )}
+          </TouchableOpacity>
         </View>
-
-        {/* Special Instructions */}
-        <Text style={styles.sectionTitle}>Special Notes</Text>
-        <TextInput
-          style={styles.notesInput}
-          placeholder="e.g. No ice in mocktails, extra spicy, etc."
-          value={instructions}
-          onChangeText={onUpdateInstructions}
-          multiline
-          numberOfLines={3}
-        />
-
-        {/* Price Breakdown */}
-        <Text style={styles.sectionTitle}>Bill Breakdown</Text>
-        <View style={styles.billCard}>
-          <View style={styles.billRow}>
-            <Text style={styles.billLabel}>Subtotal</Text>
-            <Text style={styles.billVal}>₹{subtotal.toFixed(2)}</Text>
-          </View>
-          <View style={styles.billRow}>
-            <Text style={styles.billLabel}>GST (5%)</Text>
-            <Text style={styles.billVal}>₹{gst.toFixed(2)}</Text>
-          </View>
-          <View style={[styles.billRow, styles.grandTotalRow]}>
-            <Text style={styles.grandTotalLabel}>GRAND TOTAL</Text>
-            <Text style={styles.grandTotalVal}>₹{total.toFixed(2)}</Text>
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Place Order Button */}
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-          disabled={submitting || cart.length === 0}
-          onClick={handlePlaceOrder}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitBtnText}>SUBMIT ORDER (₹{total.toFixed(2)})</Text>
-          )}
-        </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -305,7 +310,7 @@ const styles = StyleSheet.create({
   },
   billRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justify.content: 'space-between',
     marginBottom: 6,
   },
   billLabel: {

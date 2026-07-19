@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 
 export default function TableSelectScreen({ api, staffName, onNext, onLogout, onOpenHost }) {
   const [tables, setTables] = useState([]);
@@ -56,10 +56,12 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
     try {
       const res = await api.get('/auth/me');
       if (res.data) {
-        if (res.data.assignedTables) {
+        if (res.data.assignedTables && res.data.assignedTables.length > 0) {
           setAssignedTables(res.data.assignedTables);
         }
-        fetchPerformance(res.data._id);
+        if (res.data._id || res.data.id) {
+          fetchPerformance(res.data._id || res.data.id);
+        }
       }
     } catch (error) {
       console.log('Error fetching profile:', error);
@@ -83,218 +85,211 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
     onNext(selectedTable, phone.trim(), name.trim());
   };
 
+  // Determine which tables to display
+  // If assignedTables exist -> only show assigned tables
+  // Otherwise -> show all tables
+  const hasAssigned = assignedTables && assignedTables.length > 0;
+  const filteredTables = hasAssigned
+    ? tables.filter(t => assignedTables.some(at => (at._id || at) === t._id))
+    : tables;
+
+  // Group displayed tables by section
+  const sortedTables = [...filteredTables].sort((a, b) => a.tableNumber - b.tableNumber);
+  const groupedSections = sortedTables.reduce((acc, table) => {
+    const sec = table.section || 'Main Hall';
+    if (!acc[sec]) acc[sec] = [];
+    acc[sec].push(table);
+    return acc;
+  }, {});
+
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.welcome}>Hello, {staffName} 👋</Text>
-          <Text style={styles.subWelcome}>Select a table to start</Text>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.welcome}>Hello, {staffName} 👋</Text>
+            <Text style={styles.subWelcome}>
+              {hasAssigned ? 'Assigned Tables' : 'Select a table to start'}
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
+            <Text style={styles.logoutBtnText}>Logout</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onClick={onLogout} onPress={onLogout}>
-          <Text style={styles.logoutBtnText}>Logout</Text>
+
+        {/* Host / Pre-booking button */}
+        <TouchableOpacity style={styles.hostBtn} onPress={onOpenHost}>
+          <Text style={styles.hostBtnText}>Pre-Bookings (Host)</Text>
         </TouchableOpacity>
-      </View>
 
-      {/* Host / Pre-booking button */}
-      <TouchableOpacity style={styles.hostBtn} onPress={onOpenHost}>
-        <Text style={styles.hostBtnText}>Pre-Bookings (Host)</Text>
-      </TouchableOpacity>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Attendance card */}
-        <View style={styles.attendanceCard}>
-          <Text style={styles.cardTitle}>⏱️ Shift Attendance</Text>
-          {attendance ? (
-            <View>
-              <Text style={styles.attendanceStatus}>
-                Status: <Text style={{ color: '#10B981', fontWeight: 'bold' }}>{attendance.status.toUpperCase()}</Text>
-              </Text>
-              {attendance.checkIn ? <Text style={styles.attendanceTime}>📥 Checked In: {attendance.checkIn}</Text> : null}
-              {attendance.checkOut ? (
-                <Text style={styles.attendanceTime}>📤 Checked Out: {attendance.checkOut}</Text>
-              ) : (
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* Attendance card */}
+          <View style={styles.attendanceCard}>
+            <Text style={styles.cardTitle}>⏱️ Shift Attendance</Text>
+            {attendance ? (
+              <View>
+                <Text style={styles.attendanceStatus}>
+                  Status: <Text style={{ color: '#10B981', fontWeight: 'bold' }}>{attendance.status.toUpperCase()}</Text>
+                </Text>
+                {attendance.checkIn ? <Text style={styles.attendanceTime}>📥 Checked In: {attendance.checkIn}</Text> : null}
+                {attendance.checkOut ? (
+                  <Text style={styles.attendanceTime}>📤 Checked Out: {attendance.checkOut}</Text>
+                ) : (
+                  <TouchableOpacity 
+                    style={[styles.attendanceBtn, { backgroundColor: '#EF4444', marginTop: 10 }]}
+                    onPress={() => handleMarkAttendance('check-out')}
+                    disabled={submittingAttendance}
+                  >
+                    <Text style={styles.attendanceBtnText}>
+                      {submittingAttendance ? 'Saving...' : 'Check Out'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <View>
+                <Text style={styles.attendanceStatus}>Status: Not Checked-In Today</Text>
                 <TouchableOpacity 
-                  style={[styles.attendanceBtn, { backgroundColor: '#EF4444', marginTop: 10 }]}
-                  onClick={() => handleMarkAttendance('check-out')}
-                  onPress={() => handleMarkAttendance('check-out')}
+                  style={[styles.attendanceBtn, { backgroundColor: '#10B981', marginTop: 10 }]}
+                  onPress={() => handleMarkAttendance('check-in')}
                   disabled={submittingAttendance}
                 >
                   <Text style={styles.attendanceBtnText}>
-                    {submittingAttendance ? 'Saving...' : 'Check Out'}
+                    {submittingAttendance ? 'Saving...' : 'Check In Now'}
                   </Text>
                 </TouchableOpacity>
-              )}
-            </View>
-          ) : (
-            <View>
-              <Text style={styles.attendanceStatus}>Status: Not Checked-In Today</Text>
-              <TouchableOpacity 
-                style={[styles.attendanceBtn, { backgroundColor: '#10B981', marginTop: 10 }]}
-                onClick={() => handleMarkAttendance('check-in')}
-                onPress={() => handleMarkAttendance('check-in')}
-                disabled={submittingAttendance}
-              >
-                <Text style={styles.attendanceBtnText}>
-                  {submittingAttendance ? 'Saving...' : 'Check In Now'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Performance Statistics Card */}
-        <View style={styles.performanceCard}>
-          <Text style={styles.cardTitle}>📊 My Performance Stats</Text>
-          {loadingPerformance ? (
-            <ActivityIndicator size="small" color="#7C3AED" />
-          ) : performance ? (
-            <View style={styles.performanceStatsGrid}>
-              <View style={styles.performanceStatBox}>
-                <Text style={styles.performanceStatVal}>₹{performance.totalSales || 0}</Text>
-                <Text style={styles.performanceStatLabel}>Sales Value</Text>
               </View>
-              <View style={styles.performanceStatBox}>
-                <Text style={styles.performanceStatVal}>{performance.totalOrders || 0}</Text>
-                <Text style={styles.performanceStatLabel}>Total Sent</Text>
-              </View>
-              <View style={styles.performanceStatBox}>
-                <Text style={[styles.performanceStatVal, { color: '#10B981' }]}>{performance.servedOrders || 0}</Text>
-                <Text style={styles.performanceStatLabel}>Done</Text>
-              </View>
-              <View style={styles.performanceStatBox}>
-                <Text style={[styles.performanceStatVal, { color: '#D97706' }]}>{performance.pendingOrders || 0}</Text>
-                <Text style={styles.performanceStatLabel}>Pending</Text>
-              </View>
-              <View style={styles.performanceStatBox}>
-                <Text style={[styles.performanceStatVal, { color: '#EF4444' }]}>{performance.cancelledOrders || 0}</Text>
-                <Text style={styles.performanceStatLabel}>Cancelled</Text>
-              </View>
-            </View>
-          ) : (
-            <Text style={{ fontSize: 13, color: '#666' }}>No statistics loaded.</Text>
-          )}
-        </View>
-
-        {/* Assigned Tables Section */}
-        <View style={styles.assignedTablesCard}>
-          <Text style={styles.cardTitle}>📋 Admin Assigned Tables</Text>
-          {assignedTables && assignedTables.length > 0 ? (
-            <View>
-              <Text style={styles.assignedIntro}>Your assigned tables today (Tap to select):</Text>
-              <View style={styles.assignedGrid}>
-                {assignedTables.map((table) => {
-                  const isSelected = selectedTable?._id === table._id;
-                  return (
-                    <TouchableOpacity
-                      key={table._id}
-                      style={[
-                        styles.assignedTableBadge,
-                        isSelected && { backgroundColor: '#7C3AED', borderColor: '#111111' }
-                      ]}
-                      onClick={() => setSelectedTable(isSelected ? null : table)}
-                      onPress={() => setSelectedTable(isSelected ? null : table)}
-                    >
-                      <Text style={[styles.assignedTableText, isSelected && { color: '#FFFFFF' }]}>
-                        T-{table.tableNumber}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          ) : (
-            <Text style={styles.noAssignedText}>No specific tables assigned to you. You can serve any table below.</Text>
-          )}
-        </View>
-
-        {/* Customer Details Form */}
-        <View style={styles.formCard}>
-          <Text style={styles.cardTitle}>Customer Information (Optional)</Text>
-          
-          <Text style={styles.label}>Customer Phone Number</Text>
-          <TextInput
-            style={styles.input}
-            value={phone}
-            onChangeText={(val) => setPhone(val.replace(/\D/g, '').slice(0, 10))}
-            placeholder="10-digit mobile number"
-            keyboardType="phone-pad"
-          />
-
-          <Text style={styles.label}>Customer Name</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="Enter customer name"
-          />
-        </View>
-
-        {/* Table List Section */}
-        <Text style={styles.sectionTitle}>All Tables</Text>
-        
-        {loading ? (
-          <ActivityIndicator size="large" color="#7C3AED" style={{ marginVertical: 30 }} />
-        ) : (
-          <View style={styles.grid}>
-            {tables.length === 0 ? (
-              <Text style={styles.noTables}>No tables configured</Text>
-            ) : (
-              [...tables].sort((a,b) => a.tableNumber - b.tableNumber).map((table) => {
-                const isSelected = selectedTable?._id === table._id;
-                const isOccupied = table.status !== 'available';
-
-                return (
-                  <TouchableOpacity
-                    key={table._id}
-                    style={[
-                      styles.tableCard,
-                      isOccupied && styles.occupiedCard,
-                      isSelected && styles.selectedCard
-                    ]}
-                    disabled={isOccupied}
-                    onClick={() => setSelectedTable(isSelected ? null : table)}
-                    onPress={() => setSelectedTable(isSelected ? null : table)}
-                  >
-                    <Text style={[
-                      styles.tableNumberText,
-                      isSelected && styles.selectedText,
-                      isOccupied && styles.occupiedText
-                    ]}>
-                      T-{table.tableNumber}
-                    </Text>
-                    <Text style={[
-                      styles.tableCapText,
-                      isSelected && styles.selectedSubtext,
-                      isOccupied && styles.occupiedSubtext
-                    ]}>
-                      {table.capacity} Seats
-                    </Text>
-                    {isOccupied && (
-                      <Text style={styles.occupiedLabel}>Occupied</Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })
             )}
           </View>
-        )}
-      </ScrollView>
 
-      {/* Footer Navigation */}
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.nextBtn, !selectedTable && styles.nextBtnDisabled]}
-          onClick={handleNext}
-          onPress={handleNext}
-          disabled={!selectedTable}
-        >
-          <Text style={styles.nextBtnText}>
-            {selectedTable ? `Continue with Table ${selectedTable.tableNumber}` : 'Select a Table to Continue'}
+          {/* Performance Statistics Card */}
+          <View style={styles.performanceCard}>
+            <Text style={styles.cardTitle}>📊 My Performance Stats</Text>
+            {loadingPerformance ? (
+              <ActivityIndicator size="small" color="#7C3AED" />
+            ) : performance ? (
+              <View style={styles.performanceStatsGrid}>
+                <View style={styles.performanceStatBox}>
+                  <Text style={styles.performanceStatVal}>₹{performance.totalSales || 0}</Text>
+                  <Text style={styles.performanceStatLabel}>Sales Value</Text>
+                </View>
+                <View style={styles.performanceStatBox}>
+                  <Text style={styles.performanceStatVal}>{performance.totalOrders || 0}</Text>
+                  <Text style={styles.performanceStatLabel}>Total Sent</Text>
+                </View>
+                <View style={styles.performanceStatBox}>
+                  <Text style={[styles.performanceStatVal, { color: '#10B981' }]}>{performance.servedOrders || 0}</Text>
+                  <Text style={styles.performanceStatLabel}>Done</Text>
+                </View>
+                <View style={styles.performanceStatBox}>
+                  <Text style={[styles.performanceStatVal, { color: '#D97706' }]}>{performance.pendingOrders || 0}</Text>
+                  <Text style={styles.performanceStatLabel}>Pending</Text>
+                </View>
+                <View style={styles.performanceStatBox}>
+                  <Text style={[styles.performanceStatVal, { color: '#EF4444' }]}>{performance.cancelledOrders || 0}</Text>
+                  <Text style={styles.performanceStatLabel}>Cancelled</Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={{ fontSize: 13, color: '#666' }}>No statistics loaded.</Text>
+            )}
+          </View>
+
+          {/* Customer Details Form */}
+          <View style={styles.formCard}>
+            <Text style={styles.cardTitle}>Customer Information (Optional)</Text>
+            
+            <Text style={styles.label}>Customer Phone Number</Text>
+            <TextInput
+              style={styles.input}
+              value={phone}
+              onChangeText={(val) => setPhone(val.replace(/\D/g, '').slice(0, 10))}
+              placeholder="10-digit mobile number"
+              keyboardType="phone-pad"
+            />
+
+            <Text style={styles.label}>Customer Name</Text>
+            <TextInput
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter customer name"
+            />
+          </View>
+
+          {/* Table List Section - Grouped by Section */}
+          <Text style={styles.mainTitle}>
+            {hasAssigned ? '📋 Your Assigned Tables' : '🍽️ All Restaurant Tables'}
           </Text>
-        </TouchableOpacity>
+          
+          {loading ? (
+            <ActivityIndicator size="large" color="#7C3AED" style={{ marginVertical: 30 }} />
+          ) : Object.keys(groupedSections).length === 0 ? (
+            <Text style={styles.noTables}>No tables found</Text>
+          ) : (
+            Object.keys(groupedSections).map((sectionName) => (
+              <View key={sectionName} style={styles.sectionBlock}>
+                <Text style={styles.sectionHeader}>📍 {sectionName}</Text>
+                <View style={styles.grid}>
+                  {groupedSections[sectionName].map((table) => {
+                    const isSelected = selectedTable?._id === table._id;
+                    const isOccupied = table.status !== 'available';
+
+                    return (
+                      <TouchableOpacity
+                        key={table._id}
+                        style={[
+                          styles.tableCard,
+                          isOccupied && styles.occupiedCard,
+                          isSelected && styles.selectedCard
+                        ]}
+                        disabled={isOccupied}
+                        onPress={() => setSelectedTable(isSelected ? null : table)}
+                      >
+                        <Text style={[
+                          styles.tableNumberText,
+                          isSelected && styles.selectedText,
+                          isOccupied && styles.occupiedText
+                        ]}>
+                          T-{table.tableNumber}
+                        </Text>
+                        <Text style={[
+                          styles.tableCapText,
+                          isSelected && styles.selectedSubtext,
+                          isOccupied && styles.occupiedSubtext
+                        ]}>
+                          {table.capacity} Seats
+                        </Text>
+                        {isOccupied && (
+                          <Text style={styles.occupiedLabel}>Occupied</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ))
+          )}
+        </ScrollView>
+
+        {/* Footer Navigation */}
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={[styles.nextBtn, !selectedTable && styles.nextBtnDisabled]}
+            onPress={handleNext}
+            disabled={!selectedTable}
+          >
+            <Text style={styles.nextBtnText}>
+              {selectedTable ? `Continue with Table ${selectedTable.tableNumber}` : 'Select a Table to Continue'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -393,47 +388,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
-  assignedTablesCard: {
-    backgroundColor: '#FAF5FF',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: '#7C3AED',
-    marginBottom: 16,
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 3, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 0,
-    elevation: 2,
-  },
-  assignedIntro: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginBottom: 8,
-  },
-  assignedGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  assignedTableBadge: {
-    backgroundColor: '#F3E8FF',
-    borderWidth: 2,
-    borderColor: '#7C3AED',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  assignedTableText: {
-    fontWeight: 'bold',
-    color: '#7C3AED',
-  },
-  noAssignedText: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
   formCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -463,11 +417,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: '#FFFFFF',
   },
-  sectionTitle: {
+  mainTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 16,
     color: '#111111',
+  },
+  sectionBlock: {
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#6B21A8',
+    backgroundColor: '#F3E8FF',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginBottom: 10,
+    alignSelf: 'flex-start',
   },
   grid: {
     flexDirection: 'row',

@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 
 export default function LoginScreen({ serverUrl: initialUrl, onLogin }) {
-  const [url, setUrl] = useState(initialUrl);
-  const [phone, setPhone] = useState('9999999999'); // default demo admin phone
-  const [password, setPassword] = useState('admin123'); // default demo admin password
+  const [url] = useState(initialUrl || 'https://keabythepool.com');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleLoginSubmit = async () => {
-    if (!phone || !password || !url) {
+    if (!phone || !password) {
       setError('Please fill in all fields');
       return;
     }
@@ -19,84 +21,92 @@ export default function LoginScreen({ serverUrl: initialUrl, onLogin }) {
     setError('');
 
     try {
-      const res = await axios.post(`${url}/api/auth/admin-login`, {
+      const targetUrl = (url || 'https://keabythepool.com').replace(/\/+$/, '');
+      const res = await axios.post(`${targetUrl}/api/auth/admin-login`, {
         phone: phone.trim(),
         password: password.trim()
       });
 
       if (res.data && res.data.token) {
-        onLogin(res.data.token, res.data.user.name || 'Staff', url, res.data.user.assignedTables || []);
+        onLogin(res.data.token, res.data.user.name || 'Staff', targetUrl, res.data.user.assignedTables || []);
       } else {
         setError('Invalid server response');
       }
     } catch (err) {
       console.log('Login error:', err);
-      setError(err.response?.data?.message || 'Login failed. Check server URL & credentials.');
+      setError(err.response?.data?.message || 'Login failed. Please check credentials.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <Image source={require('../../assets/logo.jpg')} style={styles.logoImg} />
-        <Text style={styles.title}>keabythepool</Text>
-        <Text style={styles.subtitle}>Staff Ordering Terminal</Text>
-      </View>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <Image source={require('../../assets/logo.jpg')} style={styles.logoImg} />
+          <Text style={styles.title}>keabythepool</Text>
+          <Text style={styles.subtitle}>Staff Ordering Terminal</Text>
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Login</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Login</Text>
 
-        <Text style={styles.label}>Server Base URL</Text>
-        <TextInput
-          style={styles.input}
-          value={url}
-          onChangeText={setUrl}
-          placeholder="e.g. http://192.168.1.10:5000"
-          autoCapitalize="none"
-          keyboardType="url"
-        />
+          <Text style={styles.label}>Phone Number</Text>
+          <TextInput
+            style={styles.input}
+            value={phone}
+            onChangeText={(text) => setPhone(text.replace(/\D/g, '').slice(0, 10))}
+            placeholder="Enter 10-digit mobile number"
+            keyboardType="phone-pad"
+          />
 
-        <Text style={styles.label}>Phone Number</Text>
-        <TextInput
-          style={styles.input}
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="Enter phone number"
-          keyboardType="phone-pad"
-        />
+          <Text style={styles.label}>Password</Text>
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter password"
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity 
+              style={styles.eyeBtn} 
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Ionicons 
+                name={showPassword ? "eye-off-outline" : "eye-outline"} 
+                size={22} 
+                color="#6B7280" 
+              />
+            </TouchableOpacity>
+          </View>
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Enter password"
-          secureTextEntry
-        />
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        <TouchableOpacity 
-          style={styles.button} 
-          onClick={handleLoginSubmit} 
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.buttonText}>LOGIN</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          <TouchableOpacity 
+            style={styles.button} 
+            onPress={handleLoginSubmit} 
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.buttonText}>LOGIN</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
     backgroundColor: '#F5F3FF',
@@ -104,10 +114,6 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 32,
-  },
-  logo: {
-    fontSize: 50,
-    marginBottom: 8,
   },
   logoImg: {
     width: 80,
@@ -158,6 +164,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 16,
     backgroundColor: '#FFFFFF',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#111111',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    marginBottom: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+  },
+  eyeBtn: {
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   errorText: {
     color: '#EF4444',

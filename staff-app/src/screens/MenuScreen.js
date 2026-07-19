@@ -64,7 +64,7 @@ export default function MenuScreen({ api, cart, selectedTable, onUpdateCart, onB
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onClick={onBack}>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack}>
           <Text style={styles.backBtnText}>← Table</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Table {selectedTable?.tableNumber}</Text>
@@ -86,7 +86,7 @@ export default function MenuScreen({ api, cart, selectedTable, onUpdateCart, onB
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesScroll}>
           <TouchableOpacity
             style={[styles.categoryBtn, !selectedCategory && styles.categoryBtnActive]}
-            onClick={() => setSelectedCategory('')}
+            onPress={() => setSelectedCategory('')}
           >
             <Text style={[styles.categoryBtnText, !selectedCategory && styles.categoryBtnTextActive]}>All</Text>
           </TouchableOpacity>
@@ -94,7 +94,7 @@ export default function MenuScreen({ api, cart, selectedTable, onUpdateCart, onB
             <TouchableOpacity
               key={cat._id}
               style={[styles.categoryBtn, selectedCategory === cat._id && styles.categoryBtnActive]}
-              onClick={() => setSelectedCategory(cat._id)}
+              onPress={() => setSelectedCategory(cat._id)}
             >
               <Text style={[styles.categoryBtnText, selectedCategory === cat._id && styles.categoryBtnTextActive]}>
                 {cat.name}
@@ -128,11 +128,11 @@ export default function MenuScreen({ api, cart, selectedTable, onUpdateCart, onB
                 <View style={styles.actionSection}>
                   {qty > 0 ? (
                     <View style={styles.qtyContainer}>
-                      <TouchableOpacity style={styles.qtyBtn} onClick={() => handleDecrement(item._id)}>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => handleDecrement(item._id)}>
                         <Text style={styles.qtyBtnText}>-</Text>
                       </TouchableOpacity>
                       <Text style={styles.qtyVal}>{qty}</Text>
-                      <TouchableOpacity style={styles.qtyBtn} onClick={() => handleAdd(item)}>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => handleAdd(item)}>
                         <Text style={styles.qtyBtnText}>+</Text>
                       </TouchableOpacity>
                     </View>
@@ -140,7 +140,7 @@ export default function MenuScreen({ api, cart, selectedTable, onUpdateCart, onB
                     <TouchableOpacity
                       style={[styles.addBtn, !item.isAvailable && styles.addBtnDisabled]}
                       disabled={!item.isAvailable}
-                      onClick={() => handleAdd(item)}
+                      onPress={() => handleAdd(item)}
                     >
                       <Text style={styles.addBtnText}>{item.isAvailable ? 'ADD' : 'Unavailable'}</Text>
                     </TouchableOpacity>
@@ -159,7 +159,7 @@ export default function MenuScreen({ api, cart, selectedTable, onUpdateCart, onB
             <Text style={styles.cartBarCount}>{cartCount} Items Selected</Text>
             <Text style={styles.cartBarSubtotal}>₹{cartSubtotal} + GST</Text>
           </View>
-          <TouchableOpacity style={styles.cartBarBtn} onClick={onNext}>
+          <TouchableOpacity style={styles.cartBarBtn} onPress={onNext}>
             <Text style={styles.cartBarBtnText}>View Cart →</Text>
           </TouchableOpacity>
         </View>
