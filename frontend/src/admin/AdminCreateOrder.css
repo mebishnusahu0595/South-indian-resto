@@ -1,7 +1,9 @@
 .admin-create-order {
-  max-width: 1400px;
+  max-width: 1600px;
+  width: 100%;
   margin: 0 auto;
-  padding: 20px;
+  padding: 16px 20px;
+  box-sizing: border-box;
 }
 
 .admin-create-order h1 {
@@ -13,7 +15,7 @@
 
 /* Step-based layout */
 .table-select-step {
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.2s ease;
 }
 
 .step-header {
@@ -121,13 +123,14 @@
 .create-order-container {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 30px;
+  gap: 20px;
   min-width: 0;
+  width: 100%;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1100px) {
   .create-order-container {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1.4fr 0.9fr;
   }
 }
 
@@ -139,6 +142,8 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Left Section: Menu selection */
@@ -150,7 +155,7 @@
   border: 2px solid #111111;
   border-radius: 8px;
   padding: 10px 14px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .menu-search-bar input {
@@ -197,7 +202,8 @@
   font-family: inherit;
   font-weight: 600;
   font-size: 0.82rem;
-  transition: all 0.15s ease;
+  transition: background-color 0.1s ease, color 0.1s ease !important;
+  transform: none !important;
   flex-shrink: 0;
 }
 
@@ -210,21 +216,27 @@
 
 .admin-create-order .items-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
   overflow-y: auto;
-  max-height: calc(100vh - 280px);
+  max-height: calc(100vh - 270px);
   min-height: 400px;
   padding: 4px;
 }
 
 .menu-select-card {
-  padding: 14px;
+  padding: 12px;
   background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  transition: none !important;
+  transform: none !important;
+}
+
+.menu-select-card:hover {
+  transform: none !important;
 }
 
 .menu-select-card h4 {
@@ -441,11 +453,11 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.2s ease;
+  transition: none !important;
 }
 
 .menu-select-card:hover .menu-select-card-image {
-  transform: scale(1.05);
+  transform: none !important;
 }
 
 /* Shortcuts notice */
