@@ -5,8 +5,8 @@
     }
 
     html, body {
-        width: 72mm !important;
-        max-width: 72mm !important;
+        width: 100% !important;
+        max-width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
@@ -32,8 +32,8 @@
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
-        width: 72mm !important;
-        max-width: 72mm !important;
+        width: 100% !important;
+        max-width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
@@ -53,10 +53,10 @@
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
-        width: 72mm !important;
-        max-width: 72mm !important;
+        width: 100% !important;
+        max-width: 100% !important;
         margin: 0 !important;
-        padding: 2mm 0mm !important;
+        padding: 4mm 4mm !important;
         background: #ffffff !important;
         color: #000000 !important;
         box-shadow: none !important;
@@ -104,6 +104,7 @@
         font-weight: 600 !important;
         display: flex !important;
         justify-content: space-between !important;
+        width: 100% !important;
     }
 
     .bill-items-header {
@@ -115,6 +116,7 @@
         margin-bottom: 6px !important;
         display: grid !important;
         grid-template-columns: 2.2fr 0.8fr 1.2fr !important;
+        width: 100% !important;
     }
 
     .bill-item {
@@ -124,12 +126,14 @@
         margin-bottom: 5px !important;
         display: grid !important;
         grid-template-columns: 2.2fr 0.8fr 1.2fr !important;
+        width: 100% !important;
     }
 
     .bill-totals {
         font-size: 15px !important;
         color: #000000 !important;
         margin-top: 8px !important;
+        width: 100% !important;
     }
 
     .bill-total-row {
@@ -138,6 +142,7 @@
         color: #000000 !important;
         display: flex !important;
         justify-content: space-between !important;
+        width: 100% !important;
     }
 
     .bill-total-row.grand-total {
@@ -148,6 +153,7 @@
         margin-top: 6px !important;
         display: flex !important;
         justify-content: space-between !important;
+        width: 100% !important;
     }
 
     .bill-footer p {
@@ -160,6 +166,7 @@
     .bill-divider {
         border-top: 1.5px dashed #000000 !important;
         margin: 6px 0 !important;
+        width: 100% !important;
     }
 }
 
