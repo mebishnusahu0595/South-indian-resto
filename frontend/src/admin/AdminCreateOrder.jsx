@@ -837,74 +837,71 @@ const AdminCreateOrder = () => {
                                 navigate('/admin/bills');
                             }}>Close & Done</button>
                         </div>
+                             {/* 80mm KOT Ticket Printable Modal (Identical size & format to Bill) */}
+            {createdKOT && (
+                <div className="bill-modal-overlay" onClick={() => setCreatedKOT(null)}>
+                    <div className="bill-container print-bill-overlay" onClick={e => e.stopPropagation()}>
+                        <div className="bill-header">
+                            <h2>KEA BY THE POOL</h2>
+                            <p style={{ fontWeight: 'bold', fontSize: '15px', color: '#7C3AED', margin: '4px 0' }}>KITCHEN ORDER TICKET</p>
+                            <p style={{ fontWeight: 'bold', fontSize: '17px', margin: 0 }}>{createdKOT.kotNumber}</p>
+                        </div>
+
+                        <div className="bill-info">
+                            <div className="bill-info-row">
+                                <span>TABLE:</span>
+                                <strong>{createdKOT.tableName || 'Takeaway'}</strong>
+                            </div>
+                            <div className="bill-info-row">
+                                <span>ORDER #:</span>
+                                <strong>#{createdKOT.orderNumber}</strong>
+                            </div>
+                            <div className="bill-info-row">
+                                <span>STAFF:</span>
+                                <strong>{createdKOT.staffName}</strong>
+                            </div>
+                            <div className="bill-info-row">
+                                <span>DATE/TIME:</span>
+                                <span>{new Date(createdKOT.timestamp).toLocaleDateString('en-IN')} {new Date(createdKOT.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                            </div>
+                        </div>
+
+                        <div className="bill-divider"></div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '15px', borderBottom: '2px solid #000', paddingBottom: '4px', marginBottom: '8px' }}>
+                            <span>ITEM NAME</span>
+                            <span>QTY</span>
+                        </div>
+
+                        {createdKOT.items.map((item, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '600', marginBottom: '6px' }}>
+                                <span>{item.name}</span>
+                                <strong>x{item.quantity}</strong>
+                            </div>
+                        ))}
+
+                        {createdKOT.notes && (
+                            <>
+                                <div className="bill-divider"></div>
+                                <div style={{ background: '#FEF3C7', padding: '6px 8px', borderRadius: '4px', border: '1px solid #F59E0B', fontSize: '13px' }}>
+                                    <strong>NOTE:</strong> {createdKOT.notes}
+                                </div>
+                            </>
+                        )}
+
+                        <div className="bill-divider"></div>
+
+                        <div className="bill-footer">
+                            <p style={{ fontSize: '13px', color: '#000', fontWeight: 'bold' }}>*** KITCHEN COPY (80mm Thermal) ***</p>
+                        </div>
+
+                        <div className="bill-actions">
+                            <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => window.print()}>🖨️ Print KOT</button>
+                            <button className="btn-close" onClick={() => setCreatedKOT(null)}>Close</button>
+                        </div>
                     </div>
                 </div>
-            )}
-
-            {/* 80mm KOT Ticket Printable Modal */}
-            {createdKOT && (
-                <div className="modal-overlay" onClick={() => setCreatedKOT(null)}>
-                    <div className="modal print-kot-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '360px', width: '92%' }}>
-                        <div className="modal-header">
-                            <h2>Kitchen KOT Ticket</h2>
-                            <button className="modal-close" onClick={() => setCreatedKOT(null)}>×</button>
-                        </div>
-                        
-                        <div id="kot-printable-slip" style={{ background: '#FFF', padding: '16px', fontFamily: "'Courier New', Courier, monospace", fontSize: '13px', lineHeight: '1.4', border: '1px dashed #111', borderRadius: '6px' }}>
-                            <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
-                                <h2 style={{ margin: '0 0 2px', fontSize: '18px', textTransform: 'uppercase', color: '#111' }}>KEA BY THE POOL</h2>
-                                <h3 style={{ margin: 0, fontSize: '14px', color: '#555' }}>KITCHEN ORDER TICKET</h3>
-                                <div style={{ fontSize: '16px', fontWeight: 'bold', marginTop: '4px', color: '#7C3AED' }}>{createdKOT.kotNumber}</div>
-                            </div>
-
-                            <div style={{ marginBottom: '8px', fontSize: '12px' }}>
-                                <div><strong>TABLE:</strong> {createdKOT.tableName || 'Takeaway'}</div>
-                                <div><strong>ORDER #:</strong> #{createdKOT.orderNumber}</div>
-                                <div><strong>STAFF:</strong> {createdKOT.staffName}</div>
-                                <div><strong>TIME:</strong> {new Date(createdKOT.timestamp).toLocaleDateString('en-IN')} {new Date(createdKOT.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
-                            </div>
-
-                            <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '6px 0', marginBottom: '8px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '4px' }}>
-                                    <span>ITEM NAME</span>
-                                    <span>QTY</span>
-                                </div>
-                                {createdKOT.items.map((item, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', margin: '3px 0' }}>
-                                        <span>{item.name}</span>
-                                        <strong>x{item.quantity}</strong>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {createdKOT.notes && (
-                                <div style={{ marginBottom: '8px', fontSize: '12px', background: '#FEF3C7', padding: '6px', borderRadius: '4px', border: '1px solid #F59E0B' }}>
-                                    <strong>SPECIAL NOTE:</strong> {createdKOT.notes}
-                                </div>
-                            )}
-
-                            <div style={{ textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '6px', fontSize: '11px', color: '#666' }}>
-                                --- KITCHEN / RECEPTION COPY (80mm) ---
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                            <button
-                                className="btn btn-primary"
-                                style={{ flex: 1, background: '#7C3AED', borderColor: '#7C3AED', padding: '12px', fontSize: '14px', fontWeight: 'bold' }}
-                                onClick={() => window.print()}
-                            >
-                                🖨️ Print 80mm KOT
-                            </button>
-                            <button
-                                className="btn btn-secondary"
-                                style={{ padding: '12px 18px', fontWeight: '600' }}
-                                onClick={() => setCreatedKOT(null)}
-                            >
-                                Done
-                            </button>
-                        </div>
-                    </div>
+            )}           </div>
                 </div>
             )}
         </div>
