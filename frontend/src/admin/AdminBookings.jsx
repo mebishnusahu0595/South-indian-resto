@@ -199,7 +199,7 @@ const AdminBookings = () => {
                 {/* Filter Control Bar with Popup Calendar & Watch Clock Pickers */}
                 <div className="booking-filters-bar" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', background: '#FFF', padding: '10px 14px', borderRadius: '10px', border: '2px solid #111', boxShadow: '3px 3px 0px #111' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>📅 From Date:</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>From Date:</span>
                         <input
                             type="date"
                             className="input"
@@ -210,7 +210,7 @@ const AdminBookings = () => {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>📅 To Date:</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>To Date:</span>
                         <input
                             type="date"
                             className="input"
@@ -221,7 +221,7 @@ const AdminBookings = () => {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>⏰ From Time:</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>From Time:</span>
                         <input
                             type="time"
                             className="input"
@@ -232,7 +232,7 @@ const AdminBookings = () => {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>⏰ To Time:</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>To Time:</span>
                         <input
                             type="time"
                             className="input"
@@ -351,13 +351,13 @@ const AdminBookings = () => {
                                 </div>
 
                                 <div className="form-row">
-                                    <div className="input-group"><label>📅 From Date * (Calendar Picker)</label><input type="date" className="input" value={createForm.fromDate} onChange={e => setCreateForm({ ...createForm, fromDate: e.target.value })} required /></div>
-                                    <div className="input-group"><label>📅 To Date (Calendar Picker)</label><input type="date" className="input" value={createForm.toDate} onChange={e => setCreateForm({ ...createForm, toDate: e.target.value })} /></div>
+                                    <div className="input-group"><label>From Date *</label><input type="date" className="input" value={createForm.fromDate} onChange={e => setCreateForm({ ...createForm, fromDate: e.target.value })} required /></div>
+                                    <div className="input-group"><label>To Date</label><input type="date" className="input" value={createForm.toDate} onChange={e => setCreateForm({ ...createForm, toDate: e.target.value })} /></div>
                                 </div>
 
                                 <div className="form-row">
-                                    <div className="input-group"><label>⏰ From Time * (Watch Clock Picker)</label><input type="time" className="input" value={createForm.fromTime} onChange={e => setCreateForm({ ...createForm, fromTime: e.target.value })} required /></div>
-                                    <div className="input-group"><label>⏰ To Time (Watch Clock Picker)</label><input type="time" className="input" value={createForm.toTime} onChange={e => setCreateForm({ ...createForm, toTime: e.target.value })} /></div>
+                                    <div className="input-group"><label>From Time *</label><input type="time" className="input" value={createForm.fromTime} onChange={e => setCreateForm({ ...createForm, fromTime: e.target.value })} required /></div>
+                                    <div className="input-group"><label>To Time</label><input type="time" className="input" value={createForm.toTime} onChange={e => setCreateForm({ ...createForm, toTime: e.target.value })} /></div>
                                 </div>
 
                                 <div className="input-group"><label>Notes / Special Requests</label><textarea className="input" value={createForm.notes} onChange={e => setCreateForm({ ...createForm, notes: e.target.value })} rows={2} /></div>
@@ -409,12 +409,12 @@ const AdminBookings = () => {
                                     </div>
                                 </div>
                                 <div className="form-row">
-                                    <div className="input-group"><label>📅 From Date * (Calendar Picker)</label><input type="date" className="input" value={editForm.fromDate} onChange={e => setEditForm({ ...editForm, fromDate: e.target.value })} required /></div>
-                                    <div className="input-group"><label>📅 To Date (Calendar Picker)</label><input type="date" className="input" value={editForm.toDate} onChange={e => setEditForm({ ...editForm, toDate: e.target.value })} /></div>
+                                    <div className="input-group"><label>From Date *</label><input type="date" className="input" value={editForm.fromDate} onChange={e => setEditForm({ ...editForm, fromDate: e.target.value })} required /></div>
+                                    <div className="input-group"><label>To Date</label><input type="date" className="input" value={editForm.toDate} onChange={e => setEditForm({ ...editForm, toDate: e.target.value })} /></div>
                                 </div>
                                 <div className="form-row">
-                                    <div className="input-group"><label>⏰ From Time * (Watch Clock Picker)</label><input type="time" className="input" value={editForm.fromTime} onChange={e => setEditForm({ ...editForm, fromTime: e.target.value })} required /></div>
-                                    <div className="input-group"><label>⏰ To Time (Watch Clock Picker)</label><input type="time" className="input" value={editForm.toTime} onChange={e => setEditForm({ ...editForm, toTime: e.target.value })} /></div>
+                                    <div className="input-group"><label>From Time *</label><input type="time" className="input" value={editForm.fromTime} onChange={e => setEditForm({ ...editForm, fromTime: e.target.value })} required /></div>
+                                    <div className="input-group"><label>To Time</label><input type="time" className="input" value={editForm.toTime} onChange={e => setEditForm({ ...editForm, toTime: e.target.value })} /></div>
                                 </div>
                                 <div className="form-row">
                                     <div className="input-group"><label>Advance Payment</label><input type="number" className="input" value={editForm.paymentAmount} onChange={e => setEditForm({ ...editForm, paymentAmount: parseFloat(e.target.value) || 0 })} /></div>

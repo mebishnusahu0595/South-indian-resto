@@ -541,7 +541,7 @@ const AdminOrders = () => {
                         className={`btn ${activeTab === 'active' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setActiveTab('active')}
                     >
-                        📦 Active Orders ({orders.filter(o => o.status !== 'paid' && o.status !== 'cancelled').length})
+                        Active Orders ({orders.filter(o => o.status !== 'paid' && o.status !== 'cancelled').length})
                     </button>
                     <button
                         className={`btn ${activeTab === 'kots' ? 'btn-primary' : 'btn-secondary'}`}
@@ -550,13 +550,13 @@ const AdminOrders = () => {
                             fetchKOTs();
                         }}
                     >
-                        🧾 KOTs History Log
+                        KOTs History Log
                     </button>
                     <button
                         className={`btn ${activeTab === 'all' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setActiveTab('all')}
                     >
-                        📜 All Orders ({orders.length})
+                        All Orders ({orders.length})
                     </button>
                 </div>
             </div>
@@ -566,7 +566,7 @@ const AdminOrders = () => {
                 <div className="kots-view-section">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px', background: '#F9FAFB', padding: '12px 16px', borderRadius: '8px', border: '1.5px solid #111' }}>
                         <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>
-                            {user?.role === 'superadmin' ? '📅 Select Date to View KOTs' : "📅 Today's Generated KOT Tickets"}
+                            {user?.role === 'superadmin' ? 'Select Date to View KOTs' : "Today's Generated KOT Tickets"}
                         </div>
                         {user?.role === 'superadmin' ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

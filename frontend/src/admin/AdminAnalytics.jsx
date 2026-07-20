@@ -188,7 +188,7 @@ const AdminAnalytics = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             {user?.role === 'superadmin' ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <label style={{ fontWeight: 'bold' }}>📅 Select Date:</label>
+                                    <label style={{ fontWeight: 'bold' }}>Select Date:</label>
                                     <input
                                         type="date"
                                         value={reportDate}
@@ -203,7 +203,7 @@ const AdminAnalytics = () => {
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <label style={{ fontWeight: 'bold' }}>📅 Date:</label>
+                                    <label style={{ fontWeight: 'bold' }}>Date:</label>
                                     <button
                                         className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
                                         onClick={() => {
@@ -392,7 +392,7 @@ const AdminAnalytics = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             {user?.role === 'superadmin' ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <label style={{ fontWeight: 'bold' }}>📅 Select Date:</label>
+                                    <label style={{ fontWeight: 'bold' }}>Select Date:</label>
                                     <input
                                         type="date"
                                         value={reportDate}
@@ -407,7 +407,7 @@ const AdminAnalytics = () => {
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <label style={{ fontWeight: 'bold' }}>📅 Date:</label>
+                                    <label style={{ fontWeight: 'bold' }}>Date:</label>
                                     <button
                                         className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
                                         onClick={() => {
