@@ -125,7 +125,7 @@ function AppRoutes() {
         <Route path="inventory" element={<AdminInventory />} />
         <Route path="employees" element={<AdminEmployees />} />
         <Route path="tables" element={<AdminTables />} />
-        <Route path="analytics" element={<SuperadminOnly><AdminAnalytics /></SuperadminOnly>} />
+        <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="history" element={<AdminHistory />} />
         <Route path="settings" element={<AdminSettings />} />
         <Route path="loyalty" element={<SuperadminOnly><AdminLoyalty /></SuperadminOnly>} />

@@ -22,13 +22,19 @@ const AdminAnalytics = () => {
     const [loading, setLoading] = useState(true);
 
     // EOD & Section Report state
-    const [activeTab, setActiveTab] = useState('analytics'); // 'analytics' | 'day-end' | 'section-wise'
+    const [activeTab, setActiveTab] = useState('day-end'); // 'day-end' | 'section-wise' | 'analytics'
     const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
     const [dayEndData, setDayEndData] = useState(null);
     const [sectionData, setSectionData] = useState(null);
     const [fetchingReport, setFetchingReport] = useState(false);
 
     useEffect(() => {
+        if (user && user.role === 'superadmin') {
+            setActiveTab('analytics');
+        } else {
+            setActiveTab('day-end');
+            fetchDayEndReport();
+        }
         if (user && user.role === 'admin' && period !== 'month') {
             setPeriod('month');
         } else {
@@ -147,12 +153,14 @@ const AdminAnalytics = () => {
 
             {/* Navigation Tabs */}
             <div className="analytics-tabs" style={{ display: 'flex', gap: '10px', marginBottom: '24px', flexWrap: 'wrap' }}>
-                <button
-                    className={`btn ${activeTab === 'analytics' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('analytics')}
-                >
-                    <FiActivity /> Overview Analytics
-                </button>
+                {user?.role === 'superadmin' && (
+                    <button
+                        className={`btn ${activeTab === 'analytics' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setActiveTab('analytics')}
+                    >
+                        <FiActivity /> Overview Analytics
+                    </button>
+                )}
                 <button
                     className={`btn ${activeTab === 'day-end' ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => {
