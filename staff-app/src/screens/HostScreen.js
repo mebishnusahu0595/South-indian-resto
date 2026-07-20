@@ -181,9 +181,15 @@ export default function HostScreen({ api, staffName, onBack }) {
             </View>
 
             {/* Date Selection */}
-            <Text style={styles.label}>Booking Date (YYYY-MM-DD)</Text>
             <View style={styles.formRow}>
-              <TextInput style={[styles.input, { flex: 1 }]} value={fromDate} onChangeText={setFromDate} placeholder="2025-01-15" />
+              <View style={styles.inputHalf}>
+                <Text style={styles.label}>From Date * (YYYY-MM-DD)</Text>
+                <TextInput style={styles.input} value={fromDate} onChangeText={setFromDate} placeholder="2026-07-20" />
+              </View>
+              <View style={styles.inputHalf}>
+                <Text style={styles.label}>To Date (YYYY-MM-DD)</Text>
+                <TextInput style={styles.input} value={toDate} onChangeText={setToDate} placeholder="2026-07-20" />
+              </View>
             </View>
             <View style={styles.presetRow}>
               <TouchableOpacity style={styles.presetChip} onPress={() => setQuickDate(0)}>
@@ -195,13 +201,26 @@ export default function HostScreen({ api, staffName, onBack }) {
               <TouchableOpacity style={styles.presetChip} onPress={() => setQuickDate(2)}>
                 <Text style={styles.presetText}>In 2 Days</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={styles.presetChip} onPress={() => setToDate(fromDate)}>
+                <Text style={styles.presetText}>Same Day</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Time Selection */}
-            <Text style={[styles.label, { marginTop: 10 }]}>Time Slot * (HH:MM)</Text>
-            <TextInput style={styles.input} value={fromTime} onChangeText={setFromTime} placeholder="19:00" />
+            <View style={[styles.formRow, { marginTop: 10 }]}>
+              <View style={styles.inputHalf}>
+                <Text style={styles.label}>From Time * (HH:MM)</Text>
+                <TextInput style={styles.input} value={fromTime} onChangeText={setFromTime} placeholder="19:00" />
+              </View>
+              <View style={styles.inputHalf}>
+                <Text style={styles.label}>To Time (HH:MM)</Text>
+                <TextInput style={styles.input} value={toTime} onChangeText={setToTime} placeholder="21:00" />
+              </View>
+            </View>
+
+            <Text style={[styles.label, { marginTop: 4, fontSize: 11, color: '#6B7280' }]}>Quick From Time Slots:</Text>
             <View style={styles.presetRow}>
-              {timePresets.map((t) => (
+              {['12:00', '13:30', '19:00', '20:00', '21:00', '22:00'].map((t) => (
                 <TouchableOpacity key={t} style={[styles.presetChip, fromTime === t && styles.presetChipActive]} onPress={() => setFromTime(t)}>
                   <Text style={[styles.presetText, fromTime === t && styles.presetTextActive]}>{t}</Text>
                 </TouchableOpacity>
