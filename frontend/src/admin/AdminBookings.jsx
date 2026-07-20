@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FiCalendar, FiChevronLeft, FiChevronRight, FiEdit2, FiTrash2, FiCheck, FiX, FiUsers, FiClock, FiMapPin, FiDollarSign } from 'react-icons/fi';
-import { getBookings, updateBookingStatus, updateBooking, deleteBooking, getTables, getTableSections } from '../utils/api';
+import { FiCalendar, FiChevronLeft, FiChevronRight, FiEdit2, FiTrash2, FiCheck, FiX, FiUsers, FiClock, FiMapPin, FiDollarSign, FiPlus, FiFilter } from 'react-icons/fi';
+import { getBookings, updateBookingStatus, updateBooking, deleteBooking, createBooking, getTables, getTableSections } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
 import './AdminBookings.css';
@@ -17,9 +17,33 @@ const AdminBookings = () => {
     const { user, socket } = useAuth();
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [selectedDate, setSelectedDate] = useState(getLocalDateString());
+    
+    // Date & Time Range Filters
+    const [fromDateFilter, setFromDateFilter] = useState(getLocalDateString());
+    const [toDateFilter, setToDateFilter] = useState(getLocalDateString());
+    const [fromTimeFilter, setFromTimeFilter] = useState('');
+    const [toTimeFilter, setToTimeFilter] = useState('');
+
     const [tables, setTables] = useState([]);
     const [sectionsList, setSectionsList] = useState([]);
+
+    // Create modal
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [createForm, setCreateForm] = useState({
+        guestName: '',
+        guestPhone: '',
+        guestCount: 2,
+        fromDate: getLocalDateString(),
+        toDate: getLocalDateString(),
+        fromTime: '19:00',
+        toTime: '21:00',
+        paymentAmount: 0,
+        totalAmount: 0,
+        notes: '',
+        tableIds: [],
+        sections: []
+    });
+    const [creating, setCreating] = useState(false);
 
     // Edit modal
     const [editBooking, setEditBooking] = useState(null);
@@ -31,7 +55,7 @@ const AdminBookings = () => {
     const [completeAmount, setCompleteAmount] = useState('');
     const [completing, setCompleting] = useState(false);
 
-    useEffect(() => { fetchBookings(); fetchTables(); fetchSections(); }, [selectedDate]);
+    useEffect(() => { fetchBookings(); fetchTables(); fetchSections(); }, [fromDateFilter, toDateFilter]);
 
     useEffect(() => {
         if (socket) {
@@ -44,15 +68,36 @@ const AdminBookings = () => {
 
     const fetchBookings = async () => {
         setLoading(true);
-        try { const res = await getBookings({ date: selectedDate }); setBookings(res.data || []); }
+        try { 
+            const res = await getBookings({ fromDate: fromDateFilter, toDate: toDateFilter }); 
+            let data = res.data || [];
+            if (fromTimeFilter) {
+                data = data.filter(b => b.fromTime >= fromTimeFilter);
+            }
+            if (toTimeFilter) {
+                data = data.filter(b => !b.toTime || b.toTime <= toTimeFilter);
+            }
+            setBookings(data); 
+        }
         catch (err) { console.error(err); }
         finally { setLoading(false); }
     };
     const fetchTables = async () => { try { const res = await getTables(); setTables(res.data || []); } catch (e) {} };
     const fetchSections = async () => { try { const res = await getTableSections(); setSectionsList(res.data || []); } catch (e) {} };
 
-    const handlePrevDay = () => { const d = new Date(selectedDate); d.setDate(d.getDate() - 1); setSelectedDate(getLocalDateString(d)); };
-    const handleNextDay = () => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); setSelectedDate(getLocalDateString(d)); };
+    const handleCreateBooking = async (e) => {
+        e.preventDefault();
+        setCreating(true);
+        try {
+            await createBooking(createForm);
+            setShowCreateModal(false);
+            fetchBookings();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to create booking');
+        } finally {
+            setCreating(false);
+        }
+    };
 
     const handleStatusChange = async (bookingId, status) => {
         try { await updateBookingStatus(bookingId, status); fetchBookings(); }
@@ -140,16 +185,81 @@ const AdminBookings = () => {
     return (
         <div className="admin-bookings">
             <div className="bookings-header">
-                <h1>Pre-Bookings</h1>
-                <div className="date-filter-control sketch-border-subtle">
-                    <button className="date-arrow-btn" onClick={handlePrevDay}><FiChevronLeft /></button>
-                    <div className="date-display-box"><FiCalendar /><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /></div>
-                    <button className="date-arrow-btn" onClick={handleNextDay}><FiChevronRight /></button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <h1>Pre-Bookings</h1>
+                    <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => setShowCreateModal(true)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                        <FiPlus /> New Booking
+                    </button>
+                </div>
+
+                {/* Filter Control Bar with Popup Calendar & Watch Clock Pickers */}
+                <div className="booking-filters-bar" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', background: '#FFF', padding: '10px 14px', borderRadius: '10px', border: '2px solid #111', boxShadow: '3px 3px 0px #111' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>📅 From Date:</span>
+                        <input
+                            type="date"
+                            className="input"
+                            value={fromDateFilter}
+                            onChange={e => setFromDateFilter(e.target.value)}
+                            style={{ padding: '4px 8px', fontSize: '0.85rem', border: '1.5px solid #111' }}
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>📅 To Date:</span>
+                        <input
+                            type="date"
+                            className="input"
+                            value={toDateFilter}
+                            onChange={e => setToDateFilter(e.target.value)}
+                            style={{ padding: '4px 8px', fontSize: '0.85rem', border: '1.5px solid #111' }}
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>⏰ From Time:</span>
+                        <input
+                            type="time"
+                            className="input"
+                            value={fromTimeFilter}
+                            onChange={e => setFromTimeFilter(e.target.value)}
+                            style={{ padding: '4px 8px', fontSize: '0.85rem', border: '1.5px solid #111' }}
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>⏰ To Time:</span>
+                        <input
+                            type="time"
+                            className="input"
+                            value={toTimeFilter}
+                            onChange={e => setToTimeFilter(e.target.value)}
+                            style={{ padding: '4px 8px', fontSize: '0.85rem', border: '1.5px solid #111' }}
+                        />
+                    </div>
+
+                    {(fromTimeFilter || toTimeFilter || fromDateFilter !== getLocalDateString() || toDateFilter !== getLocalDateString()) && (
+                        <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                                setFromDateFilter(getLocalDateString());
+                                setToDateFilter(getLocalDateString());
+                                setFromTimeFilter('');
+                                setToTimeFilter('');
+                            }}
+                        >
+                            Reset
+                        </button>
+                    )}
                 </div>
             </div>
 
             {bookings.length === 0 ? (
-                <div className="no-bookings"><FiUsers size={48} /><h3>No bookings for this date</h3><p>Bookings created by staff (host) will appear here</p></div>
+                <div className="no-bookings"><FiUsers size={48} /><h3>No bookings for selected range</h3><p>Create a booking using the button above or wait for staff entries.</p></div>
             ) : (
                 <div className="bookings-grid">
                     {bookings.map(booking => (
@@ -223,11 +333,67 @@ const AdminBookings = () => {
                 </div>
             )}
 
+            {/* Create Pre-Booking Modal */}
+            {showCreateModal && (
+                <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div className="modal-header"><h2>Create New Pre-Booking</h2><button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button></div>
+                        <form onSubmit={handleCreateBooking}>
+                            <div className="modal-body">
+                                <div className="form-row">
+                                    <div className="input-group"><label>Guest Name *</label><input className="input" value={createForm.guestName} onChange={e => setCreateForm({ ...createForm, guestName: e.target.value })} required /></div>
+                                    <div className="input-group"><label>Phone Number</label><input className="input" value={createForm.guestPhone} onChange={e => setCreateForm({ ...createForm, guestPhone: e.target.value })} /></div>
+                                </div>
+
+                                <div className="form-row">
+                                    <div className="input-group"><label>Guest Count *</label><input type="number" className="input" value={createForm.guestCount} onChange={e => setCreateForm({ ...createForm, guestCount: parseInt(e.target.value) || 1 })} min="1" required /></div>
+                                    <div className="input-group"><label>Advance Paid (Rs.)</label><input type="number" className="input" value={createForm.paymentAmount} onChange={e => setCreateForm({ ...createForm, paymentAmount: parseFloat(e.target.value) || 0 })} /></div>
+                                </div>
+
+                                <div className="form-row">
+                                    <div className="input-group"><label>📅 From Date * (Calendar Picker)</label><input type="date" className="input" value={createForm.fromDate} onChange={e => setCreateForm({ ...createForm, fromDate: e.target.value })} required /></div>
+                                    <div className="input-group"><label>📅 To Date (Calendar Picker)</label><input type="date" className="input" value={createForm.toDate} onChange={e => setCreateForm({ ...createForm, toDate: e.target.value })} /></div>
+                                </div>
+
+                                <div className="form-row">
+                                    <div className="input-group"><label>⏰ From Time * (Watch Clock Picker)</label><input type="time" className="input" value={createForm.fromTime} onChange={e => setCreateForm({ ...createForm, fromTime: e.target.value })} required /></div>
+                                    <div className="input-group"><label>⏰ To Time (Watch Clock Picker)</label><input type="time" className="input" value={createForm.toTime} onChange={e => setCreateForm({ ...createForm, toTime: e.target.value })} /></div>
+                                </div>
+
+                                <div className="input-group"><label>Notes / Special Requests</label><textarea className="input" value={createForm.notes} onChange={e => setCreateForm({ ...createForm, notes: e.target.value })} rows={2} /></div>
+
+                                <div className="input-group">
+                                    <label>Select Sections</label>
+                                    <div className="chips-wrap">
+                                        {sectionsList.map(sec => (
+                                            <button type="button" key={sec} className={`chip ${createForm.sections.includes(sec) ? 'active' : ''}`} onClick={() => setCreateForm(p => ({ ...p, sections: p.sections.includes(sec) ? p.sections.filter(x => x !== sec) : [...p.sections, sec] }))}>{sec}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="input-group">
+                                    <label>Select Tables</label>
+                                    <div className="chips-wrap">
+                                        {tables.slice(0, 30).map(t => (
+                                            <button type="button" key={t._id} className={`chip ${createForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => setCreateForm(p => ({ ...p, tableIds: p.tableIds.includes(t._id) ? p.tableIds.filter(x => x !== t._id) : [...p.tableIds, t._id] }))}>T{t.tableNumber}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="modal-footer">
+                                <button type="button" className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                                <button type="submit" className="btn btn-primary" disabled={creating}>{creating ? 'Creating...' : 'Create Booking'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {/* Edit Modal (Superadmin) */}
             {editBooking && (
                 <div className="modal-overlay" onClick={() => setEditBooking(null)}>
                     <div className="modal" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
-                        <div className="modal-header"><h2>Edit Booking</h2><button className="modal-close" onClick={() => setEditBooking(null)}>x</button></div>
+                        <div className="modal-header"><h2>Edit Booking</h2><button className="modal-close" onClick={() => setEditBooking(null)}>×</button></div>
                         <form onSubmit={handleSaveEdit}>
                             <div className="modal-body">
                                 <div className="form-row">
@@ -243,12 +409,12 @@ const AdminBookings = () => {
                                     </div>
                                 </div>
                                 <div className="form-row">
-                                    <div className="input-group"><label>From Date *</label><input type="date" className="input" value={editForm.fromDate} onChange={e => setEditForm({ ...editForm, fromDate: e.target.value })} required /></div>
-                                    <div className="input-group"><label>To Date</label><input type="date" className="input" value={editForm.toDate} onChange={e => setEditForm({ ...editForm, toDate: e.target.value })} /></div>
+                                    <div className="input-group"><label>📅 From Date * (Calendar Picker)</label><input type="date" className="input" value={editForm.fromDate} onChange={e => setEditForm({ ...editForm, fromDate: e.target.value })} required /></div>
+                                    <div className="input-group"><label>📅 To Date (Calendar Picker)</label><input type="date" className="input" value={editForm.toDate} onChange={e => setEditForm({ ...editForm, toDate: e.target.value })} /></div>
                                 </div>
                                 <div className="form-row">
-                                    <div className="input-group"><label>From Time *</label><input type="time" className="input" value={editForm.fromTime} onChange={e => setEditForm({ ...editForm, fromTime: e.target.value })} required /></div>
-                                    <div className="input-group"><label>To Time</label><input type="time" className="input" value={editForm.toTime} onChange={e => setEditForm({ ...editForm, toTime: e.target.value })} /></div>
+                                    <div className="input-group"><label>⏰ From Time * (Watch Clock Picker)</label><input type="time" className="input" value={editForm.fromTime} onChange={e => setEditForm({ ...editForm, fromTime: e.target.value })} required /></div>
+                                    <div className="input-group"><label>⏰ To Time (Watch Clock Picker)</label><input type="time" className="input" value={editForm.toTime} onChange={e => setEditForm({ ...editForm, toTime: e.target.value })} /></div>
                                 </div>
                                 <div className="form-row">
                                     <div className="input-group"><label>Advance Payment</label><input type="number" className="input" value={editForm.paymentAmount} onChange={e => setEditForm({ ...editForm, paymentAmount: parseFloat(e.target.value) || 0 })} /></div>

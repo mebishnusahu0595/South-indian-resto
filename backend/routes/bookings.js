@@ -8,10 +8,18 @@ const { protect, admin, superadmin } = require('../middleware/auth');
 // Get all bookings (admin/staff can view)
 router.get('/', protect, async (req, res) => {
     try {
-        const { date, status } = req.query;
+        const { date, fromDate, toDate, status } = req.query;
         let query = {};
 
-        if (date) {
+        if (fromDate && toDate) {
+            const start = new Date(fromDate + 'T00:00:00');
+            const end = new Date(toDate + 'T23:59:59.999');
+            query.fromDate = { $lte: end };
+            query.$or = [
+                { toDate: { $gte: start } },
+                { toDate: null, fromDate: { $gte: start, $lte: end } }
+            ];
+        } else if (date) {
             const start = new Date(date + 'T00:00:00');
             const end = new Date(date + 'T23:59:59.999');
             query.fromDate = { $lte: end };
