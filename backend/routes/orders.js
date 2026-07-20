@@ -276,6 +276,65 @@ router.post('/', protect, async (req, res) => {
         const totalTax = taxDetails.reduce((sum, t) => sum + t.amount, 0);
         const total = taxableAmount + totalTax;
 
+        // Check if any selected table has an active running order to append items
+        let activeOrder = null;
+        if (selectedTables.length > 0) {
+            activeOrder = await Order.findOne({
+                tables: { $in: selectedTables.map(t => t._id) },
+                status: { $nin: ['paid', 'cancelled'] }
+            });
+        }
+
+        const kotNum = `KOT-${Date.now().toString().slice(-4)}`;
+
+        if (activeOrder) {
+            // Append items to running table order
+            for (const newItem of orderItems) {
+                const existingItemIndex = activeOrder.items.findIndex(i => i.menuItem.toString() === newItem.menuItem.toString());
+                if (existingItemIndex > -1) {
+                    activeOrder.items[existingItemIndex].quantity += newItem.quantity;
+                    activeOrder.items[existingItemIndex].total += newItem.total;
+                } else {
+                    activeOrder.items.push(newItem);
+                }
+            }
+
+            // Recalculate subtotal & tax
+            activeOrder.subtotal = activeOrder.items.reduce((acc, item) => acc + item.total, 0);
+            const taxableAmount = activeOrder.subtotal - activeOrder.discount;
+            activeOrder.taxDetails = taxConfig.map(t => ({
+                name: t.name,
+                rate: t.rate,
+                amount: taxableAmount * (t.rate / 100)
+            }));
+            activeOrder.tax = activeOrder.taxDetails.reduce((sum, t) => sum + t.amount, 0);
+            activeOrder.total = taxableAmount + activeOrder.tax;
+
+            // Add KOT history
+            activeOrder.kotHistory.push({
+                kotNumber: kotNum,
+                timestamp: new Date(),
+                items: orderItems,
+                notes: specialInstructions || ''
+            });
+
+            activeOrder.status = 'confirmed';
+            await activeOrder.save();
+
+            const populatedOrder = await Order.findById(activeOrder._id)
+                .populate('user', 'phone name')
+                .populate('placedBy', 'name')
+                .populate('items.menuItem', 'name image');
+
+            const io = req.app.get('io');
+            if (io) {
+                io.emit('order-updated', populatedOrder);
+                io.emit('new-order', populatedOrder);
+            }
+
+            return res.status(200).json(populatedOrder);
+        }
+
         const order = new Order({
             orderNumber: generateOrderNumber(),
             user: orderUser,
@@ -294,7 +353,13 @@ router.post('/', protect, async (req, res) => {
             specialInstructions: specialInstructions || '',
             loyaltyOffer: (pointsUsed && loyaltyOfferId) ? loyaltyOfferId : null,
             pointsRedeemed: (pointsUsed && loyaltyOfferId) ? pointsUsed : 0,
-            status: 'pending',
+            status: 'confirmed',
+            kotHistory: [{
+                kotNumber: kotNum,
+                timestamp: new Date(),
+                items: orderItems,
+                notes: specialInstructions || ''
+            }],
             placedBy: (req.user && req.user.isEmployee) ? req.user._id : null
         });
 

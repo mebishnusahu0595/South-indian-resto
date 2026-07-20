@@ -344,3 +344,32 @@
 .btn-save-sm:hover {
     opacity: 0.9;
 }
+
+@media print {
+    body * {
+        visibility: hidden !important;
+    }
+    .report-printable-area,
+    .report-printable-area * {
+        visibility: visible !important;
+    }
+    .report-printable-area {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 20px !important;
+        background: white !important;
+        color: black !important;
+        box-shadow: none !important;
+        border: none !important;
+    }
+    .analytics-tabs,
+    .header-actions,
+    .admin-sidebar,
+    .admin-header,
+    button {
+        display: none !important;
+    }
+}

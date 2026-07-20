@@ -47,6 +47,12 @@ const AdminOrders = () => {
     // Max discount cap
     const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
 
+    // Split Payment state
+    const [showSplitModal, setShowSplitModal] = useState(false);
+    const [splitCash, setSplitCash] = useState('');
+    const [splitUpi, setSplitUpi] = useState('');
+    const [splitCard, setSplitCard] = useState('');
+
     const handlePartialPayment = async (orderId, total) => {
         const amount = paymentAmount[orderId];
         if (amount === undefined || amount === '') return;
@@ -417,6 +423,64 @@ const AdminOrders = () => {
         }
     };
 
+    const handleOpenSplitPaymentModal = (orderId, amount) => {
+        const order = orders.find(o => o._id === orderId);
+        setPaymentBillerOrderId(orderId);
+        setPaymentBillerAmount(amount);
+        setPaymentBillerName(order?.billerName || localStorage.getItem('lastBillerName') || '');
+        setPaymentDiscountInput(order?.discount ? String(order.discount) : '');
+        setPaymentDiscountType('%');
+        setPaymentDiscountName(order?.discountName || '');
+        setSplitCash('');
+        setSplitUpi('');
+        setSplitCard('');
+        setShowSplitModal(true);
+        fetchBillerSuggestions();
+    };
+
+    const handleConfirmSplitPayment = async (e) => {
+        if (e) e.preventDefault();
+        if (!paymentBillerName.trim()) {
+            alert('Please enter or select a biller name.');
+            return;
+        }
+
+        try {
+            const targetOrder = orders.find(o => o._id === paymentBillerOrderId);
+            const sessionOrders = targetOrder ? getSessionOrders(targetOrder, orders) : [];
+            const orderIds = sessionOrders.map(o => o._id);
+            const baseSubtotal = sessionOrders.reduce((sum, o) => sum + (o.subtotal || o.total), 0);
+            const discountVal = parseDiscount(paymentDiscountInput, baseSubtotal, paymentDiscountType);
+
+            await generateBill({
+                orderIds: orderIds.length > 0 ? orderIds : [paymentBillerOrderId],
+                billerName: paymentBillerName,
+                discount: discountVal,
+                discountName: paymentDiscountName,
+                paymentMethod: 'split',
+                splitPaymentDetails: {
+                    cash: parseFloat(splitCash) || 0,
+                    upi: parseFloat(splitUpi) || 0,
+                    card: parseFloat(splitCard) || 0
+                }
+            });
+
+            localStorage.setItem('lastBillerName', paymentBillerName);
+            setShowSplitModal(false);
+            fetchOrders();
+
+            if (sessionOrders.length > 0) {
+                const updatedSessionOrders = sessionOrders.map(o => 
+                    o._id === paymentBillerOrderId ? { ...o, status: 'paid', paymentMethod: 'split', billerName: paymentBillerName, discount: discountVal, discountName: paymentDiscountName } : { ...o, billerName: paymentBillerName, discount: discountVal }
+                );
+                setSelectedOrdersForBill(updatedSessionOrders);
+                setShowBill(true);
+            }
+        } catch (error) {
+            alert(error.response?.data?.message || 'Failed to process split payment');
+        }
+    };
+
     const handleShowBill = (order) => {
         if (order.status !== 'bill_generated' && order.status !== 'paid') {
             handleOpenPrepareBill(order._id);
@@ -533,8 +597,8 @@ const AdminOrders = () => {
                                         </button>
                                     )}
 
-                                    {['served', 'bill_requested', 'bill_generated'].includes(order.status) && order.status !== 'paid' && (
-                                        <div className="payment-btns" style={{ display: 'flex', gap: '8px', width: '100%', position: 'relative', zIndex: 10 }}>
+                                    {['served', 'bill_requested', 'bill_generated', 'confirmed', 'preparing', 'ready'].includes(order.status) && order.status !== 'paid' && (
+                                        <div className="payment-btns" style={{ display: 'flex', gap: '6px', width: '100%', flexWrap: 'wrap', position: 'relative', zIndex: 10 }}>
                                             <button
                                                 type="button"
                                                 className="btn btn-success btn-sm"
@@ -543,7 +607,7 @@ const AdminOrders = () => {
                                                     e.stopPropagation();
                                                     handleOpenPaymentBiller(order._id, 'cash', order.total);
                                                 }}
-                                                style={{ cursor: 'pointer', flex: 1, zIndex: 10, position: 'relative', touchAction: 'manipulation' }}
+                                                style={{ cursor: 'pointer', flex: 1, minWidth: '80px', zIndex: 10 }}
                                             >
                                                 Cash Paid
                                             </button>
@@ -555,9 +619,33 @@ const AdminOrders = () => {
                                                     e.stopPropagation();
                                                     handleOpenPaymentBiller(order._id, 'online', order.total);
                                                 }}
-                                                style={{ cursor: 'pointer', flex: 1, zIndex: 10, position: 'relative', touchAction: 'manipulation' }}
+                                                style={{ cursor: 'pointer', flex: 1, minWidth: '80px', zIndex: 10 }}
                                             >
-                                                Online Paid
+                                                UPI Paid
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleOpenPaymentBiller(order._id, 'card', order.total);
+                                                }}
+                                                style={{ cursor: 'pointer', flex: 1, minWidth: '80px', background: '#4F46E5', color: '#FFF', border: 'none', zIndex: 10 }}
+                                            >
+                                                Card Paid
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleOpenSplitPaymentModal(order._id, order.total);
+                                                }}
+                                                style={{ cursor: 'pointer', flex: 1, minWidth: '80px', background: '#D97706', color: '#FFF', border: 'none', zIndex: 10 }}
+                                            >
+                                                Split Pay
                                             </button>
                                         </div>
                                     )}

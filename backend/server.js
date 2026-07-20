@@ -67,6 +67,8 @@ app.use((req, res, next) => {
 // Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+const reportRoutes = require('./routes/reports');
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
@@ -83,6 +85,7 @@ app.use('/api/loyalty', loyaltyRoutes);
 app.use('/api/bills', billRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/ratings', ratingRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

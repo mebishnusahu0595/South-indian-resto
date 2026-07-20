@@ -80,6 +80,8 @@ export const getRevenueData = (period, params = {}) => axios.get(`${API_URL}/ana
 export const getCategorySales = (period, params = {}) => axios.get(`${API_URL}/analytics/category-sales`, { params: { period, ...params } });
 export const getTopItems = (params = {}) => axios.get(`${API_URL}/analytics/top-items`, { params });
 export const getUserAnalytics = (period) => axios.get(`${API_URL}/analytics/users`, { params: { period } });
+export const getDayEndReport = (date) => axios.get(`${API_URL}/reports/day-end`, { params: { date } });
+export const getSectionWiseReport = (date) => axios.get(`${API_URL}/reports/section-wise`, { params: { date } });
 
 // Tables
 export const getTables = () => axios.get(`${API_URL}/tables`);

@@ -137,8 +137,36 @@ router.post('/generate', protect, admin, async (req, res) => {
         primaryOrder.billerName = billerName;
         primaryOrder.tax = tax;
         primaryOrder.taxDetails = [{ name: 'GST', rate: gstRate, amount: tax }];
-        primaryOrder.total = taxableAmount + tax;
-        primaryOrder.status = 'bill_generated';
+        const { paymentMethod, splitPaymentDetails } = req.body;
+        const billTotal = taxableAmount + tax;
+
+        if (paymentMethod) {
+            if (paymentMethod === 'split' && splitPaymentDetails) {
+                const sumSplit = (parseFloat(splitPaymentDetails.cash) || 0) +
+                                 (parseFloat(splitPaymentDetails.upi) || 0) +
+                                 (parseFloat(splitPaymentDetails.card) || 0);
+                if (Math.abs(sumSplit - billTotal) > 1) {
+                    return res.status(400).json({
+                        message: `Split payment total (₹${sumSplit.toFixed(2)}) does not match bill total (₹${billTotal.toFixed(2)})`
+                    });
+                }
+            }
+
+            primaryOrder.paymentMethod = paymentMethod;
+            primaryOrder.splitPaymentDetails = splitPaymentDetails || { cash: 0, upi: 0, card: 0 };
+            primaryOrder.status = 'paid';
+            primaryOrder.amountPaid = billTotal;
+
+            // Automatically free table(s) on payment
+            if (primaryOrder.tables && primaryOrder.tables.length > 0) {
+                await Table.updateMany(
+                    { _id: { $in: primaryOrder.tables } },
+                    { status: 'available', isOccupied: false, currentOrder: null }
+                );
+            }
+        } else {
+            primaryOrder.status = 'bill_generated';
+        }
 
         await primaryOrder.save();
 
@@ -149,7 +177,11 @@ router.post('/generate', protect, admin, async (req, res) => {
             bill.discount = discountAmount;
             bill.discountName = discountName || '';
             bill.tax = tax;
-            bill.total = taxableAmount + tax;
+            bill.total = billTotal;
+            if (paymentMethod) {
+                bill.paymentMethod = paymentMethod;
+                bill.splitPaymentDetails = splitPaymentDetails || { cash: 0, upi: 0, card: 0 };
+            }
             await bill.save();
         } else {
             const count = await Bill.countDocuments();
@@ -163,7 +195,9 @@ router.post('/generate', protect, admin, async (req, res) => {
                 discount: discountAmount,
                 discountName: discountName || '',
                 tax,
-                total: taxableAmount + tax
+                total: billTotal,
+                paymentMethod: paymentMethod || 'pending',
+                splitPaymentDetails: splitPaymentDetails || { cash: 0, upi: 0, card: 0 }
             });
 
             await bill.save();

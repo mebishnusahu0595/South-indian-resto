@@ -70,9 +70,20 @@ const orderSchema = new mongoose.Schema({
     },
     paymentMethod: {
         type: String,
-        enum: ['cash', 'online', 'pending'],
+        enum: ['cash', 'online', 'card', 'split', 'pending'],
         default: 'pending'
     },
+    splitPaymentDetails: {
+        cash: { type: Number, default: 0 },
+        upi: { type: Number, default: 0 },
+        card: { type: Number, default: 0 }
+    },
+    kotHistory: [{
+        kotNumber: String,
+        timestamp: { type: Date, default: Date.now },
+        items: [orderItemSchema],
+        notes: String
+    }],
     amountPaid: {
         type: Number,
         default: 0
