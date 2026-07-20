@@ -3,7 +3,7 @@ import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, F
 import { 
     getActiveOrders, updateOrderStatus, updatePayment, deleteOrder, 
     getAllMenuItems, getBillerSuggestions, generateBill, updateOrderItems,
-    getCoupons, getMaxDiscount
+    getCoupons, getMaxDiscount, getKOTs
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import OrderBill from '../components/OrderBill';
@@ -52,6 +52,25 @@ const AdminOrders = () => {
     const [splitCash, setSplitCash] = useState('');
     const [splitUpi, setSplitUpi] = useState('');
     const [splitCard, setSplitCard] = useState('');
+
+    // KOTs state
+    const [activeTab, setActiveTab] = useState('active'); // 'active' | 'kots' | 'all'
+    const [kotList, setKotList] = useState([]);
+    const [kotFilterDate, setKotFilterDate] = useState(new Date().toISOString().split('T')[0]);
+    const [fetchingKOTs, setFetchingKOTs] = useState(false);
+    const [selectedKOTForPrint, setSelectedKOTForPrint] = useState(null);
+
+    const fetchKOTs = async (dateVal) => {
+        setFetchingKOTs(true);
+        try {
+            const res = await getKOTs(dateVal || kotFilterDate);
+            setKotList(res.data.kots || []);
+        } catch (err) {
+            console.error('Failed to fetch KOTs:', err);
+        } finally {
+            setFetchingKOTs(false);
+        }
+    };
 
     const handlePartialPayment = async (orderId, total) => {
         const amount = paymentAmount[orderId];
@@ -514,141 +533,237 @@ const AdminOrders = () => {
 
     return (
         <div className="admin-orders">
-            <h1>Orders Management</h1>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                <h1 style={{ margin: 0 }}>Orders Management</h1>
+                {/* Navigation Tabs */}
+                <div className="analytics-tabs" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button
+                        className={`btn ${activeTab === 'active' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setActiveTab('active')}
+                    >
+                        📦 Active Orders ({orders.filter(o => o.status !== 'paid' && o.status !== 'cancelled').length})
+                    </button>
+                    <button
+                        className={`btn ${activeTab === 'kots' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => {
+                            setActiveTab('kots');
+                            fetchKOTs();
+                        }}
+                    >
+                        🧾 KOTs History Log
+                    </button>
+                    <button
+                        className={`btn ${activeTab === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setActiveTab('all')}
+                    >
+                        📜 All Orders ({orders.length})
+                    </button>
+                </div>
+            </div>
 
-            <div className="orders-board">
-                {orders.length === 0 ? (
-                    <div className="no-orders">
-                        <p>No active orders</p>
+            {/* KOTs VIEW */}
+            {activeTab === 'kots' ? (
+                <div className="kots-view-section">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px', background: '#F9FAFB', padding: '12px 16px', borderRadius: '8px', border: '1.5px solid #111' }}>
+                        <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>
+                            {user?.role === 'superadmin' ? '📅 Select Date to View KOTs' : "📅 Today's Generated KOT Tickets"}
+                        </div>
+                        {user?.role === 'superadmin' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Date Filter:</label>
+                                <input
+                                    type="date"
+                                    value={kotFilterDate}
+                                    onChange={(e) => {
+                                        setKotFilterDate(e.target.value);
+                                        fetchKOTs(e.target.value);
+                                    }}
+                                    className="input"
+                                    style={{ padding: '6px 10px', borderRadius: '6px', border: '2px solid #111' }}
+                                />
+                                <button className="btn btn-secondary btn-sm" onClick={() => fetchKOTs()}>Refresh</button>
+                            </div>
+                        ) : (
+                            <button className="btn btn-secondary btn-sm" onClick={() => fetchKOTs()}>Refresh KOTs</button>
+                        )}
                     </div>
-                ) : (
-                    <div className="orders-grid">
-                        {orders.map(order => (
-                            <div key={order._id} className={`order-card status-${order.status}`}>
-                                <div className="order-header">
-                                    <span className="order-num">#{order.orderNumber}</span>
-                                    <span className={`status-badge ${order.status}`}>
-                                        {order.status.replace('_', ' ')}
-                                    </span>
-                                </div>
 
-                                <div className="order-customer">
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                                        <strong>{order.user?.name || 'Customer'}</strong>
-                                        <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: order.placedBy ? '#7C3AED' : '#0EA5E9', color: '#FFF', fontWeight: 'bold' }}>
-                                            {order.placedBy ? `Staff: ${order.placedBy.name || 'Staff'}` : 'User'}
+                    {fetchingKOTs ? (
+                        <Loader message="Loading KOT Tickets..." />
+                    ) : kotList.length === 0 ? (
+                        <p style={{ textAlign: 'center', color: '#666', padding: '50px', fontStyle: 'italic', background: '#FFF', borderRadius: '8px', border: '1px solid #DDD' }}>
+                            No KOT tickets generated for this date.
+                        </p>
+                    ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '16px' }}>
+                            {kotList.map(kot => (
+                                <div key={kot._id} style={{ background: '#FFF', border: '2px solid #111', borderRadius: '10px', padding: '16px', boxShadow: '3px 3px 0px #111', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #111', paddingBottom: '8px', marginBottom: '10px' }}>
+                                            <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#7C3AED' }}>{kot.kotNumber}</span>
+                                            <span style={{ background: '#E2E8F0', padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 'bold' }}>Table {kot.tableNumber}</span>
+                                        </div>
+
+                                        <div style={{ fontSize: '0.85rem', color: '#555', marginBottom: '10px' }}>
+                                            <div>👤 <strong>Staff:</strong> {kot.staffName}</div>
+                                            <div>🕒 <strong>Time:</strong> {new Date(kot.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                        </div>
+
+                                        <div style={{ borderTop: '1px dashed #CCC', borderBottom: '1px dashed #CCC', padding: '8px 0', marginBottom: '10px' }}>
+                                            {kot.items.map((item, idx) => (
+                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                                    <span style={{ fontWeight: '500' }}>{item.name}</span>
+                                                    <strong style={{ color: '#111' }}>x{item.quantity}</strong>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {kot.notes && (
+                                            <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', color: '#92400E', padding: '6px 8px', borderRadius: '4px', fontSize: '0.8rem', marginBottom: '10px' }}>
+                                                📌 <strong>Note:</strong> {kot.notes}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary btn-sm"
+                                        onClick={() => setSelectedKOTForPrint(kot)}
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', marginTop: '8px', background: '#111', color: '#FFF' }}
+                                    >
+                                        <FiPrinter /> Print KOT Slip
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            ) : (
+                /* ACTIVE OR ALL ORDERS GRID */
+                <div className="orders-board">
+                    {orders.filter(o => activeTab === 'all' ? true : (o.status !== 'paid' && o.status !== 'cancelled')).length === 0 ? (
+                        <div className="no-orders">
+                            <p>{activeTab === 'all' ? 'No orders recorded' : 'No active orders'}</p>
+                        </div>
+                    ) : (
+                        <div className="orders-grid">
+                            {orders.filter(o => activeTab === 'all' ? true : (o.status !== 'paid' && o.status !== 'cancelled')).map(order => (
+                                <div key={order._id} className={`order-card status-${order.status}`}>
+                                    <div className="order-header">
+                                        <span className="order-num">#{order.orderNumber}</span>
+                                        <span className={`status-badge ${order.status}`}>
+                                            {order.status.replace('_', ' ')}
                                         </span>
                                     </div>
-                                    <span>{order.user?.phone}</span>
-                                    {order.tableNumber && <span>Table: {order.tableNumber}</span>}
-                                </div>
 
-                                <div className="order-items">
-                                    {order.items.map((item, i) => (
-                                        <div key={i} className="order-item">
-                                            <span>{item.name}</span>
-                                            <span>x{item.quantity}</span>
+                                    <div className="order-customer">
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                                            <strong>{order.user?.name || 'Customer'}</strong>
+                                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: order.placedBy ? '#7C3AED' : '#0EA5E9', color: '#FFF', fontWeight: 'bold' }}>
+                                                {order.placedBy ? `Staff: ${order.placedBy.name || 'Staff'}` : 'User'}
+                                            </span>
                                         </div>
-                                    ))}
-                                </div>
-
-                                {order.specialInstructions && (
-                                    <div className="order-special-instructions">
-                                        <strong><FiAlertTriangle /> Note:</strong> {order.specialInstructions}
+                                        <span>{order.user?.phone}</span>
+                                        {order.tableNumber && <span>Table: {order.tableNumber}</span>}
                                     </div>
-                                )}
 
-                                <div className="order-total">
-                                    <div className="total-row">
-                                        <span>Total</span>
-                                        <span>₹{order.total.toFixed(2)}</span>
+                                    <div className="order-items">
+                                        {order.items.map((item, i) => (
+                                            <div key={i} className="order-item">
+                                                <span>{item.name}</span>
+                                                <span>x{item.quantity}</span>
+                                            </div>
+                                        ))}
                                     </div>
-                                    <div className="payment-row">
-                                        <div className="payment-status">
-                                            <div
-                                                className="payment-fill"
-                                                style={{ width: `${Math.min((order.amountPaid || 0) / order.total * 100, 100)}%` }}
-                                            ></div>
+
+                                    {order.specialInstructions && (
+                                        <div className="order-special-instructions">
+                                            <strong><FiAlertTriangle /> Note:</strong> {order.specialInstructions}
                                         </div>
-                                        <div className="payment-labels">
-                                            <span className="paid">Paid: ₹{order.amountPaid || 0}</span>
-                                            <span className="pending">Bal: ₹{Math.max(order.total - (order.amountPaid || 0), 0).toFixed(2)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="order-payment-input">
-                                    <input
-                                        type="number"
-                                        placeholder="Add Pay"
-                                        value={paymentAmount[order._id] || ''}
-                                        onChange={(e) => setPaymentAmount({ ...paymentAmount, [order._id]: e.target.value })}
-                                    />
-                                    <button onClick={() => handlePartialPayment(order._id, order.total)}>Pay</button>
-                                </div>
-
-                                <div className="order-actions">
-                                    {getNextStatus(order.status) && order.status !== 'paid' && (
-                                        <button
-                                            className="btn btn-primary btn-sm"
-                                            onClick={() => handleStatusChange(order._id, getNextStatus(order.status))}
-                                        >
-                                            <FiCheck /> {getStatusLabel(order.status)}
-                                        </button>
                                     )}
 
-                                    {['served', 'bill_requested', 'bill_generated', 'confirmed', 'preparing', 'ready'].includes(order.status) && order.status !== 'paid' && (
-                                        <div className="payment-btns" style={{ display: 'flex', gap: '6px', width: '100%', flexWrap: 'wrap', position: 'relative', zIndex: 10 }}>
-                                            <button
-                                                type="button"
-                                                className="btn btn-success btn-sm"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    handleOpenPaymentBiller(order._id, 'cash', order.total);
-                                                }}
-                                                style={{ cursor: 'pointer', flex: 1, minWidth: '80px', zIndex: 10 }}
-                                            >
-                                                Cash Paid
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="btn btn-primary btn-sm"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    handleOpenPaymentBiller(order._id, 'online', order.total);
-                                                }}
-                                                style={{ cursor: 'pointer', flex: 1, minWidth: '80px', zIndex: 10 }}
-                                            >
-                                                UPI Paid
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="btn btn-secondary btn-sm"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    handleOpenPaymentBiller(order._id, 'card', order.total);
-                                                }}
-                                                style={{ cursor: 'pointer', flex: 1, minWidth: '80px', background: '#4F46E5', color: '#FFF', border: 'none', zIndex: 10 }}
-                                            >
-                                                Card Paid
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="btn btn-secondary btn-sm"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    handleOpenSplitPaymentModal(order._id, order.total);
-                                                }}
-                                                style={{ cursor: 'pointer', flex: 1, minWidth: '80px', background: '#D97706', color: '#FFF', border: 'none', zIndex: 10 }}
-                                            >
-                                                Split Pay
-                                            </button>
+                                    <div className="order-total">
+                                        <div className="total-row">
+                                            <span>Total</span>
+                                            <span>₹{order.total.toFixed(2)}</span>
                                         </div>
-                                    )}
+                                        <div className="payment-row">
+                                            <div className="payment-status">
+                                                <div
+                                                    className="payment-fill"
+                                                    style={{ width: `${Math.min((order.amountPaid || 0) / order.total * 100, 100)}%` }}
+                                                ></div>
+                                            </div>
+                                            <div className="payment-labels">
+                                                <span className="paid">Paid: ₹{order.amountPaid || 0}</span>
+                                                <span className="pending">Bal: ₹{Math.max(order.total - (order.amountPaid || 0), 0).toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="order-payment-input">
+                                        <input
+                                            type="number"
+                                            placeholder="Add Pay"
+                                            value={paymentAmount[order._id] || ''}
+                                            onChange={(e) => setPaymentAmount({ ...paymentAmount, [order._id]: e.target.value })}
+                                        />
+                                        <button onClick={() => handlePartialPayment(order._id, order.total)}>Pay</button>
+                                    </div>
+
+                                    <div className="order-actions">
+                                        {order.status !== 'paid' && (
+                                            <div className="payment-btns" style={{ display: 'flex', gap: '6px', width: '100%', flexWrap: 'wrap', position: 'relative', zIndex: 10 }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-success btn-sm"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleOpenPaymentBiller(order._id, 'cash', order.total);
+                                                    }}
+                                                    style={{ cursor: 'pointer', flex: 1, minWidth: '80px', zIndex: 10 }}
+                                                >
+                                                    Cash Paid
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary btn-sm"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleOpenPaymentBiller(order._id, 'online', order.total);
+                                                    }}
+                                                    style={{ cursor: 'pointer', flex: 1, minWidth: '80px', zIndex: 10 }}
+                                                >
+                                                    UPI Paid
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary btn-sm"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleOpenPaymentBiller(order._id, 'card', order.total);
+                                                    }}
+                                                    style={{ cursor: 'pointer', flex: 1, minWidth: '80px', background: '#4F46E5', color: '#FFF', border: 'none', zIndex: 10 }}
+                                                >
+                                                    Card Paid
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary btn-sm"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleOpenSplitPaymentModal(order._id, order.total);
+                                                    }}
+                                                    style={{ cursor: 'pointer', flex: 1, minWidth: '80px', background: '#D97706', color: '#FFF', border: 'none', zIndex: 10 }}
+                                                >
+                                                    Split Pay
+                                                </button>
+                                            </div>
+                                        )}
 
                                     {order.status === 'pending' && (
                                         <button
@@ -700,6 +815,7 @@ const AdminOrders = () => {
                     </div>
                 )}
             </div>
+            )}
 
             <div className="admin-orders-bills-section" style={{ marginTop: '40px', paddingTop: '30px', borderTop: '4px dashed #111111' }}>
                 <AdminBills />
@@ -1158,6 +1274,62 @@ const AdminOrders = () => {
                         fetchOrders(); // Refresh to remove paid ones
                     }}
                 />
+            )}
+
+            {/* KOT Print Preview Modal */}
+            {selectedKOTForPrint && (
+                <div className="modal-overlay" onClick={() => setSelectedKOTForPrint(null)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '360px', width: '92%' }}>
+                        <div className="modal-header">
+                            <h2>KOT Ticket Preview</h2>
+                            <button className="modal-close" onClick={() => setSelectedKOTForPrint(null)}>×</button>
+                        </div>
+                        <div id="kot-printable-slip" style={{ background: '#FFF', padding: '16px', fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.4', border: '1px solid #CCC', borderRadius: '6px' }}>
+                            <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
+                                <h2 style={{ margin: '0 0 2px', fontSize: '18px', textTransform: 'uppercase' }}>KEA BY THE POOL</h2>
+                                <h3 style={{ margin: 0, fontSize: '14px', color: '#555' }}>KITCHEN ORDER TICKET</h3>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', marginTop: '4px', color: '#7C3AED' }}>{selectedKOTForPrint.kotNumber}</div>
+                            </div>
+
+                            <div style={{ marginBottom: '8px', fontSize: '12px' }}>
+                                <div><strong>TABLE:</strong> Table {selectedKOTForPrint.tableNumber}</div>
+                                <div><strong>STAFF:</strong> {selectedKOTForPrint.staffName}</div>
+                                <div><strong>DATE/TIME:</strong> {new Date(selectedKOTForPrint.timestamp).toLocaleDateString('en-IN')} {new Date(selectedKOTForPrint.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                            </div>
+
+                            <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '6px 0', marginBottom: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '4px' }}>
+                                    <span>ITEM NAME</span>
+                                    <span>QTY</span>
+                                </div>
+                                {selectedKOTForPrint.items.map((item, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', margin: '3px 0' }}>
+                                        <span>{item.name}</span>
+                                        <strong>{item.quantity}</strong>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {selectedKOTForPrint.notes && (
+                                <div style={{ marginBottom: '8px', fontSize: '12px', background: '#FEF3C7', padding: '4px 6px', borderRadius: '4px' }}>
+                                    <strong>SPECIAL NOTE:</strong> {selectedKOTForPrint.notes}
+                                </div>
+                            )}
+
+                            <div style={{ textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '6px', fontSize: '11px', color: '#666' }}>
+                                --- KITCHEN / RECEPTION COPY ---
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                            <button
+                                className="btn btn-primary btn-full"
+                                onClick={() => window.print()}
+                            >
+                                <FiPrinter /> Print 80MM KOT
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

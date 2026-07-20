@@ -53,6 +53,74 @@ router.get('/all', protect, admin, async (req, res) => {
     }
 });
 
+// @route   GET /api/orders/kots
+// @desc    Get all KOT tickets (Admin today only, Superadmin can filter date)
+// @access  Private/Admin
+router.get('/kots', protect, admin, async (req, res) => {
+    try {
+        const { date } = req.query;
+        let query = {};
+
+        let targetDate = date;
+        if (!targetDate || req.user.role !== 'superadmin') {
+            const d = new Date();
+            const offset = d.getTimezoneOffset();
+            const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+            targetDate = localDate.toISOString().split('T')[0];
+        }
+
+        query.createdAt = {
+            $gte: new Date(targetDate + 'T00:00:00'),
+            $lte: new Date(targetDate + 'T23:59:59.999')
+        };
+
+        const orders = await Order.find(query)
+            .populate('placedBy', 'name')
+            .populate('user', 'name phone')
+            .populate('items.menuItem', 'name price')
+            .sort('-createdAt');
+
+        const kotTickets = [];
+        orders.forEach(order => {
+            if (order.kotHistory && order.kotHistory.length > 0) {
+                order.kotHistory.forEach(kot => {
+                    kotTickets.push({
+                        _id: `${order._id}_${kot.kotNumber}`,
+                        orderId: order._id,
+                        orderNumber: order.orderNumber,
+                        kotNumber: kot.kotNumber || `KOT-${order.orderNumber.slice(-4)}`,
+                        tableNumber: order.tableNumber || 'Takeaway',
+                        staffName: order.placedBy?.name || order.billerName || 'Staff',
+                        timestamp: kot.timestamp || order.createdAt,
+                        items: kot.items && kot.items.length > 0 ? kot.items : order.items,
+                        notes: kot.notes || order.specialInstructions || '',
+                        status: order.status
+                    });
+                });
+            } else {
+                kotTickets.push({
+                    _id: `${order._id}_main`,
+                    orderId: order._id,
+                    orderNumber: order.orderNumber,
+                    kotNumber: `KOT-${order.orderNumber.slice(-4)}`,
+                    tableNumber: order.tableNumber || 'Takeaway',
+                    staffName: order.placedBy?.name || order.billerName || 'Staff',
+                    timestamp: order.createdAt,
+                    items: order.items,
+                    notes: order.specialInstructions || '',
+                    status: order.status
+                });
+            }
+        });
+
+        kotTickets.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        res.json({ date: targetDate, kots: kotTickets });
+    } catch (error) {
+        console.error('Error fetching KOTs:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 // @route   GET /api/orders/active
 // @desc    Get active orders for admin
 // @access  Private/Admin

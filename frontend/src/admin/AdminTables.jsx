@@ -459,26 +459,28 @@ const AdminTables = () => {
                         </div>
                         <form onSubmit={handleBulkCreate}>
                             <div className="modal-body">
-                                <p className="bulk-info">Create numbered tables from start to end</p>
+                                <p className="bulk-info">Create numbered tables/rooms (e.g. A1 to A10, umbrella1 to umbrella10, C5 to C10, 101 to 120)</p>
                                 <div className="form-row">
                                     <div className="input-group">
-                                        <label>Start Number</label>
+                                        <label>Start (e.g. A1, umbrella1, C5, 101)</label>
                                         <input
-                                            type="number"
+                                            type="text"
                                             className="input"
+                                            placeholder="e.g. A1 or umbrella1"
                                             value={bulkData.startNumber}
-                                            onChange={e => setBulkData({ ...bulkData, startNumber: parseInt(e.target.value) })}
-                                            min="1"
+                                            onChange={e => setBulkData({ ...bulkData, startNumber: e.target.value })}
+                                            required
                                         />
                                     </div>
                                     <div className="input-group">
-                                        <label>End Number</label>
+                                        <label>End (e.g. A10, umbrella10, C10, 120)</label>
                                         <input
-                                            type="number"
+                                            type="text"
                                             className="input"
+                                            placeholder="e.g. A10 or umbrella10"
                                             value={bulkData.endNumber}
-                                            onChange={e => setBulkData({ ...bulkData, endNumber: parseInt(e.target.value) })}
-                                            min="1"
+                                            onChange={e => setBulkData({ ...bulkData, endNumber: e.target.value })}
+                                            required
                                         />
                                     </div>
                                 </div>

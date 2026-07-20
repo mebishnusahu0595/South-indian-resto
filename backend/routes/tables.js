@@ -143,28 +143,63 @@ router.post('/', protect, admin, async (req, res) => {
     }
 });
 
-// Admin: Bulk create tables
+// Admin: Bulk create tables (supports A1-A10, umbrella1-umbrella10, C5-C10, 101-120, etc.)
 router.post('/bulk', protect, admin, async (req, res) => {
     try {
         const { startNumber, endNumber, capacity, section, areaType, shape } = req.body;
         const tables = [];
 
-        for (let i = startNumber; i <= endNumber; i++) {
-            const tableNumber = i.toString();
-            const existing = await Table.findOne({ tableNumber });
+        let tableNumbers = [];
+        const startStr = String(startNumber || '').trim();
+        const endStr = String(endNumber || '').trim();
+
+        const startMatch = startStr.match(/^(.*?)[-_ ]*(\d+)$/);
+        const endMatch = endStr.match(/^(.*?)[-_ ]*(\d+)$/);
+
+        if (startMatch && endMatch) {
+            const prefix = startMatch[1];
+            const startNum = parseInt(startMatch[2], 10);
+            const endNum = parseInt(endMatch[2], 10);
+
+            if (!isNaN(startNum) && !isNaN(endNum) && startNum <= endNum) {
+                for (let i = startNum; i <= endNum; i++) {
+                    tableNumbers.push(`${prefix}${i}`);
+                }
+            }
+        }
+
+        if (tableNumbers.length === 0) {
+            const s = parseInt(startStr, 10);
+            const e = parseInt(endStr, 10);
+            if (!isNaN(s) && !isNaN(e) && s <= e) {
+                for (let i = s; i <= e; i++) {
+                    tableNumbers.push(i.toString());
+                }
+            } else if (startStr) {
+                tableNumbers.push(startStr);
+            }
+        }
+
+        for (const tNum of tableNumbers) {
+            const existing = await Table.findOne({ tableNumber: tNum });
             if (!existing) {
                 tables.push({
-                    tableNumber,
+                    tableNumber: tNum,
                     capacity: capacity || 4,
                     section: section || 'Main Hall',
                     areaType: areaType || 'table',
-                    shape: shape || 'square'
+                    shape: shape || 'square',
+                    status: 'available',
+                    isActive: true
                 });
             }
         }
 
-        const created = await Table.insertMany(tables);
-        res.status(201).json({ message: `Created ${created.length} tables`, tables: created });
+        if (tables.length > 0) {
+            await Table.insertMany(tables);
+        }
+
+        res.status(201).json({ message: `Successfully created ${tables.length} tables`, tables });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
