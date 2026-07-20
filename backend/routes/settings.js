@@ -153,4 +153,35 @@ router.put('/:key', protect, admin, async (req, res) => {
     }
 });
 
+// Get printer settings (admin)
+router.get('/printers', protect, admin, async (req, res) => {
+    try {
+        const kitchenIp = await Settings.getSetting('printer_kitchen_ip', '');
+        const receptionIp = await Settings.getSetting('printer_reception_ip', '');
+        const printerPort = await Settings.getSetting('printer_port', 9100);
+        const printerEnabled = await Settings.getSetting('printer_enabled', true);
+        res.json({ kitchenIp, receptionIp, printerPort, printerEnabled });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Update printer settings (superadmin)
+router.put('/printers', protect, superadmin, async (req, res) => {
+    try {
+        const { kitchenIp, receptionIp, printerPort, printerEnabled } = req.body;
+        await Settings.setSetting('printer_kitchen_ip', kitchenIp || '', 'Kitchen thermal printer IP address');
+        await Settings.setSetting('printer_reception_ip', receptionIp || '', 'Reception thermal printer IP address');
+        await Settings.setSetting('printer_port', printerPort || 9100, 'Thermal printer TCP port');
+        await Settings.setSetting('printer_enabled', printerEnabled !== false, 'Enable/disable auto-print KOT');
+
+        const io = req.app.get('io');
+        if (io) io.emit('printer-settings-updated', { kitchenIp, receptionIp, printerPort, printerEnabled });
+
+        res.json({ message: 'Printer settings updated', kitchenIp, receptionIp, printerPort, printerEnabled });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;

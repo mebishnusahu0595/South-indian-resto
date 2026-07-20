@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FiSettings, FiSave, FiPlus, FiTrash2, FiInfo, FiEye, FiEyeOff, FiPercent, FiInstagram, FiFacebook, FiTwitter, FiPhone, FiMail, FiMapPin, FiClock } from 'react-icons/fi';
-import { getAllSettings, updateSetting, changeAdminPassword, getMaxDiscount, updateMaxDiscount, getSiteInfo, updateSiteInfo } from '../utils/api';
+import { FiSettings, FiSave, FiPlus, FiTrash2, FiInfo, FiEye, FiEyeOff, FiPercent, FiInstagram, FiFacebook, FiTwitter, FiPhone, FiMail, FiMapPin, FiClock, FiPrinter, FiToggleLeft, FiToggleRight } from 'react-icons/fi';
+import { getAllSettings, updateSetting, changeAdminPassword, getMaxDiscount, updateMaxDiscount, getSiteInfo, updateSiteInfo, getPrinterSettings, updatePrinterSettings } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
 import './AdminSettings.css';
@@ -35,10 +35,20 @@ const AdminSettings = () => {
     });
     const [savingSiteInfo, setSavingSiteInfo] = useState(false);
 
+    // Printer settings
+    const [printerSettings, setPrinterSettings] = useState({
+        kitchenIp: '',
+        receptionIp: '',
+        printerPort: 9100,
+        printerEnabled: true
+    });
+    const [savingPrinters, setSavingPrinters] = useState(false);
+
     useEffect(() => {
         fetchSettings();
         fetchMaxDiscount();
         fetchSiteInfo();
+        fetchPrinterSettings();
     }, []);
 
     const fetchMaxDiscount = async () => {
@@ -56,6 +66,27 @@ const AdminSettings = () => {
             setSiteInfo(prev => ({ ...prev, ...res.data }));
         } catch (err) {
             console.error('Error fetching site info:', err);
+        }
+    };
+
+    const fetchPrinterSettings = async () => {
+        try {
+            const res = await getPrinterSettings();
+            setPrinterSettings(prev => ({ ...prev, ...res.data }));
+        } catch (err) {
+            console.error('Error fetching printer settings:', err);
+        }
+    };
+
+    const handleSavePrinterSettings = async () => {
+        setSavingPrinters(true);
+        try {
+            await updatePrinterSettings(printerSettings);
+            showNotice('success', 'Printer settings saved! Staff app will reflect on next login.');
+        } catch (err) {
+            showNotice('error', err.response?.data?.message || 'Failed to save printer settings');
+        } finally {
+            setSavingPrinters(false);
         }
     };
 
@@ -313,6 +344,71 @@ const AdminSettings = () => {
                                     ))}
                                     <div className="mock-line-flex bold"><span>Total</span><span>₹{(60 * (1 + taxConfig.reduce((acc, t) => acc + t.rate, 0) / 100)).toFixed(2)}</span></div>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Thermal Printer Configuration */}
+                        <div className="settings-card" style={{ borderLeft: '4px solid #7C3AED' }}>
+                            <div className="card-header-flex">
+                                <h2><FiPrinter /> Thermal Printer Config</h2>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleSavePrinterSettings}
+                                    disabled={savingPrinters}
+                                    style={{ padding: '8px 18px', fontSize: '0.85rem' }}
+                                >
+                                    {savingPrinters ? 'Saving...' : <><FiSave /> Save Printers</>}
+                                </button>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', background: '#F5F3FF', padding: '10px 14px', borderRadius: '8px' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Auto-Print KOT on Order:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setPrinterSettings(p => ({ ...p, printerEnabled: !p.printerEnabled }))}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: printerSettings.printerEnabled ? '#059669' : '#9CA3AF', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '1rem' }}
+                                >
+                                    {printerSettings.printerEnabled ? <><FiToggleRight size={22} /> Enabled</> : <><FiToggleLeft size={22} /> Disabled</>}
+                                </button>
+                            </div>
+
+                            <div className="form-group">
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiPrinter /> Kitchen Printer IP Address</label>
+                                <input
+                                    type="text"
+                                    value={printerSettings.kitchenIp}
+                                    onChange={(e) => setPrinterSettings(p => ({ ...p, kitchenIp: e.target.value }))}
+                                    placeholder="e.g. 192.168.1.100"
+                                />
+                                <span className="hint">IP address of kitchen thermal printer on local network (port 9100)</span>
+                            </div>
+
+                            <div className="form-group">
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiPrinter /> Reception Printer IP Address</label>
+                                <input
+                                    type="text"
+                                    value={printerSettings.receptionIp}
+                                    onChange={(e) => setPrinterSettings(p => ({ ...p, receptionIp: e.target.value }))}
+                                    placeholder="e.g. 192.168.1.101"
+                                />
+                                <span className="hint">IP address of reception/billing thermal printer on local network</span>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Printer TCP Port</label>
+                                <input
+                                    type="number"
+                                    value={printerSettings.printerPort}
+                                    onChange={(e) => setPrinterSettings(p => ({ ...p, printerPort: parseInt(e.target.value) || 9100 }))}
+                                    placeholder="9100"
+                                    style={{ width: '140px' }}
+                                />
+                                <span className="hint">Default is 9100 for most thermal printers (ESC/POS)</span>
+                            </div>
+
+                            <div className="info-box">
+                                <FiInfo />
+                                <p>Both printers must be connected to the same WiFi/LAN as the server. Kitchen IP is used for KOT slips, Reception IP is used for customer bills. Staff app will show these printers as Online/Offline.</p>
                             </div>
                         </div>
 

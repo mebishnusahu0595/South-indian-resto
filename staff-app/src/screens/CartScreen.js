@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 
 export default function CartScreen({ api, cart, selectedTable, customerPhone, customerName, instructions, onUpdateInstructions, onUpdateCart, onBack, onSubmitSuccess }) {
   const [submitting, setSubmitting] = useState(false);
+  const [printers, setPrinters] = useState({ kitchenIp: '', receptionIp: '', printerEnabled: true });
 
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const gst = subtotal * 0.05;
   const total = subtotal + gst;
+
+  useEffect(() => {
+    api.get('/settings/printers')
+      .then(res => setPrinters(res.data))
+      .catch(() => {});
+  }, []);
 
   const updateQuantity = (itemId, newQty) => {
     if (newQty <= 0) {
@@ -42,10 +49,13 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
       };
 
       const res = await api.post('/orders', orderPayload);
-      
+
+      const kitchenStatus = printers.kitchenIp ? `Kitchen (${printers.kitchenIp})` : 'Kitchen Printer';
+      const receptionStatus = printers.receptionIp ? `Reception (${printers.receptionIp})` : 'Reception Printer';
+
       Alert.alert(
         'KOT Issued & Sent to Printers',
-        `Order #${res.data.orderNumber} placed successfully!\n\nKOT auto-sent to:\n1. Kitchen Thermal Printer (Active)\n2. Reception Thermal Printer (Active)`,
+        `Order #${res.data.orderNumber} placed!\n\nKOT sent to:\n1. ${kitchenStatus}\n2. ${receptionStatus}`,
         [
           { text: 'OK', onPress: () => onSubmitSuccess() }
         ]
@@ -78,16 +88,23 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Active Thermal Printers Status */}
-          <View style={[styles.infoCard, { backgroundColor: '#F0FDF4', borderColor: '#10B981' }]}>
-            <Text style={[styles.infoTitle, { color: '#047857' }]}>Connected Thermal Printers</Text>
+          <View style={[styles.infoCard, { backgroundColor: '#F5F3FF', borderColor: '#7C3AED' }]}>
+            <Text style={[styles.infoTitle, { color: '#6D28D9' }]}>Connected Thermal Printers (80mm)</Text>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Kitchen:</Text>
-              <Text style={[styles.infoValue, { color: '#059669', fontWeight: 'bold' }]}>Online (80mm Thermal)</Text>
+              <Text style={[styles.infoValue, { color: printers.kitchenIp ? '#059669' : '#D97706', fontWeight: 'bold' }]}>
+                {printers.kitchenIp ? `Online — ${printers.kitchenIp}` : 'Not Configured'}
+              </Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Reception:</Text>
-              <Text style={[styles.infoValue, { color: '#059669', fontWeight: 'bold' }]}>Online (80mm Thermal)</Text>
+              <Text style={[styles.infoValue, { color: printers.receptionIp ? '#059669' : '#D97706', fontWeight: 'bold' }]}>
+                {printers.receptionIp ? `Online — ${printers.receptionIp}` : 'Not Configured'}
+              </Text>
             </View>
+            {!printers.printerEnabled && (
+              <Text style={{ color: '#EF4444', fontSize: 11, marginTop: 6, fontStyle: 'italic' }}>Auto-print is currently disabled by admin.</Text>
+            )}
           </View>
 
           {/* Destination Summary */}

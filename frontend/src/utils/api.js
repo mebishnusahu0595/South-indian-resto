@@ -106,6 +106,8 @@ export const updateMaxDiscount = (maxDiscountPercent) => axios.put(`${API_URL}/s
 export const getSiteInfo = () => axios.get(`${API_URL}/settings/site-info`);
 export const updateSiteInfo = (data) => axios.put(`${API_URL}/settings/site-info`, data);
 export const updateSetting = (key, value) => axios.put(`${API_URL}/settings/${key}`, { value });
+export const getPrinterSettings = () => axios.get(`${API_URL}/settings/printers`);
+export const updatePrinterSettings = (data) => axios.put(`${API_URL}/settings/printers`, data);
 
 // Collections (Custom Homepage Sections)
 export const getCollections = (homepage = false) => axios.get(`${API_URL}/collections`, { params: { homepage: homepage ? 'true' : undefined } });
