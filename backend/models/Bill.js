@@ -9,7 +9,7 @@ const billSchema = new mongoose.Schema({
     order: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Order',
-        required: true
+        required: false
     },
     billerName: {
         type: String,

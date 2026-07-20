@@ -146,7 +146,8 @@ router.put('/:id/status', protect, async (req, res) => {
                     subtotal: amount,
                     discount: 0,
                     tax: amount * 0.05,
-                    total: amount * 1.05
+                    total: amount * 1.05,
+                    paymentMethod: 'cash'
                 });
 
                 booking.billGenerated = true;

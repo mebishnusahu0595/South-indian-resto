@@ -116,6 +116,42 @@ router.get('/day-end', protect, admin, async (req, res) => {
             staffMap[staffName].totalSales += (order.total || 0);
         });
 
+        // Also incorporate standalone / pre-booking bills not linked to orders
+        bills.forEach(bill => {
+            if (!bill.order) {
+                grossSales += (bill.subtotal || 0);
+                totalDiscount += (bill.discount || 0);
+                totalTax += (bill.tax || 0);
+                netRevenue += (bill.total || 0);
+
+                const method = bill.paymentMethod || 'cash';
+                if (method === 'cash') paymentBreakdown.cash += bill.total;
+                else if (method === 'online') paymentBreakdown.online += bill.total;
+                else if (method === 'card') paymentBreakdown.card += bill.total;
+                else if (method === 'split') {
+                    paymentBreakdown.split += bill.total;
+                    if (bill.splitPaymentDetails) {
+                        paymentBreakdown.splitDetails.cash += (bill.splitPaymentDetails.cash || 0);
+                        paymentBreakdown.splitDetails.upi += (bill.splitPaymentDetails.upi || 0);
+                        paymentBreakdown.splitDetails.card += (bill.splitPaymentDetails.card || 0);
+                    }
+                }
+
+                const staffName = bill.billerName || 'Pre-Booking';
+                if (!staffMap[staffName]) {
+                    staffMap[staffName] = { name: staffName, ordersCount: 0, totalSales: 0 };
+                }
+                staffMap[staffName].ordersCount += 1;
+                staffMap[staffName].totalSales += (bill.total || 0);
+
+                if (!categoryMap['Pre-Bookings']) {
+                    categoryMap['Pre-Bookings'] = { name: 'Pre-Bookings', itemsCount: 0, totalQty: 0, totalRevenue: 0 };
+                }
+                categoryMap['Pre-Bookings'].totalQty += 1;
+                categoryMap['Pre-Bookings'].totalRevenue += (bill.total || 0);
+            }
+        });
+
         const categorySales = Object.values(categoryMap).sort((a, b) => b.totalRevenue - a.totalRevenue);
         const productSales = Object.values(productMap).sort((a, b) => b.qtySold - a.qtySold);
         const staffSales = Object.values(staffMap).sort((a, b) => b.totalSales - a.totalSales);

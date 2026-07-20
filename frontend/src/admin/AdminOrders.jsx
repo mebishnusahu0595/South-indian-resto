@@ -1243,6 +1243,9 @@ const AdminOrders = () => {
                                             </div>
                                         </div>
 
+                                        <div style={{ fontSize: '0.75rem', color: '#6B7280', textAlign: 'center', marginTop: '4px' }}>
+                                            ⚠️ Final Settlement will lock payment & discount details permanently.
+                                        </div>
                                         <button
                                             type="submit"
                                             disabled={isExceeding || !paymentBillerName.trim()}
@@ -1255,7 +1258,7 @@ const AdminOrders = () => {
                                                 backgroundColor: isExceeding ? '#9CA3AF' : undefined
                                             }}
                                         >
-                                            {isExceeding ? `Blocked: Exceeds ${maxDiscountPercent}% Max Limit` : 'Confirm & Mark Paid'}
+                                            {isExceeding ? `Blocked: Exceeds ${maxDiscountPercent}% Max Limit` : '🔒 Confirm Final Settlement & Lock Bill'}
                                         </button>
                                     </>
                                 );
