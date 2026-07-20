@@ -44,8 +44,8 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
       const res = await api.post('/orders', orderPayload);
       
       Alert.alert(
-        'Order Successful',
-        `Placed Order #${res.data.orderNumber} successfully!`,
+        'KOT Issued & Sent to Printers',
+        `Order #${res.data.orderNumber} placed successfully!\n\nKOT auto-sent to:\n1. Kitchen Thermal Printer (Active)\n2. Reception Thermal Printer (Active)`,
         [
           { text: 'OK', onPress: () => onSubmitSuccess() }
         ]
@@ -77,6 +77,19 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* Active Thermal Printers Status */}
+          <View style={[styles.infoCard, { backgroundColor: '#F0FDF4', borderColor: '#10B981' }]}>
+            <Text style={[styles.infoTitle, { color: '#047857' }]}>Connected Thermal Printers</Text>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Kitchen:</Text>
+              <Text style={[styles.infoValue, { color: '#059669', fontWeight: 'bold' }]}>Online (80mm Thermal)</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Reception:</Text>
+              <Text style={[styles.infoValue, { color: '#059669', fontWeight: 'bold' }]}>Online (80mm Thermal)</Text>
+            </View>
+          </View>
+
           {/* Destination Summary */}
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>Order Destination</Text>

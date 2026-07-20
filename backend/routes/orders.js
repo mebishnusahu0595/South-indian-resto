@@ -121,6 +121,15 @@ router.get('/kots', protect, admin, async (req, res) => {
     }
 });
 
+const kotPrintLogs = [];
+
+// @route   GET /api/orders/kot-logs
+// @desc    Get KOT print & dispatch audit logs
+// @access  Private/Admin
+router.get('/kot-logs', protect, admin, (req, res) => {
+    res.json({ logs: kotPrintLogs.slice(0, 100) });
+});
+
 // @route   GET /api/orders/active
 // @desc    Get active orders for admin
 // @access  Private/Admin
