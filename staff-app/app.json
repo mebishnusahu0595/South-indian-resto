@@ -27,10 +27,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "react-native-tcp-socket",
-      "@react-native-community/netinfo"
-    ],
     "extra": {
       "eas": {
         "projectId": "d34742b2-5dd6-40c8-9ecd-b03d11833f97"
