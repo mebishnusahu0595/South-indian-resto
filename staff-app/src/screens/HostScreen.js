@@ -243,19 +243,26 @@ export default function HostScreen({ api, staffName, onBack }) {
             </View>
 
             {/* Multi-Table Selection */}
-            <Text style={[styles.label, { marginTop: 10 }]}>Tables (tap to select multiple)</Text>
+            <Text style={[styles.label, { marginTop: 10 }]}>Tables in Selected Section (tap to select)</Text>
             <View style={styles.chipRow}>
-              {tables.filter(t => t.status === 'available').slice(0, 20).map(t => (
-                <TouchableOpacity
-                  key={t._id}
-                  style={[styles.chip, selectedTableIds.includes(t._id) && styles.chipActive]}
-                  onPress={() => toggleTableSelection(t._id)}
-                >
-                  <Text style={[styles.chipText, selectedTableIds.includes(t._id) && styles.chipTextActive]}>
-                    T{t.tableNumber} ({t.capacity})
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {(() => {
+                const activeSecs = selectedSections.length > 0
+                  ? selectedSections
+                  : (sectionsList.length > 0 ? [sectionsList[0]] : []);
+                const filtered = tables.filter(t => t.status === 'available' && (!t.section || activeSecs.includes(t.section)));
+                const displayList = filtered.length > 0 ? filtered : tables.filter(t => t.status === 'available');
+                return displayList.map(t => (
+                  <TouchableOpacity
+                    key={t._id}
+                    style={[styles.chip, selectedTableIds.includes(t._id) && styles.chipActive]}
+                    onPress={() => toggleTableSelection(t._id)}
+                  >
+                    <Text style={[styles.chipText, selectedTableIds.includes(t._id) && styles.chipTextActive]}>
+                      {t.name || `Table ${t.tableNumber}`} ({t.capacity})
+                    </Text>
+                  </TouchableOpacity>
+                ));
+              })()}
               {tables.filter(t => t.status === 'available').length === 0 && <Text style={styles.mutedText}>No available tables</Text>}
             </View>
 

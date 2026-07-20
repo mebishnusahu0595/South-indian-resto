@@ -372,13 +372,22 @@ const AdminBookings = () => {
                                 </div>
 
                                 <div className="input-group">
-                                     <label>Select Tables</label>
-                                     <div className="chips-wrap">
-                                         {tables.map(t => (
-                                             <button type="button" key={t._id} className={`chip ${createForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => setCreateForm(p => ({ ...p, tableIds: p.tableIds.includes(t._id) ? p.tableIds.filter(x => x !== t._id) : [...p.tableIds, t._id] }))}>{t.name || `Table ${t.tableNumber}`}</button>
-                                         ))}
-                                     </div>
-                                 </div>
+                                    <label>Select Tables</label>
+                                    <div className="chips-wrap">
+                                        {(() => {
+                                            const activeSecs = createForm.sections.length > 0
+                                                ? createForm.sections
+                                                : (sectionsList.length > 0 ? [sectionsList[0]] : []);
+                                            const filtered = tables.filter(t => !t.section || activeSecs.includes(t.section));
+                                            const displayList = filtered.length > 0 ? filtered : tables;
+                                            return displayList.map(t => (
+                                                <button type="button" key={t._id} className={`chip ${createForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => setCreateForm(p => ({ ...p, tableIds: p.tableIds.includes(t._id) ? p.tableIds.filter(x => x !== t._id) : [...p.tableIds, t._id] }))}>
+                                                    {t.name || `Table ${t.tableNumber}`} {t.section ? `(${t.section})` : ''}
+                                                </button>
+                                            ));
+                                        })()}
+                                    </div>
+                                </div>
                             </div>
                             <div className="modal-footer">
                                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
@@ -433,9 +442,18 @@ const AdminBookings = () => {
                                 <div className="input-group">
                                     <label>Select Tables</label>
                                     <div className="chips-wrap">
-                                        {tables.map(t => (
-                                            <button type="button" key={t._id} className={`chip ${editForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => toggleEditTable(t._id)}>{t.name || `Table ${t.tableNumber}`}</button>
-                                        ))}
+                                        {(() => {
+                                            const activeSecs = editForm.sections?.length > 0
+                                                ? editForm.sections
+                                                : (sectionsList.length > 0 ? [sectionsList[0]] : []);
+                                            const filtered = tables.filter(t => !t.section || activeSecs.includes(t.section));
+                                            const displayList = filtered.length > 0 ? filtered : tables;
+                                            return displayList.map(t => (
+                                                <button type="button" key={t._id} className={`chip ${editForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => toggleEditTable(t._id)}>
+                                                    {t.name || `Table ${t.tableNumber}`} {t.section ? `(${t.section})` : ''}
+                                                </button>
+                                            ));
+                                        })()}
                                     </div>
                                 </div>
                             </div>
