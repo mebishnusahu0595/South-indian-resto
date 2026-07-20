@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, FiSearch, FiEdit2 } from 'react-icons/fi';
+import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, FiSearch, FiEdit2, FiPrinter } from 'react-icons/fi';
 import { 
     getActiveOrders, updateOrderStatus, updatePayment, deleteOrder, 
     getAllMenuItems, getBillerSuggestions, generateBill, updateOrderItems,

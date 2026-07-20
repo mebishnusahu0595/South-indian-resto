@@ -151,7 +151,6 @@ const AdminLayout = () => {
             '/admin/loyalty',
             '/admin/coupons',
             '/admin/collections',
-            '/admin/analytics',
         ];
         return !restrictedPaths.includes(item.path);
     });

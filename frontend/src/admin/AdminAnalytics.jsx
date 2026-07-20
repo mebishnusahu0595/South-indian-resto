@@ -86,7 +86,8 @@ const AdminAnalytics = () => {
             setTopItems(topRes.data);
             setUserStats(userRes.data);
 
-            const marginSetting = settingsRes.data.find(s => s.key === 'profit_margin');
+            const settingsArr = Array.isArray(settingsRes.data) ? settingsRes.data : (Array.isArray(settingsRes.data?.data) ? settingsRes.data.data : []);
+            const marginSetting = settingsArr.find(s => s.key === 'profit_margin');
             if (marginSetting) setMargin(marginSetting.value);
         } catch (error) {
             console.error('Error:', error);
