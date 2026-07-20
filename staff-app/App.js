@@ -17,6 +17,7 @@ import CartScreen from './src/screens/CartScreen';
 import HostScreen from './src/screens/HostScreen';
 import RatingScreen from './src/screens/RatingScreen';
 import StaffHistoryScreen from './src/screens/StaffHistoryScreen';
+import PrinterSetupScreen from './src/screens/PrinterSetupScreen';
 
 // ─── Error Boundary ────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -272,15 +273,21 @@ function MainApp() {
             customerPhone={customerPhone}
             customerName={customerName}
             instructions={instructions}
+            staffName={staffName}
             onUpdateInstructions={setInstructions}
             onUpdateCart={setCart}
             onBack={() => setActiveScreen('menu')}
             onSubmitSuccess={resetOrder}
+            onOpenPrinterSetup={() => setActiveScreen('printer-setup')}
           />
         )}
 
         {activeScreen === 'host' && (
           <HostScreen api={getApi()} staffName={staffName} onBack={() => setActiveScreen('table-select')} />
+        )}
+
+        {activeScreen === 'printer-setup' && (
+          <PrinterSetupScreen onBack={() => setActiveScreen('cart')} />
         )}
 
         {activeScreen === 'history' && (

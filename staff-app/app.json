@@ -3,7 +3,7 @@
     "name": "Kea Staff",
     "slug": "kea-staff-app",
     "owner": "bishnusahu059595595",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -21,11 +21,16 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#7C3AED"
       },
-      "package": "com.keabythepool.staff"
+      "package": "com.keabythepool.staff",
+      "permissions": ["ACCESS_NETWORK_STATE", "ACCESS_WIFI_STATE", "INTERNET", "ACCESS_FINE_LOCATION"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      "react-native-tcp-socket",
+      "@react-native-community/netinfo"
+    ],
     "extra": {
       "eas": {
         "projectId": "d34742b2-5dd6-40c8-9ecd-b03d11833f97"
