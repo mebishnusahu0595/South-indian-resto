@@ -14,20 +14,23 @@ router.get('/day-end', protect, admin, async (req, res) => {
     try {
         const { date } = req.query;
         let targetDate = date;
-        if (!targetDate) {
-            const d = new Date();
-            const offset = d.getTimezoneOffset();
-            const localDate = new Date(d.getTime() - (offset * 60 * 1000));
-            targetDate = localDate.toISOString().split('T')[0];
+        const todayStr = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        const yesterdayDate = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000);
+        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+
+        if (req.user.role !== 'superadmin') {
+            if (targetDate !== todayStr && targetDate !== yesterdayStr) {
+                targetDate = todayStr;
+            }
         }
 
         const start = new Date(targetDate + 'T00:00:00');
         const end = new Date(targetDate + 'T23:59:59.999');
 
-        // Fetch settled bills & orders for the date
+        // Fetch settled bills & non-cancelled, non-deleted orders for the date
         const orders = await Order.find({
             createdAt: { $gte: start, $lte: end },
-            status: { $ne: 'cancelled' }
+            status: { $nin: ['cancelled', 'deleted'] }
         })
         .populate('items.menuItem', 'name category price')
         .populate({ path: 'items.menuItem', populate: { path: 'category', select: 'name' } })
@@ -145,11 +148,14 @@ router.get('/section-wise', protect, admin, async (req, res) => {
     try {
         const { date } = req.query;
         let targetDate = date;
-        if (!targetDate) {
-            const d = new Date();
-            const offset = d.getTimezoneOffset();
-            const localDate = new Date(d.getTime() - (offset * 60 * 1000));
-            targetDate = localDate.toISOString().split('T')[0];
+        const todayStr = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        const yesterdayDate = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000);
+        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+
+        if (req.user.role !== 'superadmin') {
+            if (targetDate !== todayStr && targetDate !== yesterdayStr) {
+                targetDate = todayStr;
+            }
         }
 
         const start = new Date(targetDate + 'T00:00:00');
@@ -157,7 +163,7 @@ router.get('/section-wise', protect, admin, async (req, res) => {
 
         const orders = await Order.find({
             createdAt: { $gte: start, $lte: end },
-            status: { $ne: 'cancelled' }
+            status: { $nin: ['cancelled', 'deleted'] }
         })
         .populate('table', 'section tableNumber name areaType')
         .populate('tables', 'section tableNumber name areaType')

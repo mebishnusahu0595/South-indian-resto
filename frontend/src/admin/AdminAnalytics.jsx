@@ -177,20 +177,46 @@ const AdminAnalytics = () => {
                 <div className="day-end-report-view">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <label style={{ fontWeight: 'bold' }}>Date:</label>
-                            <input
-                                type="date"
-                                value={reportDate}
-                                onChange={(e) => {
-                                    setReportDate(e.target.value);
-                                    fetchDayEndReport(e.target.value);
-                                }}
-                                className="input"
-                                style={{ padding: '8px 12px', borderRadius: '6px', border: '2px solid #111' }}
-                            />
-                            <button className="btn btn-secondary" onClick={() => fetchDayEndReport()}>
-                                Refresh
-                            </button>
+                            {user?.role === 'superadmin' ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <label style={{ fontWeight: 'bold' }}>📅 Select Date:</label>
+                                    <input
+                                        type="date"
+                                        value={reportDate}
+                                        onChange={(e) => {
+                                            setReportDate(e.target.value);
+                                            fetchDayEndReport(e.target.value);
+                                        }}
+                                        className="input"
+                                        style={{ padding: '8px 12px', borderRadius: '6px', border: '2px solid #111' }}
+                                    />
+                                    <button className="btn btn-secondary" onClick={() => fetchDayEndReport()}>Refresh</button>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <label style={{ fontWeight: 'bold' }}>📅 Date:</label>
+                                    <button
+                                        className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => {
+                                            const t = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                                            setReportDate(t);
+                                            fetchDayEndReport(t);
+                                        }}
+                                    >
+                                        Today
+                                    </button>
+                                    <button
+                                        className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => {
+                                            const y = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000).toISOString().split('T')[0];
+                                            setReportDate(y);
+                                            fetchDayEndReport(y);
+                                        }}
+                                    >
+                                        Yesterday
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         {dayEndData && (
                             <button className="btn btn-primary" onClick={() => window.print()}>
@@ -355,20 +381,46 @@ const AdminAnalytics = () => {
                 <div className="section-wise-report-view">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <label style={{ fontWeight: 'bold' }}>Date:</label>
-                            <input
-                                type="date"
-                                value={reportDate}
-                                onChange={(e) => {
-                                    setReportDate(e.target.value);
-                                    fetchSectionReport(e.target.value);
-                                }}
-                                className="input"
-                                style={{ padding: '8px 12px', borderRadius: '6px', border: '2px solid #111' }}
-                            />
-                            <button className="btn btn-secondary" onClick={() => fetchSectionReport()}>
-                                Refresh
-                            </button>
+                            {user?.role === 'superadmin' ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <label style={{ fontWeight: 'bold' }}>📅 Select Date:</label>
+                                    <input
+                                        type="date"
+                                        value={reportDate}
+                                        onChange={(e) => {
+                                            setReportDate(e.target.value);
+                                            fetchSectionReport(e.target.value);
+                                        }}
+                                        className="input"
+                                        style={{ padding: '8px 12px', borderRadius: '6px', border: '2px solid #111' }}
+                                    />
+                                    <button className="btn btn-secondary" onClick={() => fetchSectionReport()}>Refresh</button>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <label style={{ fontWeight: 'bold' }}>📅 Date:</label>
+                                    <button
+                                        className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => {
+                                            const t = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                                            setReportDate(t);
+                                            fetchSectionReport(t);
+                                        }}
+                                    >
+                                        Today
+                                    </button>
+                                    <button
+                                        className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => {
+                                            const y = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000).toISOString().split('T')[0];
+                                            setReportDate(y);
+                                            fetchSectionReport(y);
+                                        }}
+                                    >
+                                        Yesterday
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         {sectionData && (
                             <button className="btn btn-primary" onClick={() => window.print()}>
