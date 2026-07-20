@@ -27,7 +27,8 @@
         height: auto !important;
     }
 
-    .bill-modal-overlay {
+    .bill-modal-overlay,
+    .modal-overlay {
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
@@ -43,7 +44,11 @@
     }
 
     .print-bill-overlay,
-    .print-bill-overlay * {
+    .print-bill-overlay *,
+    .print-kot-modal,
+    .print-kot-modal *,
+    #kot-printable-slip,
+    #kot-printable-slip * {
         visibility: visible !important;
     }
 

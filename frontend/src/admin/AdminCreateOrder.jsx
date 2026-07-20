@@ -178,9 +178,9 @@ const AdminCreateOrder = () => {
     const total = taxableAmount + gst;
 
     const handlePlaceOrder = async (e) => {
-        e.preventDefault();
+        e?.preventDefault();
         if (cart.length === 0) {
-            setError('Please add at least one item to the cart');
+            setError('Please add items to cart before submitting.');
             return;
         }
 
@@ -202,20 +202,26 @@ const AdminCreateOrder = () => {
             };
 
             const res = await createOrder(orderData);
-            setSuccessMessage(`Order #${res.data.orderNumber} created successfully!`);
-            setActiveOrderId(res.data._id);
+            const createdOrder = res.data;
+            setSuccessMessage(`Order #${createdOrder.orderNumber} created successfully!`);
             
-            // Fetch suggestions and set default biller to last used
-            try {
-                const sug = await getBillerSuggestions();
-                const sugList = sug.data || [];
-                setBillerSuggestions(sugList);
-                setBillerName(localStorage.getItem('lastBillerName') || sugList[0] || '');
-                setDiscountInput('');
-                setDiscountName('');
-            } catch (err) {
-                console.error(err);
-            }
+            // Format 80mm KOT ticket object
+            const tableNames = selectedTableIds.map(id => {
+                const t = tables.find(tbl => tbl._id === id);
+                return t ? `Table ${t.tableNumber}` : id;
+            }).join(', ');
+
+            const kotObj = {
+                kotNumber: createdOrder.kotTicket || `KOT-${createdOrder.orderNumber}`,
+                orderNumber: createdOrder.orderNumber,
+                tableName: tableNames || 'Takeaway',
+                staffName: user?.name || 'Admin',
+                items: cart.map(i => ({ name: i.name, quantity: i.quantity })),
+                notes: specialInstructions,
+                timestamp: new Date()
+            };
+
+            setCreatedKOT(kotObj);
 
             // Reset states
             setCart([]);
@@ -225,8 +231,6 @@ const AdminCreateOrder = () => {
             setCouponCode('');
             setCustomerPhone('');
             setCustomerName('');
-
-            setShowBillModal(true);
         } catch (err) {
             setError(err.response?.data?.message || 'Failed to place manual order');
         } finally {
@@ -832,6 +836,73 @@ const AdminCreateOrder = () => {
                                 setDiscountInput('');
                                 navigate('/admin/bills');
                             }}>Close & Done</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 80mm KOT Ticket Printable Modal */}
+            {createdKOT && (
+                <div className="modal-overlay" onClick={() => setCreatedKOT(null)}>
+                    <div className="modal print-kot-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '360px', width: '92%' }}>
+                        <div className="modal-header">
+                            <h2>Kitchen KOT Ticket</h2>
+                            <button className="modal-close" onClick={() => setCreatedKOT(null)}>×</button>
+                        </div>
+                        
+                        <div id="kot-printable-slip" style={{ background: '#FFF', padding: '16px', fontFamily: "'Courier New', Courier, monospace", fontSize: '13px', lineHeight: '1.4', border: '1px dashed #111', borderRadius: '6px' }}>
+                            <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
+                                <h2 style={{ margin: '0 0 2px', fontSize: '18px', textTransform: 'uppercase', color: '#111' }}>KEA BY THE POOL</h2>
+                                <h3 style={{ margin: 0, fontSize: '14px', color: '#555' }}>KITCHEN ORDER TICKET</h3>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', marginTop: '4px', color: '#7C3AED' }}>{createdKOT.kotNumber}</div>
+                            </div>
+
+                            <div style={{ marginBottom: '8px', fontSize: '12px' }}>
+                                <div><strong>TABLE:</strong> {createdKOT.tableName || 'Takeaway'}</div>
+                                <div><strong>ORDER #:</strong> #{createdKOT.orderNumber}</div>
+                                <div><strong>STAFF:</strong> {createdKOT.staffName}</div>
+                                <div><strong>TIME:</strong> {new Date(createdKOT.timestamp).toLocaleDateString('en-IN')} {new Date(createdKOT.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
+                            </div>
+
+                            <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '6px 0', marginBottom: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '4px' }}>
+                                    <span>ITEM NAME</span>
+                                    <span>QTY</span>
+                                </div>
+                                {createdKOT.items.map((item, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', margin: '3px 0' }}>
+                                        <span>{item.name}</span>
+                                        <strong>x{item.quantity}</strong>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {createdKOT.notes && (
+                                <div style={{ marginBottom: '8px', fontSize: '12px', background: '#FEF3C7', padding: '6px', borderRadius: '4px', border: '1px solid #F59E0B' }}>
+                                    <strong>SPECIAL NOTE:</strong> {createdKOT.notes}
+                                </div>
+                            )}
+
+                            <div style={{ textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '6px', fontSize: '11px', color: '#666' }}>
+                                --- KITCHEN / RECEPTION COPY (80mm) ---
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                            <button
+                                className="btn btn-primary"
+                                style={{ flex: 1, background: '#7C3AED', borderColor: '#7C3AED', padding: '12px', fontSize: '14px', fontWeight: 'bold' }}
+                                onClick={() => window.print()}
+                            >
+                                🖨️ Print 80mm KOT
+                            </button>
+                            <button
+                                className="btn btn-secondary"
+                                style={{ padding: '12px 18px', fontWeight: '600' }}
+                                onClick={() => setCreatedKOT(null)}
+                            >
+                                Done
+                            </button>
                         </div>
                     </div>
                 </div>
