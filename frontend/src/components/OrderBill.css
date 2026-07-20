@@ -63,7 +63,7 @@
         border: none !important;
         border-radius: 0 !important;
         font-family: 'Courier New', Courier, monospace !important;
-        font-size: 13px !important;
+        font-size: 15px !important;
         line-height: 1.35 !important;
         box-sizing: border-box !important;
     }
@@ -78,37 +78,39 @@
     }
 
     .bill-header h2 {
-        font-size: 18px !important;
+        font-size: 21px !important;
         font-weight: 900 !important;
-        margin-bottom: 2px !important;
+        margin-bottom: 3px !important;
         text-align: center !important;
     }
 
     .bill-header p {
-        font-size: 12px !important;
+        font-size: 14px !important;
         margin: 2px 0 !important;
         text-align: center !important;
         color: #000000 !important;
+        font-weight: 600 !important;
     }
 
     .bill-info {
-        font-size: 12px !important;
+        font-size: 15px !important;
         color: #000000 !important;
         margin: 8px 0 !important;
     }
 
     .bill-info-row {
-        font-size: 12px !important;
+        font-size: 15px !important;
         color: #000000 !important;
+        font-weight: 600 !important;
         display: flex !important;
         justify-content: space-between !important;
     }
 
     .bill-items-header {
-        font-size: 13px !important;
-        font-weight: bold !important;
+        font-size: 16px !important;
+        font-weight: 900 !important;
         color: #000000 !important;
-        border-bottom: 1.5px solid #000000 !important;
+        border-bottom: 2px solid #000000 !important;
         padding-bottom: 4px !important;
         margin-bottom: 6px !important;
         display: grid !important;
@@ -116,28 +118,30 @@
     }
 
     .bill-item {
-        font-size: 13px !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
         color: #000000 !important;
-        margin-bottom: 4px !important;
+        margin-bottom: 5px !important;
         display: grid !important;
         grid-template-columns: 2.2fr 0.8fr 1.2fr !important;
     }
 
     .bill-totals {
-        font-size: 13px !important;
+        font-size: 15px !important;
         color: #000000 !important;
         margin-top: 8px !important;
     }
 
     .bill-total-row {
-        font-size: 13px !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
         color: #000000 !important;
         display: flex !important;
         justify-content: space-between !important;
     }
 
     .bill-total-row.grand-total {
-        font-size: 16px !important;
+        font-size: 19px !important;
         font-weight: 900 !important;
         border-top: 2px solid #000000 !important;
         padding-top: 6px !important;
@@ -147,13 +151,14 @@
     }
 
     .bill-footer p {
-        font-size: 12px !important;
+        font-size: 14px !important;
         color: #000000 !important;
         text-align: center !important;
+        font-weight: 600 !important;
     }
 
     .bill-divider {
-        border-top: 1px dashed #000000 !important;
+        border-top: 1.5px dashed #000000 !important;
         margin: 6px 0 !important;
     }
 }
@@ -173,7 +178,7 @@
 
 .bill-container {
     background: white;
-    width: 350px;
+    width: 380px;
     max-width: 95%;
     max-height: 90vh;
     padding: 24px;
@@ -201,20 +206,20 @@
 
 .bill-header h2 {
     margin: 4px 0;
-    font-size: 1.25rem;
+    font-size: 1.45rem;
     text-transform: uppercase;
     font-weight: 800;
 }
 
 .bill-header p {
-    font-size: 0.8rem;
+    font-size: 0.95rem;
     margin: 2px 0;
     color: #333;
 }
 
 .bill-info {
     margin-bottom: 16px;
-    font-size: 0.85rem;
+    font-size: 1rem;
     line-height: 1.4;
 }
 
@@ -232,7 +237,7 @@
     display: grid;
     grid-template-columns: 2.2fr 0.8fr 1.2fr;
     font-weight: bold;
-    font-size: 0.85rem;
+    font-size: 1.05rem;
     padding-bottom: 8px;
     border-bottom: 1px solid #000;
     margin-bottom: 8px;
@@ -241,7 +246,7 @@
 .bill-item {
     display: grid;
     grid-template-columns: 2.2fr 0.8fr 1.2fr;
-    font-size: 0.85rem;
+    font-size: 1rem;
     margin-bottom: 6px;
 }
 
@@ -255,7 +260,7 @@
 
 .bill-totals {
     margin-top: 16px;
-    font-size: 0.9rem;
+    font-size: 1.05rem;
 }
 
 .bill-total-row {
@@ -269,7 +274,7 @@
     padding-top: 8px;
     border-top: 1px double #000;
     font-weight: bold;
-    font-size: 1.1rem;
+    font-size: 1.25rem;
 }
 
 .bill-footer {
@@ -280,7 +285,7 @@
 }
 
 .bill-footer p {
-    font-size: 0.8rem;
+    font-size: 0.95rem;
     margin-bottom: 4px;
 }
 
