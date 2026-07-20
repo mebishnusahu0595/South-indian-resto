@@ -208,6 +208,13 @@ const AdminTables = () => {
         return acc;
     }, {});
 
+    // Sort tables naturally within each section
+    Object.keys(grouped).forEach(sec => {
+        grouped[sec].sort((a, b) =>
+            (a.tableNumber || '').localeCompare(b.tableNumber || '', undefined, { numeric: true, sensitivity: 'base' })
+        );
+    });
+
     const getAreaIcon = (type) => {
         const found = AREA_TYPES.find(a => a.value === type);
         if (found) {

@@ -8,8 +8,12 @@ const { protect, admin } = require('../middleware/auth');
 router.get('/', async (req, res) => {
     try {
         const tables = await Table.find({ isActive: true })
-            .populate('currentOrder', 'orderNumber status')
-            .sort('section tableNumber');
+            .populate('currentOrder', 'orderNumber status');
+        tables.sort((a, b) => {
+            const secCompare = (a.section || '').localeCompare(b.section || '', undefined, { numeric: true, sensitivity: 'base' });
+            if (secCompare !== 0) return secCompare;
+            return (a.tableNumber || '').localeCompare(b.tableNumber || '', undefined, { numeric: true, sensitivity: 'base' });
+        });
         res.json(tables);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -103,8 +107,12 @@ router.delete('/sections/:name', protect, admin, async (req, res) => {
 // Get available tables only
 router.get('/available', async (req, res) => {
     try {
-        const tables = await Table.find({ isActive: true, status: 'available' })
-            .sort('section tableNumber');
+        const tables = await Table.find({ isActive: true, status: 'available' });
+        tables.sort((a, b) => {
+            const secCompare = (a.section || '').localeCompare(b.section || '', undefined, { numeric: true, sensitivity: 'base' });
+            if (secCompare !== 0) return secCompare;
+            return (a.tableNumber || '').localeCompare(b.tableNumber || '', undefined, { numeric: true, sensitivity: 'base' });
+        });
         res.json(tables);
     } catch (error) {
         res.status(500).json({ message: error.message });
