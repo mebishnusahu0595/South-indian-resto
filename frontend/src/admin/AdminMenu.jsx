@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiEdit2, FiTrash2, FiImage } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiImage, FiSearch, FiFilter, FiX } from 'react-icons/fi';
 import { getAllMenuItems, getAllCategories, createMenuItem, updateMenuItem, deleteMenuItem, updateStock } from '../utils/api';
 import { getImageUrl } from '../utils/config';
 import './AdminMenu.css';
@@ -8,6 +8,13 @@ const AdminMenu = () => {
     const [items, setItems] = useState([]);
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // Search & Filter state
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('all');
+    const [selectedFoodType, setSelectedFoodType] = useState('all');
+    const [selectedStockStatus, setSelectedStockStatus] = useState('all');
+
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [formData, setFormData] = useState({
@@ -94,58 +101,174 @@ const AdminMenu = () => {
         setImage(null);
     };
 
+    const clearFilters = () => {
+        setSearchQuery('');
+        setSelectedCategory('all');
+        setSelectedFoodType('all');
+        setSelectedStockStatus('all');
+    };
+
+    // Filter items based on search query, category, food type, stock status
+    const filteredItems = items.filter(item => {
+        const query = searchQuery.trim().toLowerCase();
+        const matchesSearch = !query || 
+            item.name.toLowerCase().includes(query) ||
+            (item.description && item.description.toLowerCase().includes(query));
+
+        const matchesCategory = selectedCategory === 'all' || 
+            (item.category?._id === selectedCategory || item.category === selectedCategory);
+
+        const matchesFoodType = selectedFoodType === 'all' ||
+            (selectedFoodType === 'veg' && item.isVeg) ||
+            (selectedFoodType === 'non-veg' && !item.isVeg);
+
+        const matchesStock = selectedStockStatus === 'all' ||
+            (selectedStockStatus === 'in_stock' && item.isAvailable) ||
+            (selectedStockStatus === 'out_of_stock' && !item.isAvailable);
+
+        return matchesSearch && matchesCategory && matchesFoodType && matchesStock;
+    });
+
+    const isFiltered = searchQuery || selectedCategory !== 'all' || selectedFoodType !== 'all' || selectedStockStatus !== 'all';
+
     if (loading) return <div className="admin-loading"><div className="spinner"></div></div>;
 
     return (
         <div className="admin-menu">
             <div className="page-header">
-                <h1>Menu Management</h1>
+                <div>
+                    <h1>Menu Management</h1>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>
+                        Showing {filteredItems.length} of {items.length} items
+                    </p>
+                </div>
                 <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
                     <FiPlus /> Add Item
                 </button>
             </div>
 
-            <div className="items-grid">
-                {items.map(item => (
-                    <div key={item._id} className={`item-card ${!item.isAvailable ? 'out-of-stock' : ''}`}>
-                        <div className="item-image">
-                            {item.image ? (
-                                <img
-                                    src={getImageUrl(item.image)}
-                                    alt={item.name}
-                                    onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
-                                    }}
-                                />
-                            ) : null}
-                            <div className="no-image" style={{ display: item.image ? 'none' : 'flex' }}>
-                                <FiImage />
-                                <span style={{ fontSize: '0.7rem', marginTop: '4px', color: 'var(--text-muted)' }}>No Image</span>
+            {/* Filter & Search Bar */}
+            <div className="menu-filter-bar">
+                <div className="search-input-wrapper">
+                    <FiSearch className="search-icon" />
+                    <input
+                        type="text"
+                        placeholder="Search menu item by name..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="menu-search-input"
+                    />
+                    {searchQuery && (
+                        <button className="clear-search-btn" onClick={() => setSearchQuery('')}>
+                            <FiX />
+                        </button>
+                    )}
+                </div>
+
+                <div className="filter-controls">
+                    {/* Category Filter */}
+                    <div className="filter-group">
+                        <select
+                            value={selectedCategory}
+                            onChange={(e) => setSelectedCategory(e.target.value)}
+                            className="filter-select"
+                        >
+                            <option value="all">All Categories ({categories.length})</option>
+                            {categories.map(cat => (
+                                <option key={cat._id} value={cat._id}>{cat.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Veg / Non-Veg Filter */}
+                    <div className="filter-group">
+                        <select
+                            value={selectedFoodType}
+                            onChange={(e) => setSelectedFoodType(e.target.value)}
+                            className="filter-select"
+                        >
+                            <option value="all">All Food Types</option>
+                            <option value="veg">🟢 Veg Only</option>
+                            <option value="non-veg">🔴 Non-Veg Only</option>
+                        </select>
+                    </div>
+
+                    {/* Stock Availability Filter */}
+                    <div className="filter-group">
+                        <select
+                            value={selectedStockStatus}
+                            onChange={(e) => setSelectedStockStatus(e.target.value)}
+                            className="filter-select"
+                        >
+                            <option value="all">All Stock Status</option>
+                            <option value="in_stock">In Stock Only</option>
+                            <option value="out_of_stock">Out of Stock Only</option>
+                        </select>
+                    </div>
+
+                    {isFiltered && (
+                        <button className="btn-clear-filters" onClick={clearFilters}>
+                            <FiX /> Clear Filters
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Items Grid */}
+            {filteredItems.length === 0 ? (
+                <div className="no-items-found">
+                    <FiFilter size={40} color="var(--text-muted)" />
+                    <h3>No Menu Items Found</h3>
+                    <p>Try clearing your search query or filters.</p>
+                    {isFiltered && (
+                        <button className="btn btn-primary" onClick={clearFilters} style={{ marginTop: '12px' }}>
+                            Reset All Filters
+                        </button>
+                    )}
+                </div>
+            ) : (
+                <div className="items-grid">
+                    {filteredItems.map(item => (
+                        <div key={item._id} className={`item-card ${!item.isAvailable ? 'out-of-stock' : ''}`}>
+                            <div className="item-image">
+                                {item.image ? (
+                                    <img
+                                        src={getImageUrl(item.image)}
+                                        alt={item.name}
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+                                        }}
+                                    />
+                                ) : null}
+                                <div className="no-image" style={{ display: item.image ? 'none' : 'flex' }}>
+                                    <FiImage />
+                                    <span style={{ fontSize: '0.7rem', marginTop: '4px', color: 'var(--text-muted)' }}>No Image</span>
+                                </div>
+                                {item.isBestSeller && <span className="badge bestseller">Bestseller</span>}
+                                {item.isNewItem && <span className="badge new">New</span>}
                             </div>
-                            {item.isBestSeller && <span className="badge bestseller">Bestseller</span>}
-                            {item.isNewItem && <span className="badge new">New</span>}
-                        </div>
-                        <div className="item-content">
-                            <div className="item-header">
-                                <span className={item.isVeg ? 'badge-veg' : 'badge-non-veg'}></span>
-                                <h3>{item.name}</h3>
-                            </div>
-                            <p className="item-category">{item.category?.name}</p>
-                            <div className="item-footer">
-                                <span className="item-price">₹{item.price}</span>
-                                <div className="item-actions">
-                                    <button onClick={() => handleStockToggle(item)} className={`stock-btn ${item.isAvailable ? 'in' : 'out'}`}>
-                                        {item.isAvailable ? 'In Stock' : 'Out of Stock'}
-                                    </button>
-                                    <button onClick={() => openEdit(item)} className="icon-btn edit"><FiEdit2 /></button>
-                                    <button onClick={() => handleDelete(item._id)} className="icon-btn delete"><FiTrash2 /></button>
+                            <div className="item-content">
+                                <div className="item-header">
+                                    <span className={item.isVeg ? 'badge-veg' : 'badge-non-veg'}></span>
+                                    <h3>{item.name}</h3>
+                                </div>
+                                <p className="item-category">{item.category?.name}</p>
+                                <div className="item-footer">
+                                    <span className="item-price">₹{item.price}</span>
+                                    <div className="item-actions">
+                                        <button onClick={() => handleStockToggle(item)} className={`stock-btn ${item.isAvailable ? 'in' : 'out'}`}>
+                                            {item.isAvailable ? 'In Stock' : 'Out of Stock'}
+                                        </button>
+                                        <button onClick={() => openEdit(item)} className="icon-btn edit"><FiEdit2 /></button>
+                                        <button onClick={() => handleDelete(item._id)} className="icon-btn delete"><FiTrash2 /></button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
 
             {/* Modal */}
             {showModal && (

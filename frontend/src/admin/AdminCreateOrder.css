@@ -122,6 +122,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 30px;
+  min-width: 0;
 }
 
 @media (min-width: 1024px) {
@@ -137,6 +138,7 @@
   border-radius: 12px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 /* Left Section: Menu selection */
@@ -161,34 +163,55 @@
 
 .categories-list {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   overflow-x: auto;
-  padding-bottom: 12px;
-  margin-bottom: 20px;
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+  max-width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: #7C3AED #F3F4F6;
+  -webkit-overflow-scrolling: touch;
+}
+
+.categories-list::-webkit-scrollbar {
+  height: 6px;
+}
+
+.categories-list::-webkit-scrollbar-track {
+  background: #F3F4F6;
+  border-radius: 4px;
+}
+
+.categories-list::-webkit-scrollbar-thumb {
+  background: #A78BFA;
+  border-radius: 4px;
 }
 
 .category-btn {
   background: white;
-  border: 2px solid #111111;
-  padding: 6px 16px;
+  border: 1.5px solid #111111;
+  padding: 6px 14px;
   border-radius: 20px;
   cursor: pointer;
   white-space: nowrap;
   font-family: inherit;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 0.82rem;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .category-btn.active,
 .category-btn:hover {
   background: var(--primary);
   color: white;
+  border-color: var(--primary);
 }
 
 .admin-create-order .items-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
   overflow-y: auto;
   max-height: calc(100vh - 280px);
   min-height: 400px;
