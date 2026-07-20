@@ -372,13 +372,13 @@ const AdminBookings = () => {
                                 </div>
 
                                 <div className="input-group">
-                                    <label>Select Tables</label>
-                                    <div className="chips-wrap">
-                                        {tables.slice(0, 30).map(t => (
-                                            <button type="button" key={t._id} className={`chip ${createForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => setCreateForm(p => ({ ...p, tableIds: p.tableIds.includes(t._id) ? p.tableIds.filter(x => x !== t._id) : [...p.tableIds, t._id] }))}>T{t.tableNumber}</button>
-                                        ))}
-                                    </div>
-                                </div>
+                                     <label>Select Tables</label>
+                                     <div className="chips-wrap">
+                                         {tables.map(t => (
+                                             <button type="button" key={t._id} className={`chip ${createForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => setCreateForm(p => ({ ...p, tableIds: p.tableIds.includes(t._id) ? p.tableIds.filter(x => x !== t._id) : [...p.tableIds, t._id] }))}>{t.name || `Table ${t.tableNumber}`}</button>
+                                         ))}
+                                     </div>
+                                 </div>
                             </div>
                             <div className="modal-footer">
                                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
@@ -431,10 +431,10 @@ const AdminBookings = () => {
                                     </div>
                                 </div>
                                 <div className="input-group">
-                                    <label>Tables</label>
+                                    <label>Select Tables</label>
                                     <div className="chips-wrap">
-                                        {tables.slice(0, 30).map(t => (
-                                            <button type="button" key={t._id} className={`chip ${editForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => toggleEditTable(t._id)}>T{t.tableNumber}</button>
+                                        {tables.map(t => (
+                                            <button type="button" key={t._id} className={`chip ${editForm.tableIds.includes(t._id) ? 'active' : ''}`} onClick={() => toggleEditTable(t._id)}>{t.name || `Table ${t.tableNumber}`}</button>
                                         ))}
                                     </div>
                                 </div>
