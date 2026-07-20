@@ -49,6 +49,42 @@ router.post('/sections', protect, admin, async (req, res) => {
     }
 });
 
+// Admin: Rename a section (updates all tables in that section and settings preset)
+router.put('/sections/rename', protect, admin, async (req, res) => {
+    try {
+        const { oldName, newName } = req.body;
+        if (!oldName || !newName || !newName.trim()) {
+            return res.status(400).json({ message: 'Both oldName and newName are required' });
+        }
+        const trimmedOld = oldName.trim();
+        const trimmedNew = newName.trim();
+
+        // 1. Update all tables with old section name
+        await Table.updateMany({ section: trimmedOld }, { section: trimmedNew });
+
+        // 2. Update custom_sections list in Settings
+        let custom = (await Settings.getSetting('custom_sections', [])) || [];
+        if (custom.includes(trimmedOld)) {
+            custom = custom.map(s => s === trimmedOld ? trimmedNew : s);
+        } else if (!custom.includes(trimmedNew)) {
+            custom.push(trimmedNew);
+        }
+        await Settings.setSetting('custom_sections', [...new Set(custom)], 'Custom table sections');
+
+        // 3. Emit socket event
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('table-updated');
+        }
+
+        const derived = await Table.distinct('section', { isActive: true });
+        const merged = [...new Set([...custom, ...derived])].filter(Boolean);
+        res.json({ message: `Renamed section "${trimmedOld}" to "${trimmedNew}"`, sections: merged });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 // Admin: Remove a custom section (does not delete tables; they keep their section value)
 router.delete('/sections/:name', protect, admin, async (req, res) => {
     try {

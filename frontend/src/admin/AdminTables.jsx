@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FiPlus, FiEdit2, FiTrash2, FiUsers, FiGrid, FiMapPin, FiStar, FiSun, FiCoffee, FiHome, FiTag, FiX } from 'react-icons/fi';
-import { getTables, createTable, createBulkTables, updateTable, deleteTable, getTableSections, createSection, deleteSection } from '../utils/api';
+import { getTables, createTable, createBulkTables, updateTable, deleteTable, getTableSections, createSection, renameSection, deleteSection } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import './AdminTables.css';
 
@@ -73,6 +73,21 @@ const AdminTables = () => {
             setSectionsList(res.data || []);
         } catch (error) {
             alert('Failed to remove section');
+        }
+    };
+
+    const handleRenameSection = async (oldName) => {
+        const newName = window.prompt(`Rename section "${oldName}" to:`, oldName);
+        if (!newName || !newName.trim() || newName.trim() === oldName) return;
+        try {
+            const res = await renameSection(oldName, newName.trim());
+            if (res.data?.sections) {
+                setSectionsList(res.data.sections);
+            }
+            fetchData();
+            fetchSections();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Failed to rename section');
         }
     };
 
@@ -250,7 +265,17 @@ const AdminTables = () => {
             {/* Tables grouped by section */}
             {Object.entries(grouped).map(([sectionName, sectionTables]) => (
                 <div key={sectionName} className="section-group">
-                    <h2 className="section-title"><FiGrid /> {sectionName}</h2>
+                    <h2 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FiGrid /> {sectionName}
+                        <button
+                            className="icon-btn edit"
+                            title={`Rename section "${sectionName}"`}
+                            onClick={() => handleRenameSection(sectionName)}
+                            style={{ padding: '3px 8px', height: 'auto', fontSize: '0.8rem', opacity: 0.85, cursor: 'pointer', borderRadius: '4px' }}
+                        >
+                            <FiEdit2 size={13} /> Edit
+                        </button>
+                    </h2>
                     <div className="tables-grid">
                         {sectionTables.map(table => (
                             <div key={table._id} className={`table-card ${table.status} area-${table.areaType || 'table'}`}>
@@ -572,13 +597,22 @@ const AdminTables = () => {
                                                     <FiMapPin /> {sec}
                                                     <span className="section-table-count">{tableCount} table{tableCount !== 1 ? 's' : ''}</span>
                                                 </span>
-                                                <button
-                                                    className="icon-btn delete"
-                                                    title="Remove section preset"
-                                                    onClick={() => handleDeleteSection(sec)}
-                                                >
-                                                    <FiX />
-                                                </button>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button
+                                                        className="icon-btn edit"
+                                                        title="Rename section"
+                                                        onClick={() => handleRenameSection(sec)}
+                                                    >
+                                                        <FiEdit2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        className="icon-btn delete"
+                                                        title="Remove section preset"
+                                                        onClick={() => handleDeleteSection(sec)}
+                                                    >
+                                                        <FiX size={14} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         );
                                     })

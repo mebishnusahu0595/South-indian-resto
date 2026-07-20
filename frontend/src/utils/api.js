@@ -85,6 +85,7 @@ export const getUserAnalytics = (period) => axios.get(`${API_URL}/analytics/user
 export const getTables = () => axios.get(`${API_URL}/tables`);
 export const getTableSections = () => axios.get(`${API_URL}/tables/sections`);
 export const createSection = (name) => axios.post(`${API_URL}/tables/sections`, { name });
+export const renameSection = (oldName, newName) => axios.put(`${API_URL}/tables/sections/rename`, { oldName, newName });
 export const deleteSection = (name) => axios.delete(`${API_URL}/tables/sections/${encodeURIComponent(name)}`);
 export const getAvailableTables = () => axios.get(`${API_URL}/tables/available`);
 export const createTable = (data) => axios.post(`${API_URL}/tables`, data);
