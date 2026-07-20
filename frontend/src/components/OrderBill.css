@@ -5,7 +5,8 @@
     }
 
     html, body {
-        width: 100% !important;
+        width: 72mm !important;
+        max-width: 72mm !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
@@ -31,8 +32,8 @@
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
-        width: 100% !important;
-        max-width: 80mm !important;
+        width: 72mm !important;
+        max-width: 72mm !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
@@ -52,10 +53,10 @@
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
-        width: 100% !important;
-        max-width: 80mm !important;
+        width: 72mm !important;
+        max-width: 72mm !important;
         margin: 0 !important;
-        padding: 4mm 3mm !important;
+        padding: 2mm 0mm !important;
         background: #ffffff !important;
         color: #000000 !important;
         box-shadow: none !important;
@@ -63,7 +64,7 @@
         border-radius: 0 !important;
         font-family: 'Courier New', Courier, monospace !important;
         font-size: 13px !important;
-        line-height: 1.4 !important;
+        line-height: 1.35 !important;
         box-sizing: border-box !important;
     }
 
@@ -99,6 +100,8 @@
     .bill-info-row {
         font-size: 12px !important;
         color: #000000 !important;
+        display: flex !important;
+        justify-content: space-between !important;
     }
 
     .bill-items-header {
@@ -108,12 +111,16 @@
         border-bottom: 1.5px solid #000000 !important;
         padding-bottom: 4px !important;
         margin-bottom: 6px !important;
+        display: grid !important;
+        grid-template-columns: 2.2fr 0.8fr 1.2fr !important;
     }
 
     .bill-item {
         font-size: 13px !important;
         color: #000000 !important;
         margin-bottom: 4px !important;
+        display: grid !important;
+        grid-template-columns: 2.2fr 0.8fr 1.2fr !important;
     }
 
     .bill-totals {
@@ -125,6 +132,8 @@
     .bill-total-row {
         font-size: 13px !important;
         color: #000000 !important;
+        display: flex !important;
+        justify-content: space-between !important;
     }
 
     .bill-total-row.grand-total {
@@ -133,6 +142,8 @@
         border-top: 2px solid #000000 !important;
         padding-top: 6px !important;
         margin-top: 6px !important;
+        display: flex !important;
+        justify-content: space-between !important;
     }
 
     .bill-footer p {
@@ -219,7 +230,7 @@
 
 .bill-items-header {
     display: grid;
-    grid-template-columns: 2fr 1fr 1.2fr;
+    grid-template-columns: 2.2fr 0.8fr 1.2fr;
     font-weight: bold;
     font-size: 0.85rem;
     padding-bottom: 8px;
@@ -229,7 +240,7 @@
 
 .bill-item {
     display: grid;
-    grid-template-columns: 2fr 1fr 1.2fr;
+    grid-template-columns: 2.2fr 0.8fr 1.2fr;
     font-size: 0.85rem;
     margin-bottom: 6px;
 }
