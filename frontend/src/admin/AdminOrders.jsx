@@ -53,6 +53,15 @@ const AdminOrders = () => {
     const [splitUpi, setSplitUpi] = useState('');
     const [splitCard, setSplitCard] = useState('');
 
+    // Partial Edit / Modify Order state
+    const [showModifyModal, setShowModifyModal] = useState(false);
+    const [editingOrder, setEditingOrder] = useState(null);
+    const [modifyItemsList, setModifyItemsList] = useState([]);
+    const [menuItemsList, setMenuItemsList] = useState([]);
+    const [selectedAddMenuItem, setSelectedAddMenuItem] = useState('');
+    const [modifyNote, setModifyNote] = useState('');
+    const [submittingModify, setSubmittingModify] = useState(false);
+
     // KOTs state
     const [activeTab, setActiveTab] = useState('active'); // 'active' | 'kots' | 'all'
     const [kotList, setKotList] = useState([]);
@@ -556,6 +565,70 @@ const AdminOrders = () => {
         }
     };
 
+    const handleOpenModifyOrder = (order) => {
+        setEditingOrder(order);
+        const initialList = (order.items || []).map(i => ({
+            menuItemId: i.menuItem?._id || i.menuItem || i._id,
+            name: i.name || i.menuItem?.name || 'Item',
+            price: i.price || i.menuItem?.price || 0,
+            quantity: i.quantity
+        }));
+        setModifyItemsList(initialList);
+        setModifyNote('');
+        setShowModifyModal(true);
+        getMenuItems().then(res => setMenuItemsList(res.data || [])).catch(() => {});
+    };
+
+    const handleSaveModifyOrder = async (e) => {
+        if (e) e.preventDefault();
+        if (!editingOrder) return;
+
+        setSubmittingModify(true);
+        try {
+            const payload = {
+                updatedItems: modifyItemsList.map(i => ({
+                    menuItemId: i.menuItemId,
+                    quantity: i.quantity
+                })),
+                modificationNote: modifyNote
+            };
+
+            const res = await axios.put(`/api/orders/${editingOrder._id}/modify-items`, payload);
+            const { addedKot, cancelledKot } = res.data;
+
+            setShowModifyModal(false);
+            fetchOrders();
+
+            if (addedKot) {
+                setSelectedKOTForPrint({
+                    kotNumber: addedKot.kotNumber,
+                    orderNumber: editingOrder.orderNumber,
+                    tableNumber: editingOrder.tableNumber || 'Takeaway',
+                    staffName: user?.name || 'Admin',
+                    items: addedKot.items,
+                    notes: addedKot.notes,
+                    timestamp: new Date()
+                });
+                setTimeout(() => { try { window.print(); } catch (_) {} }, 400);
+            } else if (cancelledKot) {
+                setSelectedKOTForPrint({
+                    kotNumber: cancelledKot.kotNumber,
+                    orderNumber: editingOrder.orderNumber,
+                    tableNumber: editingOrder.tableNumber || 'Takeaway',
+                    staffName: user?.name || 'Admin',
+                    items: cancelledKot.items,
+                    notes: cancelledKot.notes,
+                    timestamp: new Date()
+                });
+                setTimeout(() => { try { window.print(); } catch (_) {} }, 400);
+            }
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to modify order items');
+        } finally {
+            setSubmittingModify(false);
+        }
+    };
+
     const handleShowBill = (order) => {
         if (order.status !== 'bill_generated' && order.status !== 'paid') {
             handleOpenPrepareBill(order._id);
@@ -844,17 +917,32 @@ const AdminOrders = () => {
                                     )}
 
                                     {['confirmed', 'preparing', 'ready', 'served', 'bill_requested'].includes(order.status) && (
-                                        <button
-                                            className="btn btn-danger btn-sm"
-                                            onClick={() => {
-                                                if (window.confirm('Are you sure you want to cancel this order?')) {
-                                                    handleStatusChange(order._id, 'cancelled');
-                                                }
-                                            }}
-                                            style={{ opacity: 0.8 }}
-                                        >
-                                            <FiX /> Cancel
-                                        </button>
+                                        <div style={{ display: 'flex', gap: '6px', width: '100%', marginTop: '4px' }}>
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleOpenModifyOrder(order);
+                                                }}
+                                                style={{ flex: 1, background: '#7C3AED', color: '#FFF', border: 'none', fontWeight: 'bold', fontSize: '0.8rem', padding: '6px 8px' }}
+                                            >
+                                                ✏️ Partial Edit / Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-danger btn-sm"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (window.confirm('Are you sure you want to cancel this ENTIRE order?')) {
+                                                        handleStatusChange(order._id, 'cancelled');
+                                                    }
+                                                }}
+                                                style={{ opacity: 0.85, fontSize: '0.8rem', padding: '6px 10px' }}
+                                            >
+                                                <FiX /> Cancel All
+                                            </button>
+                                        </div>
                                     )}
 
                                     <button
@@ -1467,6 +1555,135 @@ const AdminOrders = () => {
                             >
                                 🔒 Confirm Split Payment & Generate Bill
                             </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Partial Edit / Item Cancel Modal */}
+            {showModifyModal && editingOrder && (
+                <div className="bill-modal-overlay" onClick={() => setShowModifyModal(false)}>
+                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '520px', width: '94%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '2px solid #111111', paddingBottom: '10px' }}>
+                            <div>
+                                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>✏️ Partial Modify / Cancel Order #{editingOrder.orderNumber}</h2>
+                                <span style={{ fontSize: '0.8rem', color: '#6B7280' }}>Add items, change quantities, or remove cancelled items</span>
+                            </div>
+                            <button onClick={() => setShowModifyModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}><FiX /></button>
+                        </div>
+
+                        <form onSubmit={handleSaveModifyOrder} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            {/* Current Items List */}
+                            <div style={{ background: '#F9FAFB', border: '2px solid #111', borderRadius: '8px', padding: '12px', maxHeight: '240px', overflowY: 'auto' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.85rem', borderBottom: '1px solid #E5E7EB', paddingBottom: '6px', marginBottom: '8px' }}>
+                                    <span>ITEM NAME</span>
+                                    <span>QTY / ACTION</span>
+                                </div>
+
+                                {modifyItemsList.map((item, idx) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px dashed #E5E7EB' }}>
+                                        <div>
+                                            <strong style={{ fontSize: '0.9rem', display: 'block' }}>{item.name}</strong>
+                                            <span style={{ fontSize: '0.78rem', color: '#6B7280' }}>₹{item.price} each</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setModifyItemsList(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(0, it.quantity - 1) } : it).filter(it => it.quantity > 0));
+                                                }}
+                                                style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #DC2626', background: '#FEE2E2', color: '#DC2626', fontWeight: 'bold', cursor: 'pointer' }}
+                                            >
+                                                -
+                                            </button>
+                                            <span style={{ fontWeight: 'bold', fontSize: '0.95rem', minWidth: '24px', textAlign: 'center' }}>x{item.quantity}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setModifyItemsList(prev => prev.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it));
+                                                }}
+                                                style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #059669', background: '#ECFDF5', color: '#059669', fontWeight: 'bold', cursor: 'pointer' }}
+                                            >
+                                                +
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setModifyItemsList(prev => prev.filter((_, i) => i !== idx));
+                                                }}
+                                                style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', marginLeft: '4px' }}
+                                                title="Cancel / Remove Item"
+                                            >
+                                                <FiTrash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {modifyItemsList.length === 0 && (
+                                    <div style={{ color: '#EF4444', fontSize: '0.85rem', textAlign: 'center', padding: '10px' }}>
+                                        ⚠️ All items removed. Click "Cancel All" if you want to cancel the entire order.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Add New Item Selector */}
+                            <div style={{ background: '#FFF', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <select
+                                    className="input"
+                                    value={selectedAddMenuItem}
+                                    onChange={e => setSelectedAddMenuItem(e.target.value)}
+                                    style={{ flex: 1, padding: '8px', fontSize: '0.88rem', border: '1px solid #111', borderRadius: '6px' }}
+                                >
+                                    <option value="">-- Add New Item from Menu --</option>
+                                    {menuItemsList.map(mi => (
+                                        <option key={mi._id} value={mi._id}>{mi.name} - ₹{mi.price}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => {
+                                        if (!selectedAddMenuItem) return;
+                                        const mi = menuItemsList.find(m => m._id === selectedAddMenuItem);
+                                        if (!mi) return;
+                                        const existsIndex = modifyItemsList.findIndex(i => i.menuItemId === mi._id);
+                                        if (existsIndex >= 0) {
+                                            setModifyItemsList(prev => prev.map((it, i) => i === existsIndex ? { ...it, quantity: it.quantity + 1 } : it));
+                                        } else {
+                                            setModifyItemsList(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1 }]);
+                                        }
+                                        setSelectedAddMenuItem('');
+                                    }}
+                                    style={{ padding: '8px 14px', fontSize: '0.85rem', fontWeight: 'bold' }}
+                                >
+                                    + Add Item
+                                </button>
+                            </div>
+
+                            {/* Note for KOT */}
+                            <div>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.82rem' }}>Modification Reason / Note (Printed on KOT)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Guest changed mind / Less spicy requested"
+                                    value={modifyNote}
+                                    onChange={e => setModifyNote(e.target.value)}
+                                    style={{ width: '100%', padding: '8px', border: '1.5px solid #111', borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
+                                <button type="button" className="btn btn-secondary" onClick={() => setShowModifyModal(false)}>Cancel</button>
+                                <button
+                                    type="submit"
+                                    disabled={submittingModify || modifyItemsList.length === 0}
+                                    className="btn btn-primary"
+                                    style={{ background: '#7C3AED', borderColor: '#7C3AED', fontWeight: 'bold' }}
+                                >
+                                    {submittingModify ? 'Saving...' : '💾 Save & Print Modified KOT'}
+                                </button>
+                            </div>
                         </form>
                     </div>
                 </div>

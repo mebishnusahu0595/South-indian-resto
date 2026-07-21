@@ -66,6 +66,79 @@ const AdminAnalytics = () => {
         }
     };
 
+    const handleDownloadDayEndReport = (dayEndData) => {
+        if (!dayEndData) return;
+        const dateStr = dayEndData.date || new Date().toISOString().split('T')[0];
+
+        let content = `====================================================\n`;
+        content += `        KEA BY THE POOL — DAY-END (EOD) REPORT      \n`;
+        content += `====================================================\n`;
+        content += `Date: ${new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}\n`;
+        content += `Downloaded At: ${new Date().toLocaleString('en-IN')}\n\n`;
+
+        content += `----------------------------------------------------\n`;
+        content += `FINANCIAL SUMMARY\n`;
+        content += `----------------------------------------------------\n`;
+        content += `Total Orders   : ${dayEndData.summary.totalOrders}\n`;
+        content += `Gross Sales    : Rs. ${dayEndData.summary.grossSales?.toFixed(2) || '0.00'}\n`;
+        content += `Total Discount : Rs. ${dayEndData.summary.totalDiscounts?.toFixed(2) || '0.00'}\n`;
+        content += `Net Sales      : Rs. ${dayEndData.summary.netSales?.toFixed(2) || '0.00'}\n`;
+        content += `Total Taxes    : Rs. ${dayEndData.summary.totalTax?.toFixed(2) || '0.00'}\n`;
+        content += `GRAND TOTAL    : Rs. ${dayEndData.summary.grandTotal?.toFixed(2) || '0.00'}\n\n`;
+
+        content += `----------------------------------------------------\n`;
+        content += `PAYMENT METHOD BREAKDOWN\n`;
+        content += `----------------------------------------------------\n`;
+        (dayEndData.paymentBreakdown || []).forEach(p => {
+            content += `${(p.method || 'OTHER').toUpperCase().padEnd(14)}: Rs. ${p.total?.toFixed(2)} (${p.count} orders)\n`;
+        });
+
+        content += `\n----------------------------------------------------\n`;
+        content += `TOP SELLING MENU ITEMS\n`;
+        content += `----------------------------------------------------\n`;
+        (dayEndData.topItems || []).forEach((item, idx) => {
+            content += `${idx + 1}. ${item.name} - Qty: ${item.quantity} - Total: Rs. ${item.totalSales?.toFixed(2)}\n`;
+        });
+
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Day_End_Report_${dateStr}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleDownloadSectionReport = (sectionData) => {
+        if (!sectionData) return;
+        const dateStr = sectionData.date || new Date().toISOString().split('T')[0];
+
+        let content = `====================================================\n`;
+        content += `   KEA BY THE POOL — SECTION & TABLE SALES REPORT   \n`;
+        content += `====================================================\n`;
+        content += `Date: ${new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}\n`;
+        content += `Downloaded At: ${new Date().toLocaleString('en-IN')}\n\n`;
+
+        (sectionData.sections || []).forEach(sec => {
+            content += `----------------------------------------------------\n`;
+            content += `SECTION: ${sec.sectionName.toUpperCase()}\n`;
+            content += `Orders: ${sec.totalOrders} | Revenue: Rs. ${sec.totalRevenue?.toFixed(2)}\n`;
+            content += `----------------------------------------------------\n`;
+            (sec.tables || []).forEach(tbl => {
+                content += `  • Table ${tbl.tableNumber} : ${tbl.ordersCount} orders | Rs. ${tbl.totalRevenue?.toFixed(2)}\n`;
+            });
+            content += `\n`;
+        });
+
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Section_Sales_Report_${dateStr}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     useEffect(() => {
         if (socket) {
             socket.on('order-updated', () => fetchData());
@@ -228,9 +301,14 @@ const AdminAnalytics = () => {
                             )}
                         </div>
                         {dayEndData && (
-                            <button className="btn btn-primary" onClick={() => window.print()}>
-                                <FiPrinter /> Print / Export PDF
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="btn btn-secondary" onClick={() => handleDownloadDayEndReport(dayEndData)} style={{ fontWeight: 'bold' }}>
+                                    <FiDownload /> Download Day-End Report
+                                </button>
+                                <button className="btn btn-primary" onClick={() => window.print()}>
+                                    <FiPrinter /> Print PDF
+                                </button>
+                            </div>
                         )}
                     </div>
 
@@ -432,9 +510,14 @@ const AdminAnalytics = () => {
                             )}
                         </div>
                         {sectionData && (
-                            <button className="btn btn-primary" onClick={() => window.print()}>
-                                <FiPrinter /> Print / Export PDF
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="btn btn-secondary" onClick={() => handleDownloadSectionReport(sectionData)} style={{ fontWeight: 'bold' }}>
+                                    <FiDownload /> Download Section Report
+                                </button>
+                                <button className="btn btn-primary" onClick={() => window.print()}>
+                                    <FiPrinter /> Print PDF
+                                </button>
+                            </div>
                         )}
                     </div>
 

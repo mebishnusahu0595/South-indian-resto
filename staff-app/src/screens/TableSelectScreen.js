@@ -96,6 +96,8 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
     onNext(selectedTables, phone.trim(), name.trim());
   };
 
+  const [selectedSection, setSelectedSection] = useState('');
+
   // Determine which tables to display
   // If assignedTables exist -> only show assigned tables
   // Otherwise -> show all tables
@@ -112,6 +114,9 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
     acc[sec].push(table);
     return acc;
   }, {});
+
+  const sectionList = Object.keys(groupedSections);
+  const activeSection = (selectedSection && sectionList.includes(selectedSection)) ? selectedSection : (sectionList[0] || '');
 
   return (
     <KeyboardAvoidingView 
@@ -141,6 +146,34 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
             <Text style={styles.historyBtnText}>Today's History</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Section Filter Horizontal Bar */}
+        {sectionList.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, marginTop: 12, maxHeight: 44 }}>
+            {sectionList.map((secName) => {
+              const isActive = activeSection === secName;
+              return (
+                <TouchableOpacity
+                  key={secName}
+                  style={{
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 20,
+                    marginRight: 8,
+                    backgroundColor: isActive ? '#7C3AED' : '#FFFFFF',
+                    borderWidth: 2,
+                    borderColor: '#111111'
+                  }}
+                  onPress={() => setSelectedSection(secName)}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: isActive ? '#FFFFFF' : '#111111' }}>
+                    {secName} ({groupedSections[secName]?.length || 0})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Attendance card */}
@@ -237,61 +270,58 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
             />
           </View>
 
-          {/* Table List Section - Grouped by Section */}
+          {/* Table List Section - Single Active Section */}
           <Text style={styles.mainTitle}>
-            {hasAssigned ? 'Your Assigned Tables (Select Multiple)' : 'All Restaurant Tables (Select Multiple)'}
+            {activeSection ? `${activeSection} Tables` : 'Select Table'}
           </Text>
           
           {loading ? (
             <ActivityIndicator size="large" color="#7C3AED" style={{ marginVertical: 30 }} />
-          ) : Object.keys(groupedSections).length === 0 ? (
-            <Text style={styles.noTables}>No tables found</Text>
+          ) : !activeSection || !groupedSections[activeSection] || groupedSections[activeSection].length === 0 ? (
+            <Text style={styles.noTables}>No tables in this section</Text>
           ) : (
-            Object.keys(groupedSections).map((sectionName) => (
-              <View key={sectionName} style={styles.sectionBlock}>
-                <Text style={styles.sectionHeader}>{sectionName}</Text>
-                <View style={styles.grid}>
-                  {groupedSections[sectionName].map((table) => {
-                    const isSelected = selectedTables.some(t => t._id === table._id);
-                    const isOccupied = table.status !== 'available';
+            <View style={styles.sectionBlock}>
+              <View style={styles.grid}>
+                {groupedSections[activeSection].map((table) => {
+                  const isSelected = selectedTables.some(t => t._id === table._id);
+                  const isOccupied = table.status !== 'available';
 
-                    return (
-                      <TouchableOpacity
-                        key={table._id}
-                        style={[
-                          styles.tableCard,
-                          isOccupied && styles.occupiedCard,
-                          isSelected && styles.selectedCard
-                        ]}
-                        disabled={isOccupied}
-                        onPress={() => toggleTableSelection(table)}
-                      >
-                        <Text style={[
-                          styles.tableNumberText,
-                          isSelected && styles.selectedText,
-                          isOccupied && styles.occupiedText
-                        ]}>
-                          T-{table.tableNumber}
-                        </Text>
-                        <Text style={[
-                          styles.tableCapText,
-                          isSelected && styles.selectedSubtext,
-                          isOccupied && styles.occupiedSubtext
-                        ]}>
-                          {table.capacity} Seats
-                        </Text>
-                        {isOccupied && (
-                          <Text style={styles.occupiedLabel}>Occupied</Text>
-                        )}
-                        {isSelected && (
-                          <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#FFF', backgroundColor: '#10B981', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, marginTop: 2 }}>✓ Selected</Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                  return (
+                    <TouchableOpacity
+                      key={table._id}
+                      style={[
+                        styles.tableCard,
+                        isOccupied && styles.occupiedCard,
+                        isSelected && styles.selectedCard
+                      ]}
+                      disabled={isOccupied}
+                      onPress={() => toggleTableSelection(table)}
+                    >
+                      <Text style={[
+                        styles.tableNumberText,
+                        isSelected && styles.selectedText,
+                        isOccupied && styles.occupiedText
+                      ]}>
+                        T-{table.tableNumber}
+                      </Text>
+                      <Text style={[
+                        styles.tableCapText,
+                        isSelected && styles.selectedSubtext,
+                        isOccupied && styles.occupiedSubtext
+                      ]}>
+                        {table.capacity} Seats
+                      </Text>
+                      {isOccupied && (
+                        <Text style={styles.occupiedLabel}>Occupied</Text>
+                      )}
+                      {isSelected && (
+                        <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#FFF', backgroundColor: '#10B981', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, marginTop: 2 }}>✓ Selected</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            ))
+            </View>
           )}
         </ScrollView>
 

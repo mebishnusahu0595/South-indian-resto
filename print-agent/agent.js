@@ -41,11 +41,14 @@ socket.on('new-order', async (order) => {
     .then(() => console.log(`✓ USB Counter KOT #${order.kotTicket || order.orderNumber} printed!`))
     .catch(err => console.error(`❌ USB Counter Print Error:`, err.message));
 
-  // 2. Print on Kitchen WiFi LAN Printer (Port 9100)
+  // 2. Print 2 Copies on Kitchen WiFi LAN Printer (Port 9100)
   if (targetKitchenIp) {
-    printKOTToInterface(order, `tcp://${targetKitchenIp}:9100`, `Kitchen WiFi Printer (${targetKitchenIp})`)
-      .then(() => console.log(`✓ Kitchen WiFi KOT #${order.kotTicket || order.orderNumber} printed on ${targetKitchenIp}:9100!`))
-      .catch(err => console.error(`❌ Kitchen WiFi Print Error (${targetKitchenIp}):`, err.message));
+    (async () => {
+      for (let c = 1; c <= 2; c++) {
+        await printKOTToInterface(order, `tcp://${targetKitchenIp}:9100`, `Kitchen WiFi Printer (Copy ${c}/2)`);
+        console.log(`✓ Kitchen WiFi KOT #${order.kotTicket || order.orderNumber} Copy ${c}/2 printed on ${targetKitchenIp}:9100!`);
+      }
+    })().catch(err => console.error(`❌ Kitchen WiFi Print Error (${targetKitchenIp}):`, err.message));
   }
 });
 

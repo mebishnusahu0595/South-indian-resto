@@ -481,6 +481,165 @@ router.post('/', protect, async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
+// @desc    Modify order items (add, edit qty, or partial cancel/remove items) & generate ADD / CANCEL KOT
+// @access  Private (Admin / Employee)
+router.put('/:id/modify-items', protect, async (req, res) => {
+    try {
+        const { updatedItems, modificationNote } = req.body;
+        const order = await Order.findById(req.params.id).populate('items.menuItem');
+
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        if (order.status === 'paid' || order.status === 'cancelled') {
+            return res.status(400).json({ message: `Cannot modify a ${order.status} order` });
+        }
+
+        const addedItems = [];
+        const cancelledItems = [];
+        const newOrderItems = [];
+        let newSubtotal = 0;
+
+        const oldMap = new Map();
+        order.items.forEach(i => {
+            const mId = i.menuItem?._id?.toString() || i.menuItem?.toString();
+            oldMap.set(mId, { name: i.name || i.menuItem?.name || 'Item', quantity: i.quantity, price: i.price });
+        });
+
+        const newMap = new Map();
+        for (const item of updatedItems) {
+            if (item.quantity <= 0) continue;
+
+            const menuItem = await MenuItem.findById(item.menuItemId);
+            if (!menuItem) continue;
+
+            const mId = menuItem._id.toString();
+            const itemTotal = menuItem.price * item.quantity;
+            newSubtotal += itemTotal;
+
+            newOrderItems.push({
+                menuItem: menuItem._id,
+                name: menuItem.name,
+                price: menuItem.price,
+                quantity: item.quantity,
+                total: itemTotal
+            });
+
+            newMap.set(mId, { name: menuItem.name, quantity: item.quantity, price: menuItem.price });
+        }
+
+        oldMap.forEach((oldItem, mId) => {
+            const newItem = newMap.get(mId);
+            if (!newItem) {
+                cancelledItems.push({
+                    name: oldItem.name,
+                    quantity: oldItem.quantity,
+                    price: oldItem.price
+                });
+            } else if (newItem.quantity < oldItem.quantity) {
+                cancelledItems.push({
+                    name: oldItem.name,
+                    quantity: oldItem.quantity - newItem.quantity,
+                    price: oldItem.price
+                });
+            }
+        });
+
+        newMap.forEach((newItem, mId) => {
+            const oldItem = oldMap.get(mId);
+            if (!oldItem) {
+                addedItems.push({
+                    name: newItem.name,
+                    quantity: newItem.quantity,
+                    price: newItem.price
+                });
+            } else if (newItem.quantity > oldItem.quantity) {
+                addedItems.push({
+                    name: newItem.name,
+                    quantity: newItem.quantity - oldItem.quantity,
+                    price: newItem.price
+                });
+            }
+        });
+
+        if (newOrderItems.length === 0) {
+            return res.status(400).json({ message: 'Order cannot be left with 0 items. Use Cancel Order instead.' });
+        }
+
+        order.items = newOrderItems;
+        order.subtotal = newSubtotal;
+        const taxableAmount = Math.max(order.subtotal - (order.discount || 0), 0);
+        order.tax = taxableAmount * 0.05;
+        order.total = taxableAmount + order.tax;
+
+        const cleanOrdNo = String(order.orderNumber).replace(/^CD-/, '');
+
+        let addedKotObj = null;
+        if (addedItems.length > 0) {
+            const kotAddNum = `KOT-${cleanOrdNo}-ADD${Date.now().toString().slice(-3)}`;
+            addedKotObj = {
+                kotNumber: kotAddNum,
+                timestamp: new Date(),
+                items: addedItems,
+                notes: `[ADDITION] ${modificationNote || 'New items added'}`
+            };
+            order.kotHistory.push(addedKotObj);
+        }
+
+        let cancelledKotObj = null;
+        if (cancelledItems.length > 0) {
+            const kotCancelNum = `CANCEL-${cleanOrdNo}-${Date.now().toString().slice(-3)}`;
+            cancelledKotObj = {
+                kotNumber: kotCancelNum,
+                timestamp: new Date(),
+                items: cancelledItems,
+                notes: `[CANCEL KOT] ${modificationNote || 'Items partial cancelled'}`
+            };
+            order.kotHistory.push(cancelledKotObj);
+        }
+
+        await order.save();
+
+        const populatedOrder = await Order.findById(order._id)
+            .populate('user', 'phone name')
+            .populate('placedBy', 'name')
+            .populate('items.menuItem', 'name image');
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('order-updated', populatedOrder);
+            if (addedKotObj) {
+                io.emit('new-order', {
+                    ...populatedOrder.toObject(),
+                    kotTicket: addedKotObj.kotNumber,
+                    items: addedItems,
+                    specialInstructions: addedKotObj.notes
+                });
+            }
+            if (cancelledKotObj) {
+                io.emit('new-order', {
+                    ...populatedOrder.toObject(),
+                    kotTicket: cancelledKotObj.kotNumber,
+                    items: cancelledItems,
+                    specialInstructions: cancelledKotObj.notes
+                });
+            }
+        }
+
+        res.json({
+            message: 'Order items modified successfully',
+            order: populatedOrder,
+            addedItems,
+            cancelledItems,
+            addedKot: addedKotObj,
+            cancelledKot: cancelledKotObj
+        });
+    } catch (error) {
+        console.error('Error modifying order items:', error);
+        res.status(500).json({ message: error.message || 'Server error' });
+    }
+});
 
 const freeTablesForOrder = async (order, io) => {
     try {
