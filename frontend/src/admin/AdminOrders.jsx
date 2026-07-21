@@ -158,7 +158,7 @@ const AdminOrders = () => {
                     audio.play().catch(() => {});
                 } catch (_) {}
 
-                // If Auto-Print KOT is enabled on desktop counter, trigger KOT print slip
+                // If Auto-Print KOT is enabled on desktop counter, trigger KOT print slip queue
                 if (localStorage.getItem('kea_auto_print_kot') === 'true') {
                     const kotData = {
                         kotNumber: order.kotTicket || `KOT-${order.orderNumber}`,
@@ -169,12 +169,12 @@ const AdminOrders = () => {
                         notes: order.specialInstructions,
                         timestamp: order.createdAt || new Date()
                     };
+                    
+                    // Push to print queue and process sequentially
                     setSelectedKOTForPrint(kotData);
-
-                    // Trigger silent print after modal renders
                     setTimeout(() => {
                         window.print();
-                    }, 500);
+                    }, 400);
                 }
             });
             socket.on('order-updated', (order) => {
