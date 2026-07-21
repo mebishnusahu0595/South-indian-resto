@@ -73,6 +73,72 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
     }
   };
 
+  // Edit / Modify Order Modal states
+  const [showModifyModal, setShowModifyModal] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [modifyItems, setModifyItems] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
+  const [selectedAddId, setSelectedAddId] = useState('');
+  const [modifyNote, setModifyNote] = useState('');
+  const [submittingModify, setSubmittingModify] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleOpenModify = async (order) => {
+    setEditingOrder(order);
+    const initialList = (order.items || []).map(i => ({
+      menuItemId: i.menuItem?._id || i.menuItem || i._id,
+      name: i.name || i.menuItem?.name || 'Item',
+      price: i.price || i.menuItem?.price || 0,
+      quantity: i.quantity
+    }));
+    setModifyItems(initialList);
+    setModifyNote('');
+    setSearchQuery('');
+    setShowModifyModal(true);
+
+    try {
+      const res = await api.get('/menu/all');
+      setMenuItems(res.data || []);
+    } catch (e) {
+      console.log('Error fetching menu items for staff modify:', e);
+    }
+  };
+
+  const handleSaveModify = async () => {
+    if (!editingOrder) return;
+    setSubmittingModify(true);
+    try {
+      const payload = {
+        updatedItems: modifyItems.map(i => ({
+          menuItemId: i.menuItemId,
+          quantity: i.quantity
+        })),
+        modificationNote: modifyNote
+      };
+
+      const res = await api.put(`/orders/${editingOrder._id || editingOrder.id}/modify-items`, payload);
+      alert('Order modified successfully! KOT generated.');
+      setShowModifyModal(false);
+      fetchTodayOrders();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to modify order');
+    } finally {
+      setSubmittingModify(false);
+    }
+  };
+
+  const handleCancelEntireOrder = async (order) => {
+    if (!order) return;
+    try {
+      await api.put(`/orders/${order._id || order.id}/status`, { status: 'cancelled' });
+      alert(`Order #${order.orderNumber} CANCELLED! Cancel KOT emitted.`);
+      setShowModifyModal(false);
+      fetchTodayOrders();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to cancel order');
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -101,6 +167,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
             const total = order.total || (subtotal - discount) * 1.05;
             const customerName = order.user?.name || order.customerName || 'Walk-in Guest';
             const customerPhone = order.user?.phone || order.customerPhone || '';
+            const isActiveOrder = !['paid', 'cancelled'].includes(order.status);
 
             return (
               <View key={order._id || order.id} style={styles.orderCard}>
@@ -154,13 +221,148 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                     <Text style={styles.totalVal}>₹{total.toFixed(2)}</Text>
                   </View>
                 </View>
+
+                {/* Edit & Cancel Buttons for Active Orders */}
+                {isActiveOrder && (
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                    <TouchableOpacity
+                      style={{ flex: 1, backgroundColor: '#7C3AED', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+                      onPress={() => handleOpenModify(order)}
+                    >
+                      <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>✏️ Edit / Add / Cancel Items</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             );
           })
         )}
       </ScrollView>
+
+      {/* Staff Modify Order Modal */}
+      {showModifyModal && editingOrder && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 16, zIndex: 100 }}>
+          <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, width: '100%', maxHeight: '85%', borderWidth: 2, borderColor: '#111' }}>
+            <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 4, color: '#111' }}>✏️ Edit Order #{editingOrder.orderNumber}</Text>
+            <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 12 }}>Add items, change quantities or remove cancelled items</Text>
+
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 220, marginBottom: 12, borderBottomWidth: 1, borderColor: '#E5E7EB' }}>
+              {modifyItems.map((item, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderColor: '#F3F4F6' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: 'bold', fontSize: 14, color: '#111' }}>{item.name}</Text>
+                    <Text style={{ fontSize: 12, color: '#6B7280' }}>₹{item.price} each</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(0, it.quantity - 1) } : it).filter(it => it.quantity > 0));
+                      }}
+                      style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}
+                    >
+                      <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 16 }}>-</Text>
+                    </TouchableOpacity>
+
+                    <Text style={{ fontWeight: 'bold', fontSize: 15, minWidth: 20, textAlign: 'center' }}>x{item.quantity}</Text>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it));
+                      }}
+                      style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: '#ECFDF5', justifyContent: 'center', alignItems: 'center' }}
+                    >
+                      <Text style={{ color: '#059669', fontWeight: 'bold', fontSize: 16 }}>+</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        setModifyItems(prev => prev.filter((_, i) => i !== idx));
+                      }}
+                      style={{ paddingLeft: 6 }}
+                    >
+                      <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 16 }}>🗑️</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* Add New Menu Item Section */}
+            <Text style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 6, color: '#374151' }}>➕ Add Item from Menu:</Text>
+            <TextInput
+              style={{ borderWidth: 1.5, borderColor: '#111', borderRadius: 6, padding: 8, fontSize: 13, marginBottom: 8, backgroundColor: '#FFF' }}
+              placeholder="🔍 Search item name..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+
+            <ScrollView style={{ maxHeight: 120, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, padding: 6 }}>
+              {menuItems
+                .filter(mi => !searchQuery || (mi.name || '').toLowerCase().includes(searchQuery.toLowerCase()))
+                .slice(0, 15)
+                .map(mi => (
+                  <TouchableOpacity
+                    key={mi._id}
+                    style={{ paddingVertical: 6, paddingHorizontal: 8, borderBottomWidth: 1, borderColor: '#F3F4F6', flexDirection: 'row', justifyContent: 'space-between' }}
+                    onPress={() => {
+                      const existsIndex = modifyItems.findIndex(i => i.menuItemId === mi._id);
+                      if (existsIndex >= 0) {
+                        setModifyItems(prev => prev.map((it, i) => i === existsIndex ? { ...it, quantity: it.quantity + 1 } : it));
+                      } else {
+                        setModifyItems(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1 }]);
+                      }
+                      setSearchQuery('');
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#111' }}>{mi.name}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#7C3AED' }}>+ ₹{mi.price}</Text>
+                  </TouchableOpacity>
+                ))
+              }
+            </ScrollView>
+
+            <TextInput
+              style={{ borderWidth: 1.5, borderColor: '#111', borderRadius: 6, padding: 8, fontSize: 13, marginBottom: 12, backgroundColor: '#FFF' }}
+              placeholder="Modification Reason / KOT Note (Optional)"
+              value={modifyNote}
+              onChangeText={setModifyNote}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+              <TouchableOpacity
+                style={{ backgroundColor: '#FEE2E2', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: '#EF4444' }}
+                onPress={() => {
+                  if (confirm('Cancel this ENTIRE order?')) {
+                    handleCancelEntireOrder(editingOrder);
+                  }
+                }}
+              >
+                <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 12 }}>🚫 Cancel Order</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ backgroundColor: '#F3F4F6', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: '#111' }}
+                onPress={() => setShowModifyModal(false)}
+              >
+                <Text style={{ fontWeight: 'bold', fontSize: 12 }}>Close</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ backgroundColor: '#7C3AED', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 6, borderWidth: 1, borderColor: '#111' }}
+                onPress={handleSaveModify}
+                disabled={submittingModify || modifyItems.length === 0}
+              >
+                <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 12 }}>
+                  {submittingModify ? 'Saving...' : '💾 Save & Send KOT'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
+}
 }
 
 const styles = StyleSheet.create({
