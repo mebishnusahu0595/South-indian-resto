@@ -46,6 +46,7 @@ const AdminCreateOrder = () => {
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [createdBill, setCreatedBill] = useState(null);
     const [generatingBill, setGeneratingBill] = useState(false);
+    const [createdKOT, setCreatedKOT] = useState(null);
 
     // Max discount cap
     const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
