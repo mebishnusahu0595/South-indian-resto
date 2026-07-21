@@ -65,6 +65,11 @@ const AdminOrders = () => {
     const [modifyNote, setModifyNote] = useState('');
     const [submittingModify, setSubmittingModify] = useState(false);
 
+    // Quick Pay Choice Modal state
+    const [showQuickPayModal, setShowQuickPayModal] = useState(false);
+    const [quickPayOrder, setQuickPayOrder] = useState(null);
+    const [quickPayAmount, setQuickPayAmount] = useState(0);
+
     // KOTs state
     const [activeTab, setActiveTab] = useState('active'); // 'active' | 'kots' | 'all'
     const [kotList, setKotList] = useState([]);
@@ -442,14 +447,38 @@ const AdminOrders = () => {
 
     const handleOpenPaymentBiller = (orderId, method, amount) => {
         const order = orders.find(o => o._id === orderId);
+        const customInput = paymentAmount[orderId];
+        let payAmount = amount;
+        let shortageDiscount = 0;
+
+        if (customInput && parseFloat(customInput) > 0) {
+            const entered = parseFloat(customInput);
+            if (entered < amount) {
+                payAmount = entered;
+                shortageDiscount = amount - entered;
+            }
+        }
+
         setPaymentBillerOrderId(orderId);
         setPaymentBillerMethod(method);
-        setPaymentBillerAmount(amount);
-        setPaymentBillerName(order?.billerName || localStorage.getItem('lastBillerName') || '');
-        setPaymentDiscountInput(order?.discount ? String(order.discount) : '');
-        setPaymentDiscountType('%');
-        setPaymentDiscountName(order?.discountName || '');
+        setPaymentBillerAmount(payAmount);
+        setPaymentBillerName(order?.billerName || localStorage.getItem('lastBillerName') || 'Counter');
+        setPaymentDiscountInput(shortageDiscount > 0 ? String(shortageDiscount) : (order?.discount ? String(order.discount) : ''));
+        setPaymentDiscountType(shortageDiscount > 0 ? '₹' : '%');
+        setPaymentDiscountName(shortageDiscount > 0 ? 'Change Shortage Discount' : (order?.discountName || ''));
         setShowPaymentBillerModal(true);
+    };
+
+    const handlePayButtonClick = (order) => {
+        const customInput = paymentAmount[order._id];
+        const remBalance = Math.max(order.total - (order.amountPaid || 0), 0);
+        const payVal = (customInput && parseFloat(customInput) > 0) ? parseFloat(customInput) : remBalance;
+
+        if (payVal <= 0) return;
+
+        setQuickPayOrder(order);
+        setQuickPayAmount(payVal);
+        setShowQuickPayModal(true);
     };
 
     const handleConfirmPaymentBiller = async (e) => {
@@ -865,7 +894,7 @@ const AdminOrders = () => {
                                             value={paymentAmount[order._id] || ''}
                                             onChange={(e) => setPaymentAmount({ ...paymentAmount, [order._id]: e.target.value })}
                                         />
-                                        <button onClick={() => handlePartialPayment(order._id, order.total)}>Pay</button>
+                                        <button onClick={() => handlePayButtonClick(order)} style={{ cursor: 'pointer', background: '#7C3AED', color: '#FFF', fontWeight: 'bold' }}>Pay</button>
                                     </div>
 
                                     <div className="order-actions">
@@ -1750,6 +1779,91 @@ const AdminOrders = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Quick Payment Method Chooser Modal */}
+            {showQuickPayModal && quickPayOrder && (
+                <div className="bill-modal-overlay" onClick={() => setShowQuickPayModal(false)}>
+                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '440px', width: '92%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '2px solid #111', paddingBottom: '8px' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.2rem' }}>💳 Select Payment Method</h3>
+                            <button onClick={() => setShowQuickPayModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}><FiX /></button>
+                        </div>
+
+                        <div style={{ padding: '4px 0' }}>
+                            <div style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '12px', marginBottom: '14px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                    <span>Order Total:</span>
+                                    <strong>₹{quickPayOrder.total.toFixed(2)}</strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 'bold', color: '#7C3AED', marginBottom: '4px' }}>
+                                    <span>Customer Paying:</span>
+                                    <span>₹{quickPayAmount.toFixed(2)}</span>
+                                </div>
+
+                                {quickPayAmount < quickPayOrder.total && (
+                                    <div style={{ marginTop: '8px', background: '#FEF3C7', border: '1px solid #F59E0B', padding: '8px 10px', borderRadius: '6px', fontSize: '0.82rem', color: '#92400E' }}>
+                                        💡 Shortage of <strong>₹{(quickPayOrder.total - quickPayAmount).toFixed(2)}</strong> will be automatically applied as <strong>Change Shortage Discount</strong>!
+                                    </div>
+                                )}
+                            </div>
+
+                            <p style={{ fontWeight: 'bold', fontSize: '0.88rem', marginBottom: '10px', color: '#334155' }}>
+                                Choose payment option to complete order & generate bill:
+                            </p>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    className="btn btn-success"
+                                    style={{ padding: '12px', fontSize: '1rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+                                    onClick={() => {
+                                        setShowQuickPayModal(false);
+                                        handleOpenPaymentBiller(quickPayOrder._id, 'cash', quickPayAmount);
+                                    }}
+                                >
+                                    💵 Cash Paid (₹{quickPayAmount.toFixed(2)})
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    style={{ padding: '12px', fontSize: '1rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: '#7C3AED', borderColor: '#7C3AED' }}
+                                    onClick={() => {
+                                        setShowQuickPayModal(false);
+                                        handleOpenPaymentBiller(quickPayOrder._id, 'online', quickPayAmount);
+                                    }}
+                                >
+                                    📱 UPI / Online Paid (₹{quickPayAmount.toFixed(2)})
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ padding: '12px', fontSize: '1rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: '#4F46E5', color: '#FFF', border: 'none' }}
+                                    onClick={() => {
+                                        setShowQuickPayModal(false);
+                                        handleOpenPaymentBiller(quickPayOrder._id, 'card', quickPayAmount);
+                                    }}
+                                >
+                                    💳 Card Paid (₹{quickPayAmount.toFixed(2)})
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ padding: '10px', fontSize: '0.9rem', fontWeight: 'bold', background: '#D97706', color: '#FFF', border: 'none' }}
+                                    onClick={() => {
+                                        setShowQuickPayModal(false);
+                                        handleOpenSplitPaymentModal(quickPayOrder._id, quickPayAmount);
+                                    }}
+                                >
+                                    🔀 Split Payment (Cash + UPI + Card)
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
