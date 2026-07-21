@@ -70,7 +70,13 @@ const AdminLayout = () => {
 
                 // Global Auto-Print KOT on desktop counter across ANY admin page
                 if (localStorage.getItem('kea_auto_print_kot') === 'true') {
-                    const tableStr = order.tableId?.tableNumber || (order.tableIds?.length ? order.tableIds.map(t => t.tableNumber || t).join(', ') : 'Takeaway');
+                    if (window.__lastPrintedOrderId === order._id) {
+                        return; // Already printed on local submit
+                    }
+                    window.__lastPrintedOrderId = order._id;
+                    setTimeout(() => { window.__lastPrintedOrderId = null; }, 5000);
+
+                    const tableStr = order.tableId?.name || (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : '') || (order.tableIds?.length ? order.tableIds.map(t => t.name || `Table ${t.tableNumber || t}`).join(', ') : order.tableNumber || 'Takeaway');
                     const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
                     const kotObj = {
                         kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,

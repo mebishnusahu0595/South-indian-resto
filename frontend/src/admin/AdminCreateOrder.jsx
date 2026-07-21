@@ -278,8 +278,8 @@ const AdminCreateOrder = () => {
             
             // Format 80mm KOT ticket object
             const tableNames = selectedTableIds.map(id => {
-                const t = tables.find(tbl => tbl._id === id);
-                return t ? `Table ${t.tableNumber}` : id;
+                const t = tables.find(tbl => String(tbl._id) === String(id));
+                return t ? (t.name || `Table ${t.tableNumber}`) : id;
             }).join(', ');
 
             const cleanOrderNum = String(createdOrder.orderNumber || '').replace(/^CD-/, '');
@@ -292,6 +292,10 @@ const AdminCreateOrder = () => {
                 notes: specialInstructions,
                 timestamp: new Date()
             };
+
+            // Set global deduplication flag so socket listener in AdminLayout won't double print
+            window.__lastPrintedOrderId = createdOrder._id;
+            setTimeout(() => { window.__lastPrintedOrderId = null; }, 5000);
 
             // Set KOT modal state & trigger print
             setCreatedKOT(kotObj);
