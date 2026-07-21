@@ -159,14 +159,14 @@ const AdminCreateOrder = () => {
     // Calculate totals (simple client-side preview; backend recalculates securely)
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     
-    // Calculate coupon discount
-    const activeCoupon = coupons.find(c => c.code === couponCode);
+    // Apply Coupon
+    const activeCoupon = coupons.find(c => c.code.toUpperCase() === couponCode.toUpperCase());
     let discount = 0;
-    if (activeCoupon && subtotal >= activeCoupon.minOrderAmount) {
+    if (activeCoupon) {
         if (activeCoupon.discountType === 'percentage') {
             discount = (subtotal * activeCoupon.discountValue) / 100;
-            if (activeCoupon.maxDiscount && discount > activeCoupon.maxDiscount) {
-                discount = activeCoupon.maxDiscount;
+            if (activeCoupon.maxDiscount) {
+                discount = Math.min(discount, activeCoupon.maxDiscount);
             }
         } else {
             discount = activeCoupon.discountValue;
@@ -181,12 +181,12 @@ const AdminCreateOrder = () => {
         e?.preventDefault();
         if (cart.length === 0) {
             setError('Please add items to cart before submitting.');
+            setSuccessMessage('');
             return;
         }
 
         setSubmitting(true);
         setError('');
-        setSuccessMessage('');
 
         try {
             const orderData = {
@@ -203,6 +203,9 @@ const AdminCreateOrder = () => {
 
             const res = await createOrder(orderData);
             const createdOrder = res.data;
+
+            // Clear any error and set success message
+            setError('');
             setSuccessMessage(`Order #${createdOrder.orderNumber} created successfully!`);
             
             // Format 80mm KOT ticket object
@@ -221,12 +224,7 @@ const AdminCreateOrder = () => {
                 timestamp: new Date()
             };
 
-            setCreatedKOT(kotObj);
-            setTimeout(() => {
-                window.print();
-            }, 400);
-
-            // Reset states
+            // Reset cart & inputs
             setCart([]);
             setSelectedTableIds([]);
             setStep('table-select');
@@ -235,6 +233,7 @@ const AdminCreateOrder = () => {
             setCustomerPhone('');
             setCustomerName('');
         } catch (err) {
+            setSuccessMessage('');
             setError(err.response?.data?.message || 'Failed to place manual order');
         } finally {
             setSubmitting(false);
@@ -360,9 +359,29 @@ const AdminCreateOrder = () => {
                     <div className="step-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                         <div>
                             <h1 style={{ margin: 0 }}>Create Order</h1>
-                            <p className="step-subtitle" style={{ margin: '4px 0 0 0' }}>
+                            <p className="step-subtitle" style={{ margin: '4px 0 10px 0' }}>
                                 Tap tables to select (pick multiple for one customer). Press <kbd style={{ background: '#E5E7EB', color: '#111', padding: '2px 6px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '0.8rem' }}>Enter ↵</kbd> to continue.
                             </p>
+                            {/* Dual Printer Status Bar */}
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                <span style={{ fontSize: '0.82rem', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', padding: '4px 10px', borderRadius: '16px', fontWeight: '700' }}>
+                                    🖥️ Counter USB: Connected
+                                </span>
+                                <span style={{ fontSize: '0.82rem', background: kitchenPrinterIp ? '#ECFDF5' : '#FEF3C7', border: kitchenPrinterIp ? '1px solid #A7F3D0' : '1px solid #FDE68A', color: kitchenPrinterIp ? '#065F46' : '#92400E', padding: '4px 10px', borderRadius: '16px', fontWeight: '700' }}>
+                                    🖨️ Kitchen WiFi IP: {kitchenPrinterIp ? `${kitchenPrinterIp}:9100` : 'Not Set'}
+                                </span>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ padding: '4px 10px', fontSize: '0.78rem', fontWeight: 'bold' }}
+                                    onClick={() => {
+                                        setTempPrinterIp(kitchenPrinterIp);
+                                        setShowPrinterModal(true);
+                                    }}
+                                >
+                                    ⚙️ Connect WiFi Printer IP
+                                </button>
+                            </div>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                             <button className="btn btn-ghost skip-table-btn" onClick={handleSkipTable}>
@@ -840,7 +859,11 @@ const AdminCreateOrder = () => {
                                 navigate('/admin/bills');
                             }}>Close & Done</button>
                         </div>
-                             {/* 80mm KOT Ticket Printable Modal (Identical size & format to Bill) */}
+                    </div>
+                </div>
+            )}
+
+            {/* 80mm KOT Ticket Printable Modal (Identical size & format to Bill) */}
             {createdKOT && (
                 <div className="bill-modal-overlay" onClick={() => setCreatedKOT(null)}>
                     <div className="bill-container print-bill-overlay" onClick={e => e.stopPropagation()}>
@@ -904,7 +927,39 @@ const AdminCreateOrder = () => {
                         </div>
                     </div>
                 </div>
-            )}           </div>
+            )}
+
+            {/* Kitchen WiFi Printer IP Modal */}
+            {showPrinterModal && (
+                <div className="modal-overlay" onClick={() => setShowPrinterModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px', width: '92%' }}>
+                        <div className="modal-header">
+                            <h2 style={{ margin: 0, fontSize: '1.2rem' }}>🖨️ Configure Kitchen WiFi Printer</h2>
+                            <button className="modal-close" onClick={() => setShowPrinterModal(false)}>×</button>
+                        </div>
+                        <div style={{ padding: '16px 0' }}>
+                            <p style={{ fontSize: '0.9rem', color: '#4B5563', margin: '0 0 12px 0', lineHeight: '1.4' }}>
+                                Enter the LAN/WiFi IP address of your Kitchen Thermal Printer (Port 9100). When an order is placed, both Counter USB & Kitchen WiFi printers will print KOT slips.
+                            </p>
+                            <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.88rem', marginBottom: '6px' }}>
+                                Kitchen Printer IP Address:
+                            </label>
+                            <input
+                                type="text"
+                                className="form-control"
+                                placeholder="e.g. 192.168.1.150 or 192.168.1.67"
+                                value={tempPrinterIp}
+                                onChange={e => setTempPrinterIp(e.target.value)}
+                                style={{ width: '100%', padding: '10px', fontSize: '1rem', border: '2px solid #111', borderRadius: '6px', boxSizing: 'border-box' }}
+                            />
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                            <button className="btn btn-secondary" onClick={() => setShowPrinterModal(false)}>Cancel</button>
+                            <button className="btn btn-primary" style={{ background: '#7C3AED', borderColor: '#7C3AED', fontWeight: 'bold' }} onClick={handleSavePrinterIp}>
+                                Save Printer IP
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
