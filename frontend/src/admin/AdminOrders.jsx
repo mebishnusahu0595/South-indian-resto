@@ -60,6 +60,17 @@ const AdminOrders = () => {
     const [fetchingKOTs, setFetchingKOTs] = useState(false);
     const [selectedKOTForPrint, setSelectedKOTForPrint] = useState(null);
 
+    // Auto-Print KOT state (saved in localStorage)
+    const [autoPrintKOT, setAutoPrintKOT] = useState(() => {
+        return localStorage.getItem('kea_auto_print_kot') === 'true';
+    });
+
+    const toggleAutoPrintKOT = () => {
+        const nextVal = !autoPrintKOT;
+        setAutoPrintKOT(nextVal);
+        localStorage.setItem('kea_auto_print_kot', nextVal ? 'true' : 'false');
+    };
+
     const fetchKOTs = async (dateVal) => {
         setFetchingKOTs(true);
         try {
