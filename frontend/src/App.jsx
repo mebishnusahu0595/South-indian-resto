@@ -21,7 +21,6 @@ import AdminCreateOrder from './admin/AdminCreateOrder';
 import AdminMenu from './admin/AdminMenu';
 import AdminCategories from './admin/AdminCategories';
 import AdminCoupons from './admin/AdminCoupons';
-import AdminInventory from './admin/AdminInventory';
 import AdminEmployees from './admin/AdminEmployees';
 import AdminAnalytics from './admin/AdminAnalytics';
 import AdminTables from './admin/AdminTables';
@@ -122,7 +121,6 @@ function AppRoutes() {
         <Route path="categories" element={<AdminCategories />} />
         <Route path="collections" element={<SuperadminOnly><AdminCollections /></SuperadminOnly>} />
         <Route path="coupons" element={<SuperadminOnly><AdminCoupons /></SuperadminOnly>} />
-        <Route path="inventory" element={<AdminInventory />} />
         <Route path="employees" element={<AdminEmployees />} />
         <Route path="tables" element={<AdminTables />} />
         <Route path="analytics" element={<AdminAnalytics />} />

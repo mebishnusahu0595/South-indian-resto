@@ -163,7 +163,6 @@ const AdminLayout = () => {
         { path: '/admin/tables', icon: FiLayout, label: 'Tables', badgeKey: 'tables' },
         { path: '/admin/coupons', icon: FiTag, label: 'Coupons' },
         { path: '/admin/loyalty', icon: FiTag, label: 'Loyalty Points' },
-        { path: '/admin/inventory', icon: FiPackage, label: 'Inventory' },
         { path: '/admin/employees', icon: FiUsers, label: 'Employees' },
         { path: '/admin/customers', icon: FiUsers, label: 'Customers' },
         { path: '/admin/settings', icon: FiSettings, label: 'Settings' },

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FiShoppingBag, FiDollarSign, FiAlertCircle, FiTrendingUp, FiSettings, FiUsers, FiBarChart2, FiCalendar } from 'react-icons/fi';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getDashboardStats, getActiveOrders, getLowStock, getGstRate, updateGstRate, getUserAnalytics, getRevenueData } from '../utils/api';
+import { getDashboardStats, getActiveOrders, getGstRate, updateGstRate, getUserAnalytics, getRevenueData } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
 import './AdminDashboard.css';
@@ -27,7 +27,6 @@ const AdminDashboard = () => {
 
     const [stats, setStats] = useState(null);
     const [activeOrders, setActiveOrders] = useState([]);
-    const [lowStock, setLowStock] = useState([]);
     const [userStats, setUserStats] = useState(null);
     const [revenueData, setRevenueData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -53,16 +52,14 @@ const AdminDashboard = () => {
 
     const fetchData = async (start = startDate, end = endDate) => {
         try {
-            const [statsRes, ordersRes, stockRes, userRes, revenueRes] = await Promise.all([
+            const [statsRes, ordersRes, userRes, revenueRes] = await Promise.all([
                 getDashboardStats(),
                 getActiveOrders(),
-                getLowStock(),
                 getUserAnalytics('month'),
                 getRevenueData('month', { startDate: start, endDate: end })
             ]);
             setStats(statsRes.data);
             setActiveOrders(ordersRes.data);
-            setLowStock(stockRes.data);
             setUserStats(userRes.data);
             setRevenueData(revenueRes.data.map(d => ({
                 ...d,
@@ -293,28 +290,8 @@ const AdminDashboard = () => {
 
             {user && user.role === 'superadmin' && (
                 <div className="dashboard-grid">
-                    {/* Low Stock */}
-                    <div className="dashboard-card">
-                        <div className="card-header">
-                            <h2>Low Stock Alert</h2>
-                            <Link to="/admin/inventory" className="view-all">View All</Link>
-                        </div>
-                        <div className="stock-list">
-                            {lowStock.length === 0 ? (
-                                <p className="no-data">All stock levels normal</p>
-                            ) : (
-                                lowStock.slice(0, 5).map(item => (
-                                    <div key={item._id} className="stock-item">
-                                        <span className="stock-name">{item.name}</span>
-                                        <span className="stock-qty low">{item.currentStock} {item.unit}</span>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-
                     {/* Quick Settings Link */}
-                    <div className="dashboard-card">
+                    <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
                         <div className="card-header">
                             <h2>System Quick View</h2>
                             <Link to="/admin/settings" className="view-all">Configure</Link>
