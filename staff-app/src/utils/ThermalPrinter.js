@@ -184,7 +184,15 @@ export function formatBillSlip({ restaurantName, orderNumber, tableNumber, table
 }
 
 // ─── TCP Print Function ──────────────────────────────────────────
-export function printToIp(ip, data) {
+export async function printToIp(ip, data, copies = 2) {
+  let result;
+  for (let c = 0; c < copies; c++) {
+    result = await sendTcpPrint(ip, data);
+  }
+  return result;
+}
+
+function sendTcpPrint(ip, data) {
   return new Promise((resolve, reject) => {
     if (!ip || !ip.trim()) {
       reject(new Error('Printer IP not configured'));
