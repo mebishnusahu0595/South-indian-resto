@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FiPlus, FiEdit2, FiTrash2, FiUsers, FiGrid, FiMapPin, FiStar, FiSun, FiCoffee, FiHome, FiTag, FiX } from 'react-icons/fi';
-import { getTables, createTable, createBulkTables, updateTable, deleteTable, getTableSections, createSection, renameSection, deleteSection } from '../utils/api';
+import { getTables, createTable, createBulkTables, updateTable, deleteTable, getTableSections, createSection, renameSection, reorderSections, deleteSection } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import './AdminTables.css';
 
@@ -88,6 +88,25 @@ const AdminTables = () => {
             fetchSections();
         } catch (error) {
             alert(error.response?.data?.message || 'Failed to rename section');
+        }
+    };
+
+    const handleMoveSection = async (index, direction) => {
+        const newArr = [...sections];
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= newArr.length) return;
+
+        const temp = newArr[index];
+        newArr[index] = newArr[targetIndex];
+        newArr[targetIndex] = temp;
+
+        setSectionsList(newArr);
+        try {
+            await reorderSections(newArr);
+            fetchData();
+            fetchSections();
+        } catch (err) {
+            console.error('Failed to save reordered sections:', err);
         }
     };
 
@@ -598,7 +617,7 @@ const AdminTables = () => {
                                 {sections.length === 0 ? (
                                     <p className="no-sections">No sections yet. Add one above.</p>
                                 ) : (
-                                    sections.map(sec => {
+                                    sections.map((sec, idx) => {
                                         const tableCount = tables.filter(t => (t.section || 'Main Hall') === sec).length;
                                         return (
                                             <div key={sec} className="section-list-item">
@@ -606,8 +625,29 @@ const AdminTables = () => {
                                                     <FiMapPin /> {sec}
                                                     <span className="section-table-count">{tableCount} table{tableCount !== 1 ? 's' : ''}</span>
                                                 </span>
-                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                                     <button
+                                                        type="button"
+                                                        className="icon-btn"
+                                                        title="Move Section Up"
+                                                        disabled={idx === 0}
+                                                        onClick={() => handleMoveSection(idx, -1)}
+                                                        style={{ padding: '3px 8px', fontSize: '0.82rem', fontWeight: 'bold', background: '#F3F4F6', border: '1px solid #111', borderRadius: '4px', cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.35 : 1 }}
+                                                    >
+                                                        ▲
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="icon-btn"
+                                                        title="Move Section Down"
+                                                        disabled={idx === sections.length - 1}
+                                                        onClick={() => handleMoveSection(idx, 1)}
+                                                        style={{ padding: '3px 8px', fontSize: '0.82rem', fontWeight: 'bold', background: '#F3F4F6', border: '1px solid #111', borderRadius: '4px', cursor: idx === sections.length - 1 ? 'default' : 'pointer', opacity: idx === sections.length - 1 ? 0.35 : 1 }}
+                                                    >
+                                                        ▼
+                                                    </button>
+                                                    <button
+                                                        type="button"
                                                         className="icon-btn edit"
                                                         title="Rename section"
                                                         onClick={() => handleRenameSection(sec)}
@@ -615,6 +655,7 @@ const AdminTables = () => {
                                                         <FiEdit2 size={14} />
                                                     </button>
                                                     <button
+                                                        type="button"
                                                         className="icon-btn delete"
                                                         title="Remove section preset"
                                                         onClick={() => handleDeleteSection(sec)}

@@ -89,6 +89,21 @@ router.put('/sections/rename', protect, admin, async (req, res) => {
     }
 });
 
+// Admin: Reorder custom sections
+router.put('/sections/reorder', protect, admin, async (req, res) => {
+    try {
+        const { orderedSections } = req.body;
+        if (Array.isArray(orderedSections)) {
+            await Settings.setSetting('custom_sections', orderedSections, 'Custom table sections');
+        }
+        const derived = await Table.distinct('section', { isActive: true });
+        const merged = [...new Set([...(orderedSections || []), ...derived])].filter(Boolean);
+        res.json({ message: 'Sections reordered successfully', sections: merged });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 // Admin: Remove a custom section (does not delete tables; they keep their section value)
 router.delete('/sections/:name', protect, admin, async (req, res) => {
     try {
