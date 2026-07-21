@@ -57,12 +57,65 @@ const AdminCreateOrder = () => {
     });
     const [showPrinterModal, setShowPrinterModal] = useState(false);
     const [tempPrinterIp, setTempPrinterIp] = useState(kitchenPrinterIp);
+    const [testingPrinter, setTestingPrinter] = useState(false);
+    const [testResult, setTestResult] = useState(null);
 
-    const handleSavePrinterIp = () => {
+    const testWiFiPrinterIp = async (ipToTest) => {
+        const cleanIp = (ipToTest || tempPrinterIp).trim();
+        if (!cleanIp) {
+            setTestResult({ success: false, message: 'Please enter a valid IP address (e.g. 192.168.1.150).' });
+            return;
+        }
+
+        setTestingPrinter(true);
+        setTestResult(null);
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const img = new Image();
+
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    setTestingPrinter(false);
+                    setTestResult({
+                        success: false,
+                        message: `⚠️ No device responding at ${cleanIp}:9100. Make sure the printer is turned ON and connected to your WiFi router!`
+                    });
+                    resolve(false);
+                }
+            }, 2500);
+
+            img.onload = img.onerror = () => {
+                if (!settled) {
+                    settled = true;
+                    clearTimeout(timer);
+                    setTestingPrinter(false);
+                    setTestResult({
+                        success: true,
+                        message: `🟢 Device at ${cleanIp} is ONLINE & reachable on your local network!`
+                    });
+                    resolve(true);
+                }
+            };
+
+            img.src = `http://${cleanIp}:9100/favicon.ico?t=${Date.now()}`;
+        });
+    };
+
+    const handleSavePrinterIp = async () => {
         const clean = tempPrinterIp.trim();
+        if (!clean) {
+            localStorage.setItem('kea_kitchen_printer_ip', '');
+            setKitchenPrinterIp('');
+            setShowPrinterModal(false);
+            setTestResult(null);
+            return;
+        }
         localStorage.setItem('kea_kitchen_printer_ip', clean);
         setKitchenPrinterIp(clean);
         setShowPrinterModal(false);
+        setTestResult(null);
     };
 
     // Keyboard Shortcuts
@@ -960,19 +1013,48 @@ const AdminCreateOrder = () => {
                         </div>
                         <div style={{ padding: '16px 0' }}>
                             <p style={{ fontSize: '0.9rem', color: '#4B5563', margin: '0 0 12px 0', lineHeight: '1.4' }}>
-                                Enter the LAN/WiFi IP address of your Kitchen Thermal Printer (Port 9100). When an order is placed, both Counter USB & Kitchen WiFi printers will print KOT slips.
+                                Enter the LAN/WiFi IP address of your Kitchen Thermal Printer (Port 9100). Both Counter USB & Kitchen WiFi printers will receive KOT slips.
                             </p>
                             <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.88rem', marginBottom: '6px' }}>
                                 Kitchen Printer IP Address:
                             </label>
-                            <input
-                                type="text"
-                                className="form-control"
-                                placeholder="e.g. 192.168.1.150 or 192.168.1.67"
-                                value={tempPrinterIp}
-                                onChange={e => setTempPrinterIp(e.target.value)}
-                                style={{ width: '100%', padding: '10px', fontSize: '1rem', border: '2px solid #111', borderRadius: '6px', boxSizing: 'border-box' }}
-                            />
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    placeholder="e.g. 192.168.1.150 or 192.168.1.67"
+                                    value={tempPrinterIp}
+                                    onChange={e => {
+                                        setTempPrinterIp(e.target.value);
+                                        setTestResult(null);
+                                    }}
+                                    style={{ flex: 1, padding: '10px', fontSize: '1rem', border: '2px solid #111', borderRadius: '6px', boxSizing: 'border-box' }}
+                                />
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={testingPrinter || !tempPrinterIp.trim()}
+                                    onClick={() => testWiFiPrinterIp()}
+                                    style={{ padding: '10px 14px', fontSize: '0.88rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                                >
+                                    {testingPrinter ? 'Scanning...' : '🔍 Test IP'}
+                                </button>
+                            </div>
+
+                            {testResult && (
+                                <div style={{
+                                    marginTop: '12px',
+                                    padding: '10px 12px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '600',
+                                    background: testResult.success ? '#ECFDF5' : '#FEF2F2',
+                                    border: `1px solid ${testResult.success ? '#A7F3D0' : '#FECACA'}`,
+                                    color: testResult.success ? '#065F46' : '#991B1B'
+                                }}>
+                                    {testResult.message}
+                                </div>
+                            )}
                         </div>
                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
                             <button className="btn btn-secondary" onClick={() => setShowPrinterModal(false)}>Cancel</button>
