@@ -1007,59 +1007,34 @@ const AdminCreateOrder = () => {
             {/* Kitchen WiFi Printer IP Modal */}
             {showPrinterModal && (
                 <div className="modal-overlay" onClick={() => setShowPrinterModal(false)}>
-                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px', width: '92%' }}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '460px', width: '92%' }}>
                         <div className="modal-header">
                             <h2 style={{ margin: 0, fontSize: '1.2rem' }}>🖨️ Configure Kitchen WiFi Printer</h2>
                             <button className="modal-close" onClick={() => setShowPrinterModal(false)}>×</button>
                         </div>
                         <div style={{ padding: '16px 0' }}>
                             <p style={{ fontSize: '0.9rem', color: '#4B5563', margin: '0 0 12px 0', lineHeight: '1.4' }}>
-                                Enter the LAN/WiFi IP address of your Kitchen Thermal Printer (Port 9100). Both Counter USB & Kitchen WiFi printers will receive KOT slips.
+                                Enter the LAN/WiFi IP address of your Kitchen Thermal Printer (Port 9100). The IP address will be saved and used by your Desktop Print Agent & Staff App.
                             </p>
                             <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.88rem', marginBottom: '6px' }}>
                                 Kitchen Printer IP Address:
                             </label>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    placeholder="e.g. 192.168.1.150 or 192.168.1.67"
-                                    value={tempPrinterIp}
-                                    onChange={e => {
-                                        setTempPrinterIp(e.target.value);
-                                        setTestResult(null);
-                                    }}
-                                    style={{ flex: 1, padding: '10px', fontSize: '1rem', border: '2px solid #111', borderRadius: '6px', boxSizing: 'border-box' }}
-                                />
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    disabled={testingPrinter || !tempPrinterIp.trim()}
-                                    onClick={() => testWiFiPrinterIp()}
-                                    style={{ padding: '10px 14px', fontSize: '0.88rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                                >
-                                    {testingPrinter ? 'Scanning...' : '🔍 Test IP'}
-                                </button>
-                            </div>
+                            <input
+                                type="text"
+                                className="form-control"
+                                placeholder="e.g. 192.168.1.67 or 192.168.1.150"
+                                value={tempPrinterIp}
+                                onChange={e => setTempPrinterIp(e.target.value)}
+                                style={{ width: '100%', padding: '10px 12px', fontSize: '1.05rem', border: '2px solid #111', borderRadius: '6px', boxSizing: 'border-box', fontWeight: 'bold' }}
+                            />
 
-                            {testResult && (
-                                <div style={{
-                                    marginTop: '12px',
-                                    padding: '10px 12px',
-                                    borderRadius: '6px',
-                                    fontSize: '0.85rem',
-                                    fontWeight: '600',
-                                    background: testResult.success ? '#ECFDF5' : '#FEF2F2',
-                                    border: `1px solid ${testResult.success ? '#A7F3D0' : '#FECACA'}`,
-                                    color: testResult.success ? '#065F46' : '#991B1B'
-                                }}>
-                                    {testResult.message}
-                                </div>
-                            )}
+                            <div style={{ marginTop: '12px', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '10px 12px', borderRadius: '6px', fontSize: '0.84rem', color: '#065F46', lineHeight: '1.4' }}>
+                                💡 <strong>How it works:</strong> Clicking <strong>Save Printer IP</strong> binds <strong style={{ color: '#047857' }}>{tempPrinterIp || '192.168.1.67'}</strong> to Port 9100. Both Counter USB & Kitchen WiFi printers will receive KOT slips!
+                            </div>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
                             <button className="btn btn-secondary" onClick={() => setShowPrinterModal(false)}>Cancel</button>
-                            <button className="btn btn-primary" style={{ background: '#7C3AED', borderColor: '#7C3AED', fontWeight: 'bold' }} onClick={handleSavePrinterIp}>
+                            <button className="btn btn-primary" style={{ background: '#7C3AED', borderColor: '#7C3AED', fontWeight: 'bold', padding: '10px 20px' }} onClick={handleSavePrinterIp}>
                                 Save Printer IP
                             </button>
                         </div>
