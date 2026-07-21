@@ -162,30 +162,36 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
 
         {/* Section Filter Horizontal Bar */}
         {sectionList.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, marginTop: 12, maxHeight: 44 }}>
-            {sectionList.map((secName) => {
-              const isActive = activeSection === secName;
-              return (
-                <TouchableOpacity
-                  key={secName}
-                  style={{
-                    paddingVertical: 8,
-                    paddingHorizontal: 16,
-                    borderRadius: 20,
-                    marginRight: 8,
-                    backgroundColor: isActive ? '#7C3AED' : '#FFFFFF',
-                    borderWidth: 2,
-                    borderColor: '#111111'
-                  }}
-                  onPress={() => setSelectedSection(secName)}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: isActive ? '#FFFFFF' : '#111111' }}>
-                    {secName} ({groupedSections[secName]?.length || 0})
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          <View style={{ marginVertical: 8, height: 50, justifyContent: 'center' }}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              contentContainerStyle={{ paddingHorizontal: 16, alignItems: 'center' }}
+            >
+              {sectionList.map((secName) => {
+                const isActive = activeSection === secName;
+                return (
+                  <TouchableOpacity
+                    key={secName}
+                    style={{
+                      paddingVertical: 8,
+                      paddingHorizontal: 16,
+                      borderRadius: 20,
+                      marginRight: 10,
+                      backgroundColor: isActive ? '#7C3AED' : '#FFFFFF',
+                      borderWidth: 2,
+                      borderColor: '#111111'
+                    }}
+                    onPress={() => setSelectedSection(secName)}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: isActive ? '#FFFFFF' : '#111111' }}>
+                      {secName} ({groupedSections[secName]?.length || 0})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
         )}
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
