@@ -83,6 +83,15 @@ const AdminOrders = () => {
         }
     };
 
+    const fetchBillerSuggestions = async () => {
+        try {
+            const sug = await getBillerSuggestions();
+            setPrepareSuggestions(sug.data || []);
+        } catch (err) {
+            console.error('Failed to fetch biller suggestions:', err);
+        }
+    };
+
     const handlePartialPayment = async (orderId, total) => {
         const amount = paymentAmount[orderId];
         if (amount === undefined || amount === '') return;
