@@ -230,7 +230,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                       style={{ flex: 1, backgroundColor: '#7C3AED', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
                       onPress={() => handleOpenModify(order)}
                     >
-                      <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>✏️ Edit / Add / Cancel Items</Text>
+                      <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>Edit / Modify Order</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -244,10 +244,10 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
       {showModifyModal && editingOrder && (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 16, zIndex: 100 }}>
           <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, width: '100%', maxHeight: '85%', borderWidth: 2, borderColor: '#111' }}>
-            <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 4, color: '#111' }}>✏️ Edit Order #{editingOrder.orderNumber}</Text>
-            <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 12 }}>Add items, change quantities or remove cancelled items</Text>
+            <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 4, color: '#111' }}>Edit Order #{editingOrder.orderNumber}</Text>
+            <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 12 }}>Add items, adjust quantities or remove items</Text>
 
-            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 220, marginBottom: 12, borderBottomWidth: 1, borderColor: '#E5E7EB' }}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 180, marginBottom: 12, borderBottomWidth: 1, borderColor: '#E5E7EB' }}>
               {modifyItems.map((item, idx) => (
                 <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderColor: '#F3F4F6' }}>
                   <View style={{ flex: 1 }}>
@@ -279,9 +279,9 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                       onPress={() => {
                         setModifyItems(prev => prev.filter((_, i) => i !== idx));
                       }}
-                      style={{ paddingLeft: 6 }}
+                      style={{ paddingHorizontal: 6, paddingVertical: 4, backgroundColor: '#FEE2E2', borderRadius: 4 }}
                     >
-                      <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 16 }}>🗑️</Text>
+                      <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 11 }}>Remove</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -289,30 +289,30 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
             </ScrollView>
 
             {/* Add New Menu Item Section */}
-            <Text style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 4, color: '#374151' }}>➕ Add Item from Menu ({menuItems.length} items available):</Text>
+            <Text style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 4, color: '#374151' }}>Add Item from Menu ({menuItems.length} items available):</Text>
             
             {/* Category Filter Chips */}
             {(() => {
               const categories = ['All', ...new Set(menuItems.map(mi => typeof mi.category === 'object' ? mi.category?.name : mi.category).filter(Boolean))];
               return (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6, maxHeight: 34 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8, maxHeight: 38 }}>
                   {categories.map(cat => {
                     const isActive = (selectedCatFilter || 'All') === cat;
                     return (
                       <TouchableOpacity
                         key={cat}
                         style={{
-                          paddingVertical: 4,
-                          paddingHorizontal: 10,
-                          borderRadius: 14,
+                          paddingVertical: 6,
+                          paddingHorizontal: 12,
+                          borderRadius: 16,
                           marginRight: 6,
                           backgroundColor: isActive ? '#7C3AED' : '#F3F4F6',
-                          borderWidth: 1,
+                          borderWidth: 1.5,
                           borderColor: isActive ? '#7C3AED' : '#D1D5DB'
                         }}
                         onPress={() => setSelectedCatFilter(cat)}
                       >
-                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: isActive ? '#FFF' : '#374151' }}>{cat}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: isActive ? '#FFF' : '#374151' }}>{cat}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -322,7 +322,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
 
             <TextInput
               style={{ borderWidth: 1.5, borderColor: '#111', borderRadius: 6, padding: 8, fontSize: 13, marginBottom: 8, backgroundColor: '#FFF' }}
-              placeholder="🔍 Search item name..."
+              placeholder="Search item name..."
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -377,7 +377,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                   }
                 }}
               >
-                <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 12 }}>🚫 Cancel Order</Text>
+                <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 12 }}>Cancel Order</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -393,7 +393,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                 disabled={submittingModify || modifyItems.length === 0}
               >
                 <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 12 }}>
-                  {submittingModify ? 'Saving...' : '💾 Save & Send KOT'}
+                  {submittingModify ? 'Saving...' : 'Save & Send KOT'}
                 </Text>
               </TouchableOpacity>
             </View>
