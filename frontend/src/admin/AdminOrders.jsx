@@ -509,6 +509,16 @@ const AdminOrders = () => {
             return;
         }
 
+        const cashVal = parseFloat(splitCash) || 0;
+        const upiVal = parseFloat(splitUpi) || 0;
+        const cardVal = parseFloat(splitCard) || 0;
+        const totalSplit = cashVal + upiVal + cardVal;
+
+        if (totalSplit <= 0) {
+            alert('Please enter split amounts for Cash, UPI or Card.');
+            return;
+        }
+
         try {
             const targetOrder = orders.find(o => o._id === paymentBillerOrderId);
             const sessionOrders = targetOrder ? getSessionOrders(targetOrder, orders) : [];
@@ -523,9 +533,9 @@ const AdminOrders = () => {
                 discountName: paymentDiscountName,
                 paymentMethod: 'split',
                 splitPaymentDetails: {
-                    cash: parseFloat(splitCash) || 0,
-                    upi: parseFloat(splitUpi) || 0,
-                    card: parseFloat(splitCard) || 0
+                    cash: cashVal,
+                    upi: upiVal,
+                    card: cardVal
                 }
             });
 
@@ -535,7 +545,7 @@ const AdminOrders = () => {
 
             if (sessionOrders.length > 0) {
                 const updatedSessionOrders = sessionOrders.map(o => 
-                    o._id === paymentBillerOrderId ? { ...o, status: 'paid', paymentMethod: 'split', billerName: paymentBillerName, discount: discountVal, discountName: paymentDiscountName } : { ...o, billerName: paymentBillerName, discount: discountVal }
+                    o._id === paymentBillerOrderId ? { ...o, status: 'paid', paymentMethod: 'split', splitPaymentDetails: { cash: cashVal, upi: upiVal, card: cardVal }, billerName: paymentBillerName, discount: discountVal, discountName: paymentDiscountName } : { ...o, billerName: paymentBillerName, discount: discountVal }
                 );
                 setSelectedOrdersForBill(updatedSessionOrders);
                 setShowBill(true);
@@ -1321,6 +1331,141 @@ const AdminOrders = () => {
                                     </>
                                 );
                             })()}
+                        </form>
+                    </div>
+                </div>
+            )}
+            {/* Split Payment Modal (Cash / UPI / Card Breakdown) */}
+            {showSplitModal && (
+                <div className="bill-modal-overlay" onClick={() => setShowSplitModal(false)}>
+                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '480px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '2px solid #111111', paddingBottom: '10px' }}>
+                            <h2 style={{ margin: 0, fontSize: '1.4rem', fontFamily: "'Patrick Hand', cursive" }}>✂️ Split Payment (Cash / UPI / Card)</h2>
+                            <button onClick={() => setShowSplitModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}><FiX /></button>
+                        </div>
+                        
+                        <form onSubmit={handleConfirmSplitPayment} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div style={{ background: '#F5F3FF', border: '1px solid #C4B5FD', padding: '10px 14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: '600', fontSize: '0.9rem', color: '#5B21B6' }}>Total Order Bill:</span>
+                                <strong style={{ fontSize: '1.25rem', color: '#7C3AED' }}>₹{paymentBillerAmount.toFixed(2)}</strong>
+                            </div>
+
+                            {/* Biller Name */}
+                            <div className="input-group" style={{ position: 'relative', marginBottom: 0 }}>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Biller Name *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Type or select biller..."
+                                    value={paymentBillerName}
+                                    onChange={(e) => {
+                                        setPaymentBillerName(e.target.value);
+                                        setShowPaymentBillerSuggestions(true);
+                                    }}
+                                    onFocus={() => setShowPaymentBillerSuggestions(true)}
+                                    className="input"
+                                    style={{ width: '100%', padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
+                                />
+                                {showPaymentBillerSuggestions && prepareSuggestions.length > 0 && (
+                                    <div className="biller-suggestions-dropdown" style={{ zIndex: 1004 }}>
+                                        {prepareSuggestions
+                                            .filter(sug => sug.toLowerCase().includes(paymentBillerName.toLowerCase()))
+                                            .slice(0, 15)
+                                            .map((sug, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => {
+                                                        setPaymentBillerName(sug);
+                                                        setShowPaymentBillerSuggestions(false);
+                                                    }}
+                                                    className="suggestion-item"
+                                                >
+                                                    {sug}
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Split Amount Inputs */}
+                            <div style={{ background: '#FFF', border: '2px solid #111', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <label style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#111', borderBottom: '1px dashed #CCC', paddingBottom: '4px' }}>
+                                    Enter Amount Breakdown:
+                                </label>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ minWidth: '95px', fontWeight: 'bold', fontSize: '0.9rem' }}>💵 Cash:</span>
+                                    <span style={{ fontWeight: 'bold' }}>₹</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        placeholder="0.00"
+                                        value={splitCash}
+                                        onChange={e => setSplitCash(e.target.value)}
+                                        style={{ flex: 1, padding: '8px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem' }}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ minWidth: '95px', fontWeight: 'bold', fontSize: '0.9rem' }}>📱 UPI / QR:</span>
+                                    <span style={{ fontWeight: 'bold' }}>₹</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        placeholder="0.00"
+                                        value={splitUpi}
+                                        onChange={e => setSplitUpi(e.target.value)}
+                                        style={{ flex: 1, padding: '8px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem' }}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ minWidth: '95px', fontWeight: 'bold', fontSize: '0.9rem' }}>💳 Card / POS:</span>
+                                    <span style={{ fontWeight: 'bold' }}>₹</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        placeholder="0.00"
+                                        value={splitCard}
+                                        onChange={e => setSplitCard(e.target.value)}
+                                        style={{ flex: 1, padding: '8px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem' }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Calculation Summary */}
+                            {(() => {
+                                const c = parseFloat(splitCash) || 0;
+                                const u = parseFloat(splitUpi) || 0;
+                                const cd = parseFloat(splitCard) || 0;
+                                const totalEntered = c + u + cd;
+                                const diff = paymentBillerAmount - totalEntered;
+
+                                return (
+                                    <div style={{ background: Math.abs(diff) < 0.01 ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${Math.abs(diff) < 0.01 ? '#A7F3D0' : '#FECACA'}`, padding: '10px 12px', borderRadius: '6px', fontSize: '0.85rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                                            <span>Total Entered:</span>
+                                            <strong>₹{totalEntered.toFixed(2)}</strong>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: Math.abs(diff) < 0.01 ? '#059669' : '#DC2626' }}>
+                                            <span>{Math.abs(diff) < 0.01 ? '✓ Exact Amount Matched!' : diff > 0 ? 'Remaining Balance:' : 'Overpaid:'}</span>
+                                            <span>₹{Math.abs(diff).toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            <button
+                                type="submit"
+                                className="btn btn-primary btn-full sketch-border sketch-shadow"
+                                style={{ padding: '12px', fontWeight: 'bold', fontSize: '1rem', background: '#7C3AED', borderColor: '#7C3AED' }}
+                            >
+                                🔒 Confirm Split Payment & Generate Bill
+                            </button>
                         </form>
                     </div>
                 </div>

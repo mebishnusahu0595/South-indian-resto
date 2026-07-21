@@ -50,6 +50,20 @@ const AdminCreateOrder = () => {
     // Max discount cap
     const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
 
+    // Kitchen Printer IP state (saved in localStorage)
+    const [kitchenPrinterIp, setKitchenPrinterIp] = useState(() => {
+        return localStorage.getItem('kea_kitchen_printer_ip') || '';
+    });
+    const [showPrinterModal, setShowPrinterModal] = useState(false);
+    const [tempPrinterIp, setTempPrinterIp] = useState(kitchenPrinterIp);
+
+    const handleSavePrinterIp = () => {
+        const clean = tempPrinterIp.trim();
+        localStorage.setItem('kea_kitchen_printer_ip', clean);
+        setKitchenPrinterIp(clean);
+        setShowPrinterModal(false);
+    };
+
     // Keyboard Shortcuts
     useEffect(() => {
         const handleKeyDown = (e) => {
