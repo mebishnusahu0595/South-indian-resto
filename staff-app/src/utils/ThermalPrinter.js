@@ -202,7 +202,7 @@ export function printToIp(ip, data) {
 
     const client = TcpSocket.createConnection({ host: ip, port: PRINTER_PORT }, () => {
       // Connected — send ESC/POS data
-      client.write(data, 'binary', () => {
+      client.write(data, () => {
         clearTimeout(timer);
         settled = true;
         client.destroy();

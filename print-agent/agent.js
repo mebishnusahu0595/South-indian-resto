@@ -30,30 +30,37 @@ socket.on('disconnect', () => {
   console.log('⚠️ Disconnected from server. Retrying connection...');
 });
 
+const KITCHEN_PRINTER_IP = process.env.KITCHEN_PRINTER_IP || '';
+
 socket.on('new-order', async (order) => {
   console.log(`\n🔔 NEW ORDER RECEIVED! Order #${order.orderNumber}`);
-  try {
-    await printKOT(order);
-    console.log(`✓ KOT #${order.kotTicket || order.orderNumber} printed successfully!`);
-  } catch (err) {
-    console.error(`❌ Failed to print KOT #${order.orderNumber}:`, err.message);
+  const targetKitchenIp = order.kitchenPrinterIp || KITCHEN_PRINTER_IP;
+
+  // 1. Print on Counter USB Printer
+  printKOTToInterface(order, PRINTER_INTERFACE, 'Counter USB Printer')
+    .then(() => console.log(`✓ USB Counter KOT #${order.kotTicket || order.orderNumber} printed!`))
+    .catch(err => console.error(`❌ USB Counter Print Error:`, err.message));
+
+  // 2. Print on Kitchen WiFi LAN Printer (Port 9100)
+  if (targetKitchenIp) {
+    printKOTToInterface(order, `tcp://${targetKitchenIp}:9100`, `Kitchen WiFi Printer (${targetKitchenIp})`)
+      .then(() => console.log(`✓ Kitchen WiFi KOT #${order.kotTicket || order.orderNumber} printed on ${targetKitchenIp}:9100!`))
+      .catch(err => console.error(`❌ Kitchen WiFi Print Error (${targetKitchenIp}):`, err.message));
   }
 });
 
-async function printKOT(order) {
+async function printKOTToInterface(order, printerInterface, printerLabel) {
   const printer = new ThermalPrinter({
     type: PrinterTypes.EPSON,
-    interface: PRINTER_INTERFACE,
+    interface: printerInterface,
     characterSet: CharacterSet.SLOVENIA,
     breakLine: BreakLine.WORD,
     width: 42
   });
 
-  const isConnected = await printer.isPrinterConnected();
-  console.log(`Printer connection status: ${isConnected ? 'ONLINE' : 'OFFLINE/CHECK DRIVER'}`);
-
-  const orderNum = order.kotTicket || `KOT-${order.orderNumber}`;
-  const tableStr = order.tableId ? `Table ${order.tableId.tableNumber}` : (order.tableName || 'Takeaway');
+  const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
+  const orderNum = order.kotTicket || `KOT-${cleanOrdNo}`;
+  const tableStr = order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : (order.tableNumber || order.tableName || 'Takeaway');
   const staffStr = order.placedBy?.name || order.user?.name || 'Staff';
   const now = new Date(order.createdAt || Date.now());
   const dateStr = now.toLocaleDateString('en-IN');
@@ -106,7 +113,7 @@ async function printKOT(order) {
 
   printer.drawLine();
   printer.alignCenter();
-  printer.println('*** KITCHEN COPY ***');
+  printer.println(`*** KITCHEN COPY (${printerLabel}) ***`);
   printer.newLine();
   printer.newLine();
   printer.cut();
