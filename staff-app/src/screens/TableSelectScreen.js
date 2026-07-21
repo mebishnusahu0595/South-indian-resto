@@ -20,10 +20,16 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
     fetchMeProfile();
   }, []);
 
+  const [backendSections, setBackendSections] = useState([]);
+
   const fetchTables = async () => {
     try {
-      const res = await api.get('/tables');
-      setTables(res.data || []);
+      const [tablesRes, sectionsRes] = await Promise.all([
+        api.get('/tables'),
+        api.get('/tables/sections')
+      ]);
+      setTables(tablesRes.data || []);
+      setBackendSections(sectionsRes.data || []);
     } catch (error) {
       console.error('Error fetching tables in mobile app:', error);
     } finally {
@@ -115,7 +121,14 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
     return acc;
   }, {});
 
-  const sectionList = Object.keys(groupedSections);
+  const rawSections = Object.keys(groupedSections);
+  const sectionList = rawSections.sort((a, b) => {
+    const indexA = backendSections.indexOf(a);
+    const indexB = backendSections.indexOf(b);
+    const orderA = indexA !== -1 ? indexA : 999;
+    const orderB = indexB !== -1 ? indexB : 999;
+    return orderA - orderB;
+  });
   const activeSection = (selectedSection && sectionList.includes(selectedSection)) ? selectedSection : (sectionList[0] || '');
 
   return (
