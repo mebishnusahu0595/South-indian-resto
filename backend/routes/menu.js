@@ -33,9 +33,9 @@ router.get('/', async (req, res) => {
 });
 
 // @route   GET /api/menu/all
-// @desc    Get all menu items (admin)
-// @access  Private/Admin
-router.get('/all', protect, admin, async (req, res) => {
+// @desc    Get all menu items (staff/admin)
+// @access  Private
+router.get('/all', protect, async (req, res) => {
     try {
         const items = await MenuItem.find().populate('category', 'name');
         res.json(items);
