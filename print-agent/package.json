@@ -1,0 +1,13 @@
+{
+  "name": "kea-desktop-print-agent",
+  "version": "1.0.0",
+  "description": "Desktop auto-print agent for Kea By The Pool USB thermal printers",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "node-thermal-printer": "^4.4.0",
+    "socket.io-client": "^4.8.1"
+  }
+}

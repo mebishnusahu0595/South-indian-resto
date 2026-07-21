@@ -131,6 +131,31 @@ const AdminOrders = () => {
             socket.on('new-order', (order) => {
                 console.log('New order received:', order.orderNumber);
                 setOrders(prev => [order, ...prev]);
+
+                // Play audio notification chime
+                try {
+                    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+                    audio.play().catch(() => {});
+                } catch (_) {}
+
+                // If Auto-Print KOT is enabled on desktop counter, trigger KOT print slip
+                if (localStorage.getItem('kea_auto_print_kot') === 'true') {
+                    const kotData = {
+                        kotNumber: order.kotTicket || `KOT-${order.orderNumber}`,
+                        orderNumber: order.orderNumber,
+                        tableNumber: order.tableId?.tableNumber || (order.tableIds?.length ? order.tableIds.map(t => t.tableNumber || t).join(', ') : 'Takeaway'),
+                        staffName: order.placedBy?.name || order.user?.name || 'Staff',
+                        items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity })),
+                        notes: order.specialInstructions,
+                        timestamp: order.createdAt || new Date()
+                    };
+                    setSelectedKOTForPrint(kotData);
+
+                    // Trigger silent print after modal renders
+                    setTimeout(() => {
+                        window.print();
+                    }, 500);
+                }
             });
             socket.on('order-updated', (order) => {
                 console.log('Order updated:', order.orderNumber, 'Status:', order.status);
@@ -536,7 +561,20 @@ const AdminOrders = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
                 <h1 style={{ margin: 0 }}>Orders Management</h1>
                 {/* Navigation Tabs */}
-                <div className="analytics-tabs" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <div className="analytics-tabs" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                        className={`btn ${autoPrintKOT ? 'btn-success' : 'btn-secondary'}`}
+                        style={{
+                            background: autoPrintKOT ? '#059669' : '#4B5563',
+                            color: '#FFFFFF',
+                            borderColor: autoPrintKOT ? '#059669' : '#4B5563',
+                            fontWeight: 'bold'
+                        }}
+                        onClick={toggleAutoPrintKOT}
+                        title="Auto-trigger 80mm KOT print on desktop USB printer when staff places order"
+                    >
+                        {autoPrintKOT ? '⚡ Auto-Print KOT: ON' : '⏸️ Auto-Print KOT: OFF'}
+                    </button>
                     <button
                         className={`btn ${activeTab === 'active' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setActiveTab('active')}
