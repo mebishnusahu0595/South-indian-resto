@@ -203,9 +203,9 @@ router.post('/', protect, async (req, res) => {
             return res.status(400).json({ message: 'No items in order' });
         }
 
-        // Determine user for the order (admin can specify a customer)
+        // Determine user for the order (admin / superadmin / employee can specify a customer)
         let orderUser = req.user._id;
-        if (req.user.role === 'admin' && (customerPhone || customerName)) {
+        if ((req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.isEmployee) && (customerPhone || customerName)) {
             if (customerPhone) {
                 const cleanPhone = customerPhone.replace(/\D/g, '');
                 let user = await User.findOne({ phone: cleanPhone });

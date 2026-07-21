@@ -222,6 +222,9 @@ const AdminCreateOrder = () => {
             };
 
             setCreatedKOT(kotObj);
+            setTimeout(() => {
+                window.print();
+            }, 400);
 
             // Reset states
             setCart([]);
