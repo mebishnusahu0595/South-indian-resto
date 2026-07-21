@@ -37,7 +37,7 @@ router.get('/', async (req, res) => {
 // @access  Private
 router.get('/all', protect, async (req, res) => {
     try {
-        const items = await MenuItem.find().populate('category', 'name');
+        const items = await MenuItem.find().populate('category', 'name').sort({ name: 1 });
         res.json(items);
     } catch (error) {
         console.error(error);

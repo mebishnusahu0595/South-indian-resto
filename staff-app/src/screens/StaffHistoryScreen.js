@@ -82,6 +82,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
   const [modifyNote, setModifyNote] = useState('');
   const [submittingModify, setSubmittingModify] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCatFilter, setSelectedCatFilter] = useState('All');
 
   const handleOpenModify = async (order) => {
     setEditingOrder(order);
@@ -288,7 +289,37 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
             </ScrollView>
 
             {/* Add New Menu Item Section */}
-            <Text style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 6, color: '#374151' }}>➕ Add Item from Menu:</Text>
+            <Text style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 4, color: '#374151' }}>➕ Add Item from Menu ({menuItems.length} items available):</Text>
+            
+            {/* Category Filter Chips */}
+            {(() => {
+              const categories = ['All', ...new Set(menuItems.map(mi => typeof mi.category === 'object' ? mi.category?.name : mi.category).filter(Boolean))];
+              return (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6, maxHeight: 34 }}>
+                  {categories.map(cat => {
+                    const isActive = (selectedCatFilter || 'All') === cat;
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        style={{
+                          paddingVertical: 4,
+                          paddingHorizontal: 10,
+                          borderRadius: 14,
+                          marginRight: 6,
+                          backgroundColor: isActive ? '#7C3AED' : '#F3F4F6',
+                          borderWidth: 1,
+                          borderColor: isActive ? '#7C3AED' : '#D1D5DB'
+                        }}
+                        onPress={() => setSelectedCatFilter(cat)}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: isActive ? '#FFF' : '#374151' }}>{cat}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              );
+            })()}
+
             <TextInput
               style={{ borderWidth: 1.5, borderColor: '#111', borderRadius: 6, padding: 8, fontSize: 13, marginBottom: 8, backgroundColor: '#FFF' }}
               placeholder="🔍 Search item name..."
@@ -296,28 +327,37 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
               onChangeText={setSearchQuery}
             />
 
-            <ScrollView style={{ maxHeight: 120, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, padding: 6 }}>
+            <ScrollView style={{ maxHeight: 180, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, padding: 4 }}>
               {menuItems
-                .filter(mi => !searchQuery || (mi.name || '').toLowerCase().includes(searchQuery.toLowerCase()))
-                .slice(0, 15)
-                .map(mi => (
-                  <TouchableOpacity
-                    key={mi._id}
-                    style={{ paddingVertical: 6, paddingHorizontal: 8, borderBottomWidth: 1, borderColor: '#F3F4F6', flexDirection: 'row', justifyContent: 'space-between' }}
-                    onPress={() => {
-                      const existsIndex = modifyItems.findIndex(i => i.menuItemId === mi._id);
-                      if (existsIndex >= 0) {
-                        setModifyItems(prev => prev.map((it, i) => i === existsIndex ? { ...it, quantity: it.quantity + 1 } : it));
-                      } else {
-                        setModifyItems(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1 }]);
-                      }
-                      setSearchQuery('');
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#111' }}>{mi.name}</Text>
-                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#7C3AED' }}>+ ₹{mi.price}</Text>
-                  </TouchableOpacity>
-                ))
+                .filter(mi => {
+                  const catName = typeof mi.category === 'object' ? mi.category?.name : mi.category;
+                  const matchesCat = !selectedCatFilter || selectedCatFilter === 'All' || catName === selectedCatFilter;
+                  const matchesSearch = !searchQuery || (mi.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+                  return matchesCat && matchesSearch;
+                })
+                .map(mi => {
+                  const catName = typeof mi.category === 'object' ? mi.category?.name : (mi.category || '');
+                  return (
+                    <TouchableOpacity
+                      key={mi._id}
+                      style={{ paddingVertical: 8, paddingHorizontal: 8, borderBottomWidth: 1, borderColor: '#F3F4F6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                      onPress={() => {
+                        const existsIndex = modifyItems.findIndex(i => i.menuItemId === mi._id);
+                        if (existsIndex >= 0) {
+                          setModifyItems(prev => prev.map((it, i) => i === existsIndex ? { ...it, quantity: it.quantity + 1 } : it));
+                        } else {
+                          setModifyItems(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1 }]);
+                        }
+                      }}
+                    >
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#111' }}>{mi.name}</Text>
+                        {catName ? <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: 'bold' }}>{catName}</Text> : null}
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#059669' }}>+ ₹{mi.price}</Text>
+                    </TouchableOpacity>
+                  );
+                })
               }
             </ScrollView>
 
