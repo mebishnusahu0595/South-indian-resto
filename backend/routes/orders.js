@@ -80,6 +80,16 @@ router.get('/kots', protect, admin, async (req, res) => {
             .populate('items.menuItem', 'name price')
             .sort('-createdAt');
 
+        const formatKOTNum = (ord, kotObj) => {
+            if (kotObj && kotObj.kotNumber) return kotObj.kotNumber;
+            if (ord.kotTicket) return ord.kotTicket;
+            if (ord.orderNumber) {
+                const cleanOrd = String(ord.orderNumber).replace(/^CD-/, '');
+                return `KOT-${cleanOrd}`;
+            }
+            return `KOT-${ord._id.toString().slice(-4).toUpperCase()}`;
+        };
+
         const kotTickets = [];
         orders.forEach(order => {
             if (order.kotHistory && order.kotHistory.length > 0) {
@@ -88,7 +98,7 @@ router.get('/kots', protect, admin, async (req, res) => {
                         _id: `${order._id}_${kot.kotNumber}`,
                         orderId: order._id,
                         orderNumber: order.orderNumber,
-                        kotNumber: kot.kotNumber || `KOT-${order.orderNumber.slice(-4)}`,
+                        kotNumber: formatKOTNum(order, kot),
                         tableNumber: order.tableNumber || 'Takeaway',
                         staffName: order.placedBy?.name || order.billerName || 'Staff',
                         timestamp: kot.timestamp || order.createdAt,
@@ -102,7 +112,7 @@ router.get('/kots', protect, admin, async (req, res) => {
                     _id: `${order._id}_main`,
                     orderId: order._id,
                     orderNumber: order.orderNumber,
-                    kotNumber: `KOT-${order.orderNumber.slice(-4)}`,
+                    kotNumber: formatKOTNum(order),
                     tableNumber: order.tableNumber || 'Takeaway',
                     staffName: order.placedBy?.name || order.billerName || 'Staff',
                     timestamp: order.createdAt,

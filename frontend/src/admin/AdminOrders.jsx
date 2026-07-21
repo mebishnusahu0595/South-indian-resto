@@ -160,8 +160,9 @@ const AdminOrders = () => {
 
                 // If Auto-Print KOT is enabled on desktop counter, trigger KOT print slip queue
                 if (localStorage.getItem('kea_auto_print_kot') === 'true') {
+                    const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
                     const kotData = {
-                        kotNumber: order.kotTicket || `KOT-${order.orderNumber}`,
+                        kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,
                         orderNumber: order.orderNumber,
                         tableNumber: order.tableId?.tableNumber || (order.tableIds?.length ? order.tableIds.map(t => t.tableNumber || t).join(', ') : 'Takeaway'),
                         staffName: order.placedBy?.name || order.user?.name || 'Staff',
@@ -1389,13 +1390,13 @@ const AdminOrders = () => {
                             </div>
 
                             {/* Split Amount Inputs */}
-                            <div style={{ background: '#FFF', border: '2px solid #111', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ background: '#FFF', border: '2px solid #111', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', boxSizing: 'border-box', width: '100%' }}>
                                 <label style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#111', borderBottom: '1px dashed #CCC', paddingBottom: '4px' }}>
                                     Enter Amount Breakdown:
                                 </label>
 
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ minWidth: '95px', fontWeight: 'bold', fontSize: '0.9rem' }}>💵 Cash:</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
+                                    <span style={{ width: '105px', minWidth: '105px', fontWeight: 'bold', fontSize: '0.85rem' }}>💵 Cash:</span>
                                     <span style={{ fontWeight: 'bold' }}>₹</span>
                                     <input
                                         type="number"
@@ -1404,12 +1405,12 @@ const AdminOrders = () => {
                                         placeholder="0.00"
                                         value={splitCash}
                                         onChange={e => setSplitCash(e.target.value)}
-                                        style={{ flex: 1, padding: '8px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem' }}
+                                        style={{ flex: 1, width: '100%', minWidth: 0, padding: '8px 10px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.95rem', boxSizing: 'border-box' }}
                                     />
                                 </div>
 
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ minWidth: '95px', fontWeight: 'bold', fontSize: '0.9rem' }}>📱 UPI / QR:</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
+                                    <span style={{ width: '105px', minWidth: '105px', fontWeight: 'bold', fontSize: '0.85rem' }}>📱 UPI / QR:</span>
                                     <span style={{ fontWeight: 'bold' }}>₹</span>
                                     <input
                                         type="number"
@@ -1418,12 +1419,12 @@ const AdminOrders = () => {
                                         placeholder="0.00"
                                         value={splitUpi}
                                         onChange={e => setSplitUpi(e.target.value)}
-                                        style={{ flex: 1, padding: '8px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem' }}
+                                        style={{ flex: 1, width: '100%', minWidth: 0, padding: '8px 10px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.95rem', boxSizing: 'border-box' }}
                                     />
                                 </div>
 
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ minWidth: '95px', fontWeight: 'bold', fontSize: '0.9rem' }}>💳 Card / POS:</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
+                                    <span style={{ width: '105px', minWidth: '105px', fontWeight: 'bold', fontSize: '0.85rem' }}>💳 Card / POS:</span>
                                     <span style={{ fontWeight: 'bold' }}>₹</span>
                                     <input
                                         type="number"
@@ -1432,7 +1433,7 @@ const AdminOrders = () => {
                                         placeholder="0.00"
                                         value={splitCard}
                                         onChange={e => setSplitCard(e.target.value)}
-                                        style={{ flex: 1, padding: '8px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem' }}
+                                        style={{ flex: 1, width: '100%', minWidth: 0, padding: '8px 10px', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.95rem', boxSizing: 'border-box' }}
                                     />
                                 </div>
                             </div>

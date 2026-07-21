@@ -282,8 +282,9 @@ const AdminCreateOrder = () => {
                 return t ? `Table ${t.tableNumber}` : id;
             }).join(', ');
 
+            const cleanOrderNum = String(createdOrder.orderNumber || '').replace(/^CD-/, '');
             const kotObj = {
-                kotNumber: createdOrder.kotTicket || `KOT-${createdOrder.orderNumber}`,
+                kotNumber: createdOrder.kotTicket || `KOT-${cleanOrderNum}`,
                 orderNumber: createdOrder.orderNumber,
                 tableName: tableNames || 'Takeaway',
                 staffName: user?.name || 'Admin',

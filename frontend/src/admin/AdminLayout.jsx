@@ -55,6 +55,8 @@ const AdminLayout = () => {
         }
     };
 
+    const [layoutKOT, setLayoutKOT] = useState(null);
+
     useEffect(() => {
         if (socket) {
             const handleOrderChange = () => {
@@ -65,6 +67,25 @@ const AdminLayout = () => {
                 setNotifications(prev => [...prev, { type: 'order', message: `New order #${order.orderNumber}`, id: order._id }]);
                 playNotificationSound();
                 fetchCounts();
+
+                // Global Auto-Print KOT on desktop counter across ANY admin page
+                if (localStorage.getItem('kea_auto_print_kot') === 'true') {
+                    const tableStr = order.tableId?.tableNumber || (order.tableIds?.length ? order.tableIds.map(t => t.tableNumber || t).join(', ') : 'Takeaway');
+                    const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
+                    const kotObj = {
+                        kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,
+                        orderNumber: order.orderNumber,
+                        tableName: tableStr || 'Takeaway',
+                        staffName: order.placedBy?.name || order.user?.name || 'Staff',
+                        items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity })),
+                        notes: order.specialInstructions,
+                        timestamp: order.createdAt || new Date()
+                    };
+                    setLayoutKOT(kotObj);
+                    setTimeout(() => {
+                        try { window.print(); } catch (_) {}
+                    }, 400);
+                }
             });
 
             socket.on('bill-requested', (order) => {
@@ -238,6 +259,72 @@ const AdminLayout = () => {
                     <Outlet />
                 </main>
             </div>
+
+            {/* Global 80mm KOT Ticket Printable Modal across all admin tabs */}
+            {layoutKOT && (
+                <div className="bill-modal-overlay" onClick={() => setLayoutKOT(null)}>
+                    <div className="bill-container print-bill-overlay" onClick={e => e.stopPropagation()} style={{ maxWidth: '380px' }}>
+                        <div className="bill-header">
+                            <h2>KEA BY THE POOL</h2>
+                            <p style={{ fontWeight: 'bold', fontSize: '15px', color: '#7C3AED', margin: '4px 0' }}>KITCHEN ORDER TICKET</p>
+                            <p style={{ fontWeight: 'bold', fontSize: '17px', margin: 0 }}>{layoutKOT.kotNumber}</p>
+                        </div>
+
+                        <div className="bill-info">
+                            <div className="bill-info-row">
+                                <span>TABLE:</span>
+                                <strong>{layoutKOT.tableName || 'Takeaway'}</strong>
+                            </div>
+                            <div className="bill-info-row">
+                                <span>ORDER #:</span>
+                                <strong>#{layoutKOT.orderNumber}</strong>
+                            </div>
+                            <div className="bill-info-row">
+                                <span>STAFF:</span>
+                                <strong>{layoutKOT.staffName}</strong>
+                            </div>
+                            <div className="bill-info-row">
+                                <span>DATE/TIME:</span>
+                                <span>{new Date(layoutKOT.timestamp).toLocaleDateString('en-IN')} {new Date(layoutKOT.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                            </div>
+                        </div>
+
+                        <div className="bill-divider"></div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '15px', borderBottom: '2px solid #000', paddingBottom: '4px', marginBottom: '8px' }}>
+                            <span>ITEM NAME</span>
+                            <span>QTY</span>
+                        </div>
+
+                        {layoutKOT.items.map((item, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '600', marginBottom: '6px' }}>
+                                <span>{item.name}</span>
+                                <strong>x{item.quantity}</strong>
+                            </div>
+                        ))}
+
+                        {layoutKOT.notes && (
+                            <>
+                                <div className="bill-divider"></div>
+                                <div style={{ background: '#FEF3C7', padding: '6px 8px', borderRadius: '4px', border: '1px solid #F59E0B', fontSize: '13px' }}>
+                                    <strong>NOTE:</strong> {layoutKOT.notes}
+                                </div>
+                            </>
+                        )}
+
+                        <div className="bill-divider"></div>
+
+                        <div className="bill-footer">
+                            <p style={{ fontSize: '13px', color: '#000', fontWeight: 'bold' }}>*** KITCHEN COPY (80mm Thermal) ***</p>
+                        </div>
+
+                        <div className="bill-actions">
+                            <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => window.print()}>🖨️ Print KOT</button>
+                            <button className="btn-close" onClick={() => setLayoutKOT(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Overlay */}
             {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
