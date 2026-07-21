@@ -57,65 +57,17 @@ const AdminCreateOrder = () => {
     });
     const [showPrinterModal, setShowPrinterModal] = useState(false);
     const [tempPrinterIp, setTempPrinterIp] = useState(kitchenPrinterIp);
-    const [testingPrinter, setTestingPrinter] = useState(false);
-    const [testResult, setTestResult] = useState(null);
-
-    const testWiFiPrinterIp = async (ipToTest) => {
-        const cleanIp = (ipToTest || tempPrinterIp).trim();
-        if (!cleanIp) {
-            setTestResult({ success: false, message: 'Please enter a valid IP address (e.g. 192.168.1.150).' });
-            return;
-        }
-
-        setTestingPrinter(true);
-        setTestResult(null);
-
-        return new Promise((resolve) => {
-            let settled = false;
-            const img = new Image();
-
-            const timer = setTimeout(() => {
-                if (!settled) {
-                    settled = true;
-                    setTestingPrinter(false);
-                    setTestResult({
-                        success: false,
-                        message: `⚠️ No device responding at ${cleanIp}:9100. Make sure the printer is turned ON and connected to your WiFi router!`
-                    });
-                    resolve(false);
-                }
-            }, 2500);
-
-            img.onload = img.onerror = () => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timer);
-                    setTestingPrinter(false);
-                    setTestResult({
-                        success: true,
-                        message: `🟢 Device at ${cleanIp} is ONLINE & reachable on your local network!`
-                    });
-                    resolve(true);
-                }
-            };
-
-            img.src = `http://${cleanIp}:9100/favicon.ico?t=${Date.now()}`;
-        });
-    };
-
     const handleSavePrinterIp = async () => {
         const clean = tempPrinterIp.trim();
         if (!clean) {
             localStorage.setItem('kea_kitchen_printer_ip', '');
             setKitchenPrinterIp('');
             setShowPrinterModal(false);
-            setTestResult(null);
             return;
         }
         localStorage.setItem('kea_kitchen_printer_ip', clean);
         setKitchenPrinterIp(clean);
         setShowPrinterModal(false);
-        setTestResult(null);
     };
 
     // Keyboard Shortcuts
