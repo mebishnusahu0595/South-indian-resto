@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, FiSearch, FiEdit2, FiPrinter } from 'react-icons/fi';
+import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, FiSearch, FiEdit2, FiPrinter, FiEdit3 } from 'react-icons/fi';
 import { 
     getActiveOrders, updateOrderStatus, updatePayment, deleteOrder, 
-    getAllMenuItems, getBillerSuggestions, generateBill, updateOrderItems,
+    getAllMenuItems, getCategories, getBillerSuggestions, generateBill, updateOrderItems,
     getCoupons, getMaxDiscount, getKOTs
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -58,6 +58,9 @@ const AdminOrders = () => {
     const [editingOrder, setEditingOrder] = useState(null);
     const [modifyItemsList, setModifyItemsList] = useState([]);
     const [menuItemsList, setMenuItemsList] = useState([]);
+    const [menuCategories, setMenuCategories] = useState([]);
+    const [modifyCategoryFilter, setModifyCategoryFilter] = useState('');
+    const [modifySearchQuery, setModifySearchQuery] = useState('');
     const [selectedAddMenuItem, setSelectedAddMenuItem] = useState('');
     const [modifyNote, setModifyNote] = useState('');
     const [submittingModify, setSubmittingModify] = useState(false);
@@ -565,7 +568,7 @@ const AdminOrders = () => {
         }
     };
 
-    const handleOpenModifyOrder = (order) => {
+    const handleOpenModifyOrder = async (order) => {
         setEditingOrder(order);
         const initialList = (order.items || []).map(i => ({
             menuItemId: i.menuItem?._id || i.menuItem || i._id,
@@ -575,8 +578,20 @@ const AdminOrders = () => {
         }));
         setModifyItemsList(initialList);
         setModifyNote('');
+        setModifySearchQuery('');
+        setModifyCategoryFilter('');
         setShowModifyModal(true);
-        getMenuItems().then(res => setMenuItemsList(res.data || [])).catch(() => {});
+
+        try {
+            const [menuRes, catRes] = await Promise.all([
+                getAllMenuItems(),
+                getCategories()
+            ]);
+            setMenuItemsList(menuRes.data || []);
+            setMenuCategories(catRes.data || []);
+        } catch (err) {
+            console.error('Error fetching menu/categories for modify modal:', err);
+        }
     };
 
     const handleSaveModifyOrder = async (e) => {
@@ -1627,39 +1642,89 @@ const AdminOrders = () => {
                                 )}
                             </div>
 
-                            {/* Add New Item Selector */}
-                            <div style={{ background: '#FFF', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                <select
-                                    className="input"
-                                    value={selectedAddMenuItem}
-                                    onChange={e => setSelectedAddMenuItem(e.target.value)}
-                                    style={{ flex: 1, padding: '8px', fontSize: '0.88rem', border: '1px solid #111', borderRadius: '6px' }}
-                                >
-                                    <option value="">-- Add New Item from Menu --</option>
-                                    {menuItemsList.map(mi => (
-                                        <option key={mi._id} value={mi._id}>{mi.name} - ₹{mi.price}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    onClick={() => {
-                                        if (!selectedAddMenuItem) return;
-                                        const mi = menuItemsList.find(m => m._id === selectedAddMenuItem);
-                                        if (!mi) return;
-                                        const existsIndex = modifyItemsList.findIndex(i => i.menuItemId === mi._id);
-                                        if (existsIndex >= 0) {
-                                            setModifyItemsList(prev => prev.map((it, i) => i === existsIndex ? { ...it, quantity: it.quantity + 1 } : it));
-                                        } else {
-                                            setModifyItemsList(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1 }]);
-                                        }
-                                        setSelectedAddMenuItem('');
-                                    }}
-                                    style={{ padding: '8px 14px', fontSize: '0.85rem', fontWeight: 'bold' }}
-                                >
-                                    + Add Item
-                                </button>
-                            </div>
+                            {/* Add New Item Selector with Search & Category Filters */}
+                            {(() => {
+                                const filteredMenuItems = menuItemsList.filter(item => {
+                                    const catId = item.category?._id || item.category;
+                                    const matchesCat = !modifyCategoryFilter || catId === modifyCategoryFilter;
+                                    const matchesSearch = !modifySearchQuery || (item.name || '').toLowerCase().includes(modifySearchQuery.toLowerCase());
+                                    return matchesCat && matchesSearch;
+                                });
+
+                                const calculatedSubtotal = modifyItemsList.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+                                const calculatedGst = Math.round(calculatedSubtotal * 0.05 * 100) / 100;
+                                const calculatedTotal = Math.round((calculatedSubtotal + calculatedGst) * 100) / 100;
+
+                                return (
+                                    <>
+                                        <div style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '12px' }}>
+                                            <label style={{ fontWeight: 'bold', fontSize: '0.86rem', display: 'block', marginBottom: '8px', color: '#0F172A' }}>
+                                                ➕ Add Menu Items to Order
+                                            </label>
+                                            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                                                <input
+                                                    type="text"
+                                                    placeholder="🔍 Search item (e.g. Soup, Naan, Paneer)..."
+                                                    value={modifySearchQuery}
+                                                    onChange={e => setModifySearchQuery(e.target.value)}
+                                                    style={{ flex: 1, padding: '8px 10px', fontSize: '0.88rem', border: '1.5px solid #111', borderRadius: '6px', background: '#FFF' }}
+                                                />
+                                                <select
+                                                    value={modifyCategoryFilter}
+                                                    onChange={e => setModifyCategoryFilter(e.target.value)}
+                                                    style={{ maxWidth: '160px', padding: '8px', fontSize: '0.85rem', border: '1.5px solid #111', borderRadius: '6px', fontWeight: 'bold', background: '#FFF' }}
+                                                >
+                                                    <option value="">All Categories</option>
+                                                    {menuCategories.map(cat => (
+                                                        <option key={cat._id} value={cat._id}>{cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <select
+                                                    className="input"
+                                                    value={selectedAddMenuItem}
+                                                    onChange={e => setSelectedAddMenuItem(e.target.value)}
+                                                    style={{ flex: 1, padding: '8px', fontSize: '0.88rem', border: '1.5px solid #111', borderRadius: '6px', background: '#FFF', fontWeight: '600' }}
+                                                >
+                                                    <option value="">-- Choose Item ({filteredMenuItems.length} items available) --</option>
+                                                    {filteredMenuItems.map(mi => (
+                                                        <option key={mi._id} value={mi._id}>{mi.name} — ₹{mi.price}</option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary"
+                                                    onClick={() => {
+                                                        if (!selectedAddMenuItem) return;
+                                                        const mi = menuItemsList.find(m => m._id === selectedAddMenuItem);
+                                                        if (!mi) return;
+                                                        const existsIndex = modifyItemsList.findIndex(i => i.menuItemId === mi._id);
+                                                        if (existsIndex >= 0) {
+                                                            setModifyItemsList(prev => prev.map((it, i) => i === existsIndex ? { ...it, quantity: it.quantity + 1 } : it));
+                                                        } else {
+                                                            setModifyItemsList(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1 }]);
+                                                        }
+                                                        setSelectedAddMenuItem('');
+                                                    }}
+                                                    style={{ padding: '8px 16px', fontSize: '0.88rem', fontWeight: 'bold', background: '#7C3AED', borderColor: '#7C3AED', whiteSpace: 'nowrap' }}
+                                                >
+                                                    + Add Item
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Live New Total Summary */}
+                                        <div style={{ background: '#ECFDF5', border: '1.5px solid #A7F3D0', padding: '10px 12px', borderRadius: '6px', fontSize: '0.86rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ color: '#065F46', fontWeight: '600' }}>Updated Bill Estimation:</span>
+                                            <span style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#047857' }}>
+                                                Subtotal: ₹{calculatedSubtotal.toFixed(2)} | GST (5%): ₹{calculatedGst.toFixed(2)} = <strong>₹{calculatedTotal.toFixed(2)}</strong>
+                                            </span>
+                                        </div>
+                                    </>
+                                );
+                            })()}
 
                             {/* Note for KOT */}
                             <div>
