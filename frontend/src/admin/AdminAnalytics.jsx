@@ -217,7 +217,7 @@ const AdminAnalytics = () => {
                             ))}
                         </div>
                     ) : (
-                        <div className="period-restricted-label" style={{ background: 'var(--bg-secondary)', border: '2.5px solid #111111', padding: '6px 12px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '2px 2px 0px #111111' }}>
+                        <div className="period-restricted-label" style={{ background: '#FFFFFF', color: '#000000', border: '2.5px solid #111111', padding: '8px 14px', borderRadius: '8px', fontSize: '0.92rem', fontWeight: 'bold', boxShadow: '3px 3px 0px #111111' }}>
                             📅 Current Month (1st to Present)
                         </div>
                     )}
