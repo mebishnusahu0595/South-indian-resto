@@ -363,7 +363,6 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
     </View>
   );
 }
-}
 
 const styles = StyleSheet.create({
   container: {
