@@ -26,6 +26,7 @@ const AdminOrders = () => {
     const [prepareSelectedOrderIds, setPrepareSelectedOrderIds] = useState([]);
     const [prepareBillerName, setPrepareBillerName] = useState('');
     const [prepareDiscountInput, setPrepareDiscountInput] = useState('');
+    const [prepareDiscountName, setPrepareDiscountName] = useState('');
     const [prepareDiscountType, setPrepareDiscountType] = useState('%');
     const [prepareSuggestions, setPrepareSuggestions] = useState([]);
     const [showPrepareSuggestions, setShowPrepareSuggestions] = useState(false);
