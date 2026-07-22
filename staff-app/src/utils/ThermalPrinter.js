@@ -248,6 +248,43 @@ export async function savePrinterIps({ kitchenIp, receptionIp, kitchenName, rece
   if (receptionName !== undefined) await AsyncStorage.setItem(STORAGE_KEY_RECEPTION_NAME, receptionName);
 }
 
+// ─── Quick TCP Connection Ping ────────────────────────────────────
+export function verifyPrinterConnection(ip) {
+  return new Promise((resolve, reject) => {
+    if (!ip || !ip.trim()) {
+      reject(new Error('IP address empty'));
+      return;
+    }
+    const cleanIp = ip.trim();
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try { client.destroy(); } catch (_) {}
+        reject(new Error(`Could not connect to ${cleanIp}:9100 within 3s`));
+      }
+    }, 3000);
+
+    const client = TcpSocket.createConnection({ host: cleanIp, port: PRINTER_PORT }, () => {
+      if (!settled) {
+        clearTimeout(timer);
+        settled = true;
+        try { client.destroy(); } catch (_) {}
+        resolve({ success: true, ip: cleanIp });
+      }
+    });
+
+    client.on('error', (err) => {
+      if (!settled) {
+        clearTimeout(timer);
+        settled = true;
+        try { client.destroy(); } catch (_) {}
+        reject(new Error(`Failed to reach ${cleanIp}: ${err.message}`));
+      }
+    });
+  });
+}
+
 // ─── Auto Discover Printers on Port 9100 ─────────────────────────
 // Scans the local subnet for devices with port 9100 open
 export function discoverPrinters(subnetPrefix, onFound, onDone) {

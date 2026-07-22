@@ -251,6 +251,7 @@ function MainApp() {
             onLogout={handleLogout}
             onOpenHost={() => setActiveScreen('host')}
             onOpenHistory={() => setActiveScreen('history')}
+            onOpenPrinterSetup={() => setActiveScreen('printer-setup')}
           />
         )}
 

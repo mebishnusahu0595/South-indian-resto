@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 
-export default function TableSelectScreen({ api, staffName, onNext, onLogout, onOpenHost, onOpenHistory }) {
+export default function TableSelectScreen({ api, staffName, onNext, onLogout, onOpenHost, onOpenHistory, onOpenPrinterSetup }) {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTables, setSelectedTables] = useState([]);
@@ -157,6 +157,9 @@ export default function TableSelectScreen({ api, staffName, onNext, onLogout, on
           </TouchableOpacity>
           <TouchableOpacity style={styles.historyBtn} onPress={onOpenHistory}>
             <Text style={styles.historyBtnText}>Today's History</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.historyBtn, { backgroundColor: '#7C3AED' }]} onPress={onOpenPrinterSetup}>
+            <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 12 }}>🖨️ Printer Setup</Text>
           </TouchableOpacity>
         </View>
 

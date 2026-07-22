@@ -104,9 +104,13 @@ export default function PrinterSetupScreen({ onBack }) {
     setTesting(label);
     try {
       await testPrint(ip.trim());
-      Alert.alert('Test OK!', `Test page printed on ${label} printer (${ip}).`);
+      await savePrinterIps({
+        kitchenIp: label === 'Kitchen' ? ip.trim() : kitchenIp.trim(),
+        receptionIp: label === 'Reception' ? ip.trim() : receptionIp.trim()
+      });
+      Alert.alert('✅ Connected & Printed!', `Successfully connected and printed test slip on ${label} printer (${ip.trim()}). IP saved!`);
     } catch (err) {
-      Alert.alert('Print Failed', err.message);
+      Alert.alert('Print Failed', err.message || 'Make sure printer is ON and connected to same WiFi');
     } finally {
       setTesting('');
     }
