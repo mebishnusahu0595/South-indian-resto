@@ -413,6 +413,14 @@ const AdminOrders = () => {
         return num;
     };
 
+    const getSelectedSubtotal = () => {
+        const selected = prepareOrders.filter(o => prepareSelectedOrderIds.includes(o._id));
+        return selected.reduce((sum, order) => {
+            const itemSubtotal = (order.items || []).reduce((s, item) => s + ((item.price || 0) * (item.quantity || 1)), 0);
+            return sum + (order.subtotal || itemSubtotal);
+        }, 0);
+    };
+
     const handleConfirmPrepareBill = async (e) => {
         e.preventDefault();
         if (prepareSelectedOrderIds.length === 0) {
