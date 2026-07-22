@@ -103,6 +103,9 @@ export function formatKOT({ orderNumber, tableNumber, tableName, items, instruct
     const name = item.name || item.menuItem?.name || 'Item';
     const qty = `x${item.quantity}`;
     bytes.push(...paddedLine(name.substring(0, 35), qty));
+    if (item.notes && item.notes.trim()) {
+      bytes.push(...line(`  ↳ Note: ${item.notes}`));
+    }
   });
 
   // Special instructions

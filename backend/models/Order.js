@@ -13,7 +13,11 @@ const orderItemSchema = new mongoose.Schema({
         required: true,
         min: 1
     },
-    total: Number
+    total: Number,
+    notes: {
+        type: String,
+        default: ''
+    }
 });
 
 const orderSchema = new mongoose.Schema({

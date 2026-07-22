@@ -63,7 +63,8 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
       const orderPayload = {
         items: cart.map(item => ({
           menuItem: item._id,
-          quantity: item.quantity
+          quantity: item.quantity,
+          notes: item.notes || ''
         })),
         tableId: primaryTable ? primaryTable._id : null,
         tableIds: tableIdsList,
@@ -79,7 +80,7 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
       const orderData = {
         orderNumber: order.orderNumber,
         selectedTable,
-        items: order.items || cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+        items: order.items || cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, notes: i.notes })),
         instructions,
         staffName: staffName || '',
       };
@@ -214,23 +215,43 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
           <Text style={styles.sectionTitle}>Cart Items</Text>
           <View style={styles.itemsCard}>
             {cart.map((item) => (
-              <View key={item._id} style={styles.itemRow}>
-                <View style={styles.itemDetails}>
-                  <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemPrice}>₹{item.price} each</Text>
-                </View>
-                <View style={styles.itemActions}>
-                  <View style={styles.qtyContainer}>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item._id, item.quantity - 1)}>
-                      <Text style={styles.qtyBtnText}>-</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.qtyVal}>{item.quantity}</Text>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item._id, item.quantity + 1)}>
-                      <Text style={styles.qtyBtnText}>+</Text>
-                    </TouchableOpacity>
+              <View key={item._id} style={[styles.itemRow, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={styles.itemDetails}>
+                    <Text style={styles.itemName}>{item.name}</Text>
+                    <Text style={styles.itemPrice}>₹{item.price} each</Text>
                   </View>
-                  <Text style={styles.itemTotal}>₹{item.price * item.quantity}</Text>
+                  <View style={styles.itemActions}>
+                    <View style={styles.qtyContainer}>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item._id, item.quantity - 1)}>
+                        <Text style={styles.qtyBtnText}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.qtyVal}>{item.quantity}</Text>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item._id, item.quantity + 1)}>
+                        <Text style={styles.qtyBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.itemTotal}>₹{item.price * item.quantity}</Text>
+                  </View>
                 </View>
+                <TextInput
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#DDD',
+                    borderRadius: 6,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    fontSize: 12,
+                    marginTop: 6,
+                    backgroundColor: '#FAFAFA',
+                    color: '#000'
+                  }}
+                  placeholder="Instructions for this item..."
+                  value={item.notes || ''}
+                  onChangeText={(txt) => {
+                    onUpdateCart(cart.map(i => i._id === item._id ? { ...i, notes: txt } : i));
+                  }}
+                />
               </View>
             ))}
           </View>

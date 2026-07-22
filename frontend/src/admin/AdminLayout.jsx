@@ -74,16 +74,22 @@ const AdminLayout = () => {
                         return; // Already printed on local submit
                     }
                     window.__lastPrintedOrderId = order._id;
-                    setTimeout(() => { window.__lastPrintedOrderId = null; }, 5000);
+                    setTimeout(() => {
+                        if (window.__lastPrintedOrderId === order._id) {
+                            window.__lastPrintedOrderId = null;
+                        }
+                    }, 60000);
 
-                    const tableStr = order.tableId?.name || (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : '') || (order.tableIds?.length ? order.tableIds.map(t => t.name || `Table ${t.tableNumber || t}`).join(', ') : order.tableNumber || 'Takeaway');
+                    const tableStr = order.tables?.length 
+                        ? order.tables.map(t => t.name || `Table ${t.tableNumber || t}`).join(', ')
+                        : order.tableNumber || 'Takeaway';
                     const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
                     const kotObj = {
                         kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,
                         orderNumber: order.orderNumber,
                         tableName: tableStr || 'Takeaway',
                         staffName: order.placedBy?.name || order.user?.name || 'Staff',
-                        items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity })),
+                        items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity, notes: i.notes || '' })),
                         notes: order.specialInstructions,
                         timestamp: order.createdAt || new Date()
                     };
@@ -302,9 +308,16 @@ const AdminLayout = () => {
                         </div>
 
                         {layoutKOT.items.map((item, idx) => (
-                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '600', marginBottom: '6px' }}>
-                                <span>{item.name}</span>
-                                <strong>x{item.quantity}</strong>
+                            <div key={idx} style={{ marginBottom: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '600' }}>
+                                    <span>{item.name}</span>
+                                    <strong>x{item.quantity}</strong>
+                                </div>
+                                {item.notes && (
+                                    <div style={{ fontSize: '12px', color: '#DC2626', marginLeft: '10px', fontStyle: 'italic', fontWeight: 'bold' }}>
+                                        ↳ Note: {item.notes}
+                                    </div>
+                                )}
                             </div>
                         ))}
 

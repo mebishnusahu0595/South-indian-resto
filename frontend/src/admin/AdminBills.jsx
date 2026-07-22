@@ -759,7 +759,7 @@ const AdminBills = () => {
                             </div>
                             <div className="bill-info-row">
                                 <span>Time: {new Date(createdBill.createdAt).toLocaleTimeString()}</span>
-                                {createdBill.order?.tableNumber && <span>Table: {createdBill.order.tableNumber}</span>}
+                                <span>Table: {createdBill.order?.tableNumber || createdBill.order?.table?.tableNumber || 'Takeaway'}</span>
                             </div>
                             <div className="bill-info-row">
                                 <span>Cust: {createdBill.order?.user?.name || 'Walk-in'}</span>
@@ -780,10 +780,17 @@ const AdminBills = () => {
 
                         <div className="bill-items">
                             {createdBill.order?.items?.map((item, index) => (
-                                <div key={index} className="bill-item">
-                                    <span>{item.name || item.menuItem?.name || 'Item'}</span>
-                                    <span className="qty" style={{ textAlign: 'center' }}>{item.quantity}</span>
-                                    <span className="total" style={{ textAlign: 'right' }}>₹{((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                                <div key={index} style={{ marginBottom: '4px' }}>
+                                    <div className="bill-item">
+                                        <span>{item.name || item.menuItem?.name || 'Item'}</span>
+                                        <span className="qty" style={{ textAlign: 'center' }}>{item.quantity}</span>
+                                        <span className="total" style={{ textAlign: 'right' }}>₹{((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                                    </div>
+                                    {item.notes && (
+                                        <div style={{ fontSize: '0.75rem', color: '#666', marginLeft: '8px', fontStyle: 'italic', textAlign: 'left' }}>
+                                            ↳ Note: {item.notes}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>

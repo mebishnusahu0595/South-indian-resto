@@ -176,6 +176,10 @@ const AdminCreateOrder = () => {
         setCart(prev => prev.filter(i => i._id !== itemId));
     };
 
+    const updateItemNotes = (itemId, notes) => {
+        setCart(prev => prev.map(i => i._id === itemId ? { ...i, notes } : i));
+    };
+
     // Calculate totals (simple client-side preview; backend recalculates securely)
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     
@@ -212,7 +216,8 @@ const AdminCreateOrder = () => {
             const orderData = {
                 items: cart.map(item => ({
                     menuItem: item._id,
-                    quantity: item.quantity
+                    quantity: item.quantity,
+                    notes: item.notes || ''
                 })),
                 tableIds: selectedTableIds,
                 specialInstructions,
@@ -240,14 +245,18 @@ const AdminCreateOrder = () => {
                 orderNumber: createdOrder.orderNumber,
                 tableName: tableNames || 'Takeaway',
                 staffName: user?.name || 'Admin',
-                items: cart.map(i => ({ name: i.name, quantity: i.quantity })),
+                items: cart.map(i => ({ name: i.name, quantity: i.quantity, notes: i.notes || '' })),
                 notes: specialInstructions,
                 timestamp: new Date()
             };
 
             // Set global deduplication flag so socket listener in AdminLayout won't double print
             window.__lastPrintedOrderId = createdOrder._id;
-            setTimeout(() => { window.__lastPrintedOrderId = null; }, 5000);
+            setTimeout(() => {
+                if (window.__lastPrintedOrderId === createdOrder._id) {
+                    window.__lastPrintedOrderId = null;
+                }
+            }, 60000);
 
             // Set KOT modal state & trigger print
             setCreatedKOT(kotObj);
@@ -571,22 +580,31 @@ const AdminCreateOrder = () => {
                     ) : (
                         <div className="basket-items">
                             {cart.map(item => (
-                                <div key={item._id} className="basket-item">
-                                    <div className="item-details">
-                                        <span className="item-name">{item.name}</span>
-                                        <span className="item-price">₹{item.price} each</span>
-                                    </div>
-                                    <div className="item-controls">
-                                        <div className="qty-selector">
-                                            <button onClick={() => updateQuantity(item._id, item.quantity - 1)}>-</button>
-                                            <span>{item.quantity}</span>
-                                            <button onClick={() => updateQuantity(item._id, item.quantity + 1)}>+</button>
+                                <div key={item._id} className="basket-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '6px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                        <div className="item-details">
+                                            <span className="item-name">{item.name}</span>
+                                            <span className="item-price">₹{item.price} each</span>
                                         </div>
-                                        <span className="item-total">₹{item.price * item.quantity}</span>
-                                        <button className="delete-item-btn" onClick={() => removeItem(item._id)}>
-                                            <FiTrash2 />
-                                        </button>
+                                        <div className="item-controls">
+                                            <div className="qty-selector">
+                                                <button onClick={() => updateQuantity(item._id, item.quantity - 1)}>-</button>
+                                                <span>{item.quantity}</span>
+                                                <button onClick={() => updateQuantity(item._id, item.quantity + 1)}>+</button>
+                                            </div>
+                                            <span className="item-total">₹{item.price * item.quantity}</span>
+                                            <button className="delete-item-btn" onClick={() => removeItem(item._id)}>
+                                                <FiTrash2 />
+                                            </button>
+                                        </div>
                                     </div>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Item-specific notes (e.g. no ice, extra hot)..." 
+                                        value={item.notes || ''} 
+                                        onChange={(e) => updateItemNotes(item._id, e.target.value)}
+                                        style={{ width: '100%', padding: '6px 10px', border: '2px solid #111', borderRadius: '6px', fontSize: '0.8rem', background: '#FAFAFA' }}
+                                    />
                                 </div>
                             ))}
                         </div>
@@ -931,9 +949,16 @@ const AdminCreateOrder = () => {
                         </div>
 
                         {createdKOT.items.map((item, idx) => (
-                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '600', marginBottom: '6px' }}>
-                                <span>{item.name}</span>
-                                <strong>x{item.quantity}</strong>
+                            <div key={idx} style={{ marginBottom: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '600' }}>
+                                    <span>{item.name}</span>
+                                    <strong>x{item.quantity}</strong>
+                                </div>
+                                {item.notes && (
+                                    <div style={{ fontSize: '12px', color: '#DC2626', marginLeft: '10px', fontStyle: 'italic', fontWeight: 'bold' }}>
+                                        ↳ Note: {item.notes}
+                                    </div>
+                                )}
                             </div>
                         ))}
 

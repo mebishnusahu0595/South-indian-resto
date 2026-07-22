@@ -423,7 +423,7 @@ router.post('/', protect, async (req, res) => {
         }
 
         const order = new Order({
-            orderNumber: generateOrderNumber(),
+            orderNumber: await generateOrderNumber(),
             user: orderUser,
             items: orderItems,
             subtotal,
@@ -467,6 +467,7 @@ router.post('/', protect, async (req, res) => {
         const populatedOrder = await Order.findById(order._id)
             .populate('user', 'phone name')
             .populate('placedBy', 'name')
+            .populate('tables', 'tableNumber name section')
             .populate('items.menuItem', 'name image');
 
         // Emit socket event for real-time update
@@ -750,6 +751,7 @@ router.put('/:id/status', protect, async (req, res) => {
         const populatedOrder = await Order.findById(order._id)
             .populate('user', 'phone name')
             .populate('placedBy', 'name')
+            .populate('tables', 'tableNumber name section')
             .populate('items.menuItem', 'name image');
 
         // Emit socket event for real-time update

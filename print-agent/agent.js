@@ -103,6 +103,9 @@ async function printKOTToInterface(order, printerInterface, printerLabel) {
         { text: itemName, align: 'LEFT', width: 0.75 },
         { text: `x${item.quantity}`, align: 'RIGHT', width: 0.25 }
       ]);
+      if (item.notes) {
+        printer.println(`  ↳ Note: ${item.notes}`);
+      }
     });
   }
 

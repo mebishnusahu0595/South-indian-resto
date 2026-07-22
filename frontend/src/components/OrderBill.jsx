@@ -65,6 +65,7 @@ const OrderBill = ({ order, orders, onCancel }) => {
     const finalItems = Object.values(consolidatedItems);
 
     const mainOrder = ordersList[0];
+    const tableNumbers = Array.from(new Set(ordersList.map(o => o.tableNumber || o.table?.tableNumber).filter(Boolean))).join(', ');
 
     return (
         <div className="bill-modal-overlay" onClick={onCancel}>
@@ -84,7 +85,7 @@ const OrderBill = ({ order, orders, onCancel }) => {
                     </div>
                     <div className="bill-info-row">
                         <span>Time: {new Date(mainOrder.createdAt).toLocaleTimeString()}</span>
-                        {mainOrder.tableNumber && <span>Table: {mainOrder.tableNumber}</span>}
+                        <span>Table: {tableNumbers || 'Takeaway'}</span>
                     </div>
                     <div className="bill-info-row">
                         <span>Cust: {mainOrder.user?.name || 'Walk-in'}</span>
@@ -102,10 +103,17 @@ const OrderBill = ({ order, orders, onCancel }) => {
 
                 <div className="bill-items">
                     {finalItems.map((item, index) => (
-                        <div key={index} className="bill-item">
-                            <span>{item.name || item.menuItem?.name || 'Item'}</span>
-                            <span className="qty">{item.quantity}</span>
-                            <span className="total">₹{((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                        <div key={index} style={{ marginBottom: '4px' }}>
+                            <div className="bill-item">
+                                <span>{item.name || item.menuItem?.name || 'Item'}</span>
+                                <span className="qty">{item.quantity}</span>
+                                <span className="total">₹{((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                            </div>
+                            {item.notes && (
+                                <div style={{ fontSize: '0.75rem', color: '#666', marginLeft: '8px', fontStyle: 'italic', textAlign: 'left' }}>
+                                    ↳ Note: {item.notes}
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>

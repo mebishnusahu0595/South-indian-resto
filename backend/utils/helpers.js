@@ -3,11 +3,26 @@ const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// Generate order number
-const generateOrderNumber = () => {
-    const timestamp = Date.now().toString(36).toUpperCase();
-    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `CD-${timestamp}-${random}`;
+// Generate order number (sequential starting at 1001)
+const generateOrderNumber = async () => {
+    const Order = require('../models/Order');
+    const lastOrder = await Order.findOne({}, { orderNumber: 1 }).sort({ createdAt: -1 });
+    let nextNum = 1001;
+    if (lastOrder && lastOrder.orderNumber) {
+        const parsed = parseInt(lastOrder.orderNumber.replace(/^CD-/, ''), 10);
+        if (!isNaN(parsed)) {
+            nextNum = parsed + 1;
+        } else {
+            const count = await Order.countDocuments();
+            nextNum = 1000 + count + 1;
+        }
+    }
+    let exists = await Order.findOne({ orderNumber: String(nextNum) });
+    while (exists) {
+        nextNum++;
+        exists = await Order.findOne({ orderNumber: String(nextNum) });
+    }
+    return String(nextNum);
 };
 
 // Calculate discount
