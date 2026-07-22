@@ -533,12 +533,14 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             const newItem = newMap.get(mId);
             if (!newItem) {
                 cancelledItems.push({
+                    menuItem: mId,
                     name: oldItem.name,
                     quantity: oldItem.quantity,
                     price: oldItem.price
                 });
             } else if (newItem.quantity < oldItem.quantity) {
                 cancelledItems.push({
+                    menuItem: mId,
                     name: oldItem.name,
                     quantity: oldItem.quantity - newItem.quantity,
                     price: oldItem.price
@@ -550,12 +552,14 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             const oldItem = oldMap.get(mId);
             if (!oldItem) {
                 addedItems.push({
+                    menuItem: mId,
                     name: newItem.name,
                     quantity: newItem.quantity,
                     price: newItem.price
                 });
             } else if (newItem.quantity > oldItem.quantity) {
                 addedItems.push({
+                    menuItem: mId,
                     name: newItem.name,
                     quantity: newItem.quantity - oldItem.quantity,
                     price: newItem.price
