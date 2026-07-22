@@ -33,6 +33,11 @@ const AdminBills = () => {
     const [coupons, setCoupons] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
+    // Payment method edit states (superadmin only)
+    const [editPaymentMethod, setEditPaymentMethod] = useState('pending');
+    const [editSplitCash, setEditSplitCash] = useState('');
+    const [editSplitUpi, setEditSplitUpi] = useState('');
+    const [editSplitCard, setEditSplitCard] = useState('');
 
     // Bulk select state
     const [selectedBillIds, setSelectedBillIds] = useState([]);
@@ -168,6 +173,13 @@ const AdminBills = () => {
         setDiscountInput(bill.discount ? bill.discount.toString() : '');
         setDiscountName(bill.discountName || '');
         setSearchQuery('');
+        // Pre-fill payment method for superadmin
+        const pm = bill.order?.paymentMethod || bill.paymentMethod || 'pending';
+        setEditPaymentMethod(pm);
+        const sp = bill.order?.splitPaymentDetails || bill.splitPaymentDetails || {};
+        setEditSplitCash(sp.cash ? String(sp.cash) : '');
+        setEditSplitUpi(sp.upi ? String(sp.upi) : '');
+        setEditSplitCard(sp.card ? String(sp.card) : '');
         
         try {
             const sug = await getBillerSuggestions();
@@ -322,17 +334,31 @@ const AdminBills = () => {
         e.preventDefault();
         setSaving(true);
         try {
-            const res = await generateBill({
+            const isSuperadmin = user?.role === 'superadmin';
+            const payload = {
                 orderId: activeBill.order?._id || activeBill.order,
                 billerName,
                 discount: parseDiscount(discountInput, activeBill.subtotal),
                 discountName: discountName
-            });
+            };
+            // Superadmin can also set payment method
+            if (isSuperadmin) {
+                payload.paymentMethod = editPaymentMethod || 'pending';
+                if (editPaymentMethod === 'split') {
+                    payload.splitPaymentDetails = {
+                        cash: parseFloat(editSplitCash) || 0,
+                        upi: parseFloat(editSplitUpi) || 0,
+                        card: parseFloat(editSplitCard) || 0
+                    };
+                }
+            }
+            const res = await generateBill(payload);
             localStorage.setItem('lastBillerName', billerName);
             setCreatedBill(res.data);
             fetchBills();
         } catch (err) {
-            alert('Failed to update and issue bill');
+            const msg = err?.response?.data?.message || 'Failed to update and issue bill';
+            alert(msg);
         } finally {
             setSaving(false);
         }
@@ -721,15 +747,73 @@ const AdminBills = () => {
                                 </div>
                             </div>
 
+                            {/* Payment Method — Superadmin Only */}
+                            {user?.role === 'superadmin' && (
+                                <div style={{ background: '#FEF3C7', border: '2px solid #F59E0B', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        🔐 Superadmin: Edit Payment Method
+                                    </div>
+                                    <select
+                                        value={editPaymentMethod}
+                                        onChange={(e) => setEditPaymentMethod(e.target.value)}
+                                        style={{ width: '100%', padding: '8px', border: '2px solid #F59E0B', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.9rem', background: '#FFFBEB', cursor: 'pointer' }}
+                                    >
+                                        <option value="pending">⏳ Pending (Unpaid)</option>
+                                        <option value="cash">💵 Cash</option>
+                                        <option value="upi">📱 UPI / Online</option>
+                                        <option value="card">💳 Card</option>
+                                        <option value="split">🔀 Split Payment</option>
+                                    </select>
+                                    {editPaymentMethod === 'split' && (() => {
+                                        const grandTotal = ((activeBill.subtotal - parseDiscount(discountInput, activeBill.subtotal)) * 1.05);
+                                        const sumSplit = (parseFloat(editSplitCash) || 0) + (parseFloat(editSplitUpi) || 0) + (parseFloat(editSplitCard) || 0);
+                                        const diff = Math.abs(sumSplit - grandTotal);
+                                        return (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <div style={{ flex: 1 }}>
+                                                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400E', display: 'block', marginBottom: '2px' }}>💵 Cash</label>
+                                                        <input type="number" min="0" step="0.01" placeholder="0.00" value={editSplitCash} onChange={e => setEditSplitCash(e.target.value)} style={{ width: '100%', padding: '6px 8px', border: '1px solid #F59E0B', borderRadius: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                                                    </div>
+                                                    <div style={{ flex: 1 }}>
+                                                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400E', display: 'block', marginBottom: '2px' }}>📱 UPI</label>
+                                                        <input type="number" min="0" step="0.01" placeholder="0.00" value={editSplitUpi} onChange={e => setEditSplitUpi(e.target.value)} style={{ width: '100%', padding: '6px 8px', border: '1px solid #F59E0B', borderRadius: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                                                    </div>
+                                                    <div style={{ flex: 1 }}>
+                                                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400E', display: 'block', marginBottom: '2px' }}>💳 Card</label>
+                                                        <input type="number" min="0" step="0.01" placeholder="0.00" value={editSplitCard} onChange={e => setEditSplitCard(e.target.value)} style={{ width: '100%', padding: '6px 8px', border: '1px solid #F59E0B', borderRadius: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600, color: diff > 1 ? '#DC2626' : '#059669', padding: '4px 6px', background: diff > 1 ? '#FEE2E2' : '#D1FAE5', borderRadius: '4px' }}>
+                                                    <span>Split Total: ₹{sumSplit.toFixed(2)}</span>
+                                                    <span>{diff > 1 ? `⚠️ Mismatch: ₹${diff.toFixed(2)}` : '✅ Matches Grand Total'}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                    {editPaymentMethod !== 'pending' && editPaymentMethod !== 'split' && (
+                                        <div style={{ fontSize: '0.78rem', color: '#78350F', background: '#FEF9C3', padding: '5px 8px', borderRadius: '4px' }}>
+                                            ⚠️ Setting to <strong>{editPaymentMethod.toUpperCase()}</strong> will mark order as <strong>PAID</strong> and free the table.
+                                        </div>
+                                    )}
+                                    {editPaymentMethod === 'pending' && (
+                                        <div style={{ fontSize: '0.78rem', color: '#1D4ED8', background: '#DBEAFE', padding: '5px 8px', borderRadius: '4px' }}>
+                                            ℹ️ Order will remain as <strong>bill_generated</strong> (Unpaid).
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <button
                                 type="submit"
-                                disabled={saving || (activeBill.order && activeBill.order.items.length === 0)}
+                                disabled={saving || (activeBill.order && activeBill.order.items.length === 0) || (editPaymentMethod === 'split' && user?.role === 'superadmin' && Math.abs(((parseFloat(editSplitCash)||0)+(parseFloat(editSplitUpi)||0)+(parseFloat(editSplitCard)||0)) - ((activeBill.subtotal - parseDiscount(discountInput, activeBill.subtotal)) * 1.05)) > 1)}
                                 className="btn btn-primary btn-full sketch-border sketch-shadow"
                                 style={{ padding: '8px', fontSize: '0.95rem' }}
                             >
-                                {saving ? 'Re-issuing...' : 'Confirm & Print Bill'}
+                                {saving ? 'Saving...' : 'Confirm & Re-issue Bill'}
                             </button>
                         </form>
+
                     </div>
                 </div>
             )}

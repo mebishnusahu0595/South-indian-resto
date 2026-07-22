@@ -140,7 +140,7 @@ router.post('/generate', protect, admin, async (req, res) => {
         const { paymentMethod, splitPaymentDetails } = req.body;
         const billTotal = taxableAmount + tax;
 
-        if (paymentMethod) {
+        if (paymentMethod && paymentMethod !== 'pending') {
             if (paymentMethod === 'split' && splitPaymentDetails) {
                 const sumSplit = (parseFloat(splitPaymentDetails.cash) || 0) +
                                  (parseFloat(splitPaymentDetails.upi) || 0) +
@@ -166,6 +166,8 @@ router.post('/generate', protect, admin, async (req, res) => {
             }
         } else {
             primaryOrder.status = 'bill_generated';
+            primaryOrder.paymentMethod = 'pending';
+            primaryOrder.amountPaid = 0;
         }
 
         await primaryOrder.save();
@@ -178,10 +180,8 @@ router.post('/generate', protect, admin, async (req, res) => {
             bill.discountName = discountName || '';
             bill.tax = tax;
             bill.total = billTotal;
-            if (paymentMethod) {
-                bill.paymentMethod = paymentMethod;
-                bill.splitPaymentDetails = splitPaymentDetails || { cash: 0, upi: 0, card: 0 };
-            }
+            bill.paymentMethod = paymentMethod || 'pending';
+            bill.splitPaymentDetails = splitPaymentDetails || { cash: 0, upi: 0, card: 0 };
             await bill.save();
         } else {
             const count = await Bill.countDocuments();
