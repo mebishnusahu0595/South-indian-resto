@@ -258,11 +258,8 @@ const AdminCreateOrder = () => {
                 }
             }, 60000);
 
-            // Set KOT modal state & trigger print
+            // Set KOT modal preview state
             setCreatedKOT(kotObj);
-            setTimeout(() => {
-                try { window.print(); } catch (_) {}
-            }, 300);
 
             // Reset cart & inputs
             setCart([]);

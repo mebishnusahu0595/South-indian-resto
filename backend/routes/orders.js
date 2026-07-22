@@ -512,7 +512,8 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         for (const item of updatedItems) {
             if (item.quantity <= 0) continue;
 
-            const menuItem = await MenuItem.findById(item.menuItemId);
+            const mIdToFind = item.menuItem?._id || item.menuItem || item.menuItemId;
+            const menuItem = await MenuItem.findById(mIdToFind);
             if (!menuItem) continue;
 
             const mId = menuItem._id.toString();
@@ -1006,6 +1007,10 @@ router.put('/:id/items', protect, async (req, res) => {
 // @access  Private/Admin
 router.delete('/:id', protect, superadmin, async (req, res) => {
     try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ message: 'Invalid Order ID' });
+        }
+
         const order = await Order.findById(req.params.id);
         if (!order) {
             return res.status(404).json({ message: 'Order not found' });

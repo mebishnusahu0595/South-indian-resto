@@ -654,7 +654,6 @@ const AdminOrders = () => {
                     notes: addedKot.notes,
                     timestamp: new Date()
                 });
-                setTimeout(() => { try { window.print(); } catch (_) {} }, 400);
             } else if (cancelledKot) {
                 setSelectedKOTForPrint({
                     kotNumber: cancelledKot.kotNumber,
@@ -665,7 +664,6 @@ const AdminOrders = () => {
                     notes: cancelledKot.notes,
                     timestamp: new Date()
                 });
-                setTimeout(() => { try { window.print(); } catch (_) {} }, 400);
             }
         } catch (err) {
             alert(err.response?.data?.message || 'Failed to modify order items');

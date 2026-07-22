@@ -94,9 +94,6 @@ const AdminLayout = () => {
                         timestamp: order.createdAt || new Date()
                     };
                     setLayoutKOT(kotObj);
-                    setTimeout(() => {
-                        try { window.print(); } catch (_) {}
-                    }, 400);
                 }
             });
 
