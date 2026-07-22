@@ -768,6 +768,74 @@ router.put('/:id/status', protect, async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
+// @route   PUT /api/orders/:id/move-table
+// @desc    Change table/seat for active order
+// @access  Private
+router.put('/:id/move-table', protect, async (req, res) => {
+    try {
+        const { newTableIds } = req.body;
+        if (!newTableIds || !Array.isArray(newTableIds) || newTableIds.length === 0) {
+            return res.status(400).json({ message: 'Please select a new table' });
+        }
+
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        if (order.status === 'paid' || order.status === 'cancelled') {
+            return res.status(400).json({ message: `Cannot change table for a ${order.status} order` });
+        }
+
+        const newTables = await Table.find({ _id: { $in: newTableIds } });
+        if (newTables.length !== newTableIds.length) {
+            return res.status(400).json({ message: 'One or more selected new tables are invalid' });
+        }
+
+        // Check if any new table is occupied
+        const occupied = newTables.find(t => t.isOccupied || t.status === 'occupied');
+        if (occupied) {
+            return res.status(400).json({ message: `Table ${occupied.tableNumber} is already occupied. Please select an unoccupied table.` });
+        }
+
+        const io = req.app.get('io');
+
+        // Free old tables
+        await freeTablesForOrder(order, io);
+
+        // Occupy new tables
+        for (const t of newTables) {
+            t.status = 'occupied';
+            t.isOccupied = true;
+            t.currentOrder = order._id;
+            await t.save();
+            if (io) {
+                io.emit('table-occupied', t);
+                io.emit('table-updated', t);
+            }
+        }
+
+        order.table = newTables[0]._id;
+        order.tables = newTables.map(t => t._id);
+        order.tableNumber = newTables.map(t => t.tableNumber).join(', ');
+        await order.save();
+
+        const populatedOrder = await Order.findById(order._id)
+            .populate('user', 'phone name')
+            .populate('placedBy', 'name')
+            .populate('tables', 'tableNumber name section')
+            .populate('items.menuItem', 'name image');
+
+        if (io) {
+            io.emit('order-updated', populatedOrder);
+        }
+
+        res.json(populatedOrder);
+    } catch (error) {
+        console.error('Error moving table:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
 
 // @route   PUT /api/orders/:id/request-bill
 // @desc    Request bill for order

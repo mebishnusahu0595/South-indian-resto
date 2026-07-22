@@ -3,7 +3,7 @@ import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, F
 import { 
     getActiveOrders, updateOrderStatus, updatePayment, deleteOrder, 
     getAllMenuItems, getCategories, getBillerSuggestions, generateBill, updateOrderItems,
-    getCoupons, getMaxDiscount, getKOTs
+    getCoupons, getMaxDiscount, getKOTs, getTables, moveOrderTable
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import OrderBill from '../components/OrderBill';
@@ -448,16 +448,12 @@ const AdminOrders = () => {
 
     const handleOpenPaymentBiller = (orderId, method, amount) => {
         const order = orders.find(o => o._id === orderId);
-        const customInput = paymentAmount[orderId];
+        const orderTotal = order ? (order.total || order.items.reduce((s, i) => s + (i.price * i.quantity), 0) * 1.05) : amount;
         let payAmount = amount;
         let shortageDiscount = 0;
 
-        if (customInput && parseFloat(customInput) > 0) {
-            const entered = parseFloat(customInput);
-            if (entered < amount) {
-                payAmount = entered;
-                shortageDiscount = amount - entered;
-            }
+        if (payAmount < orderTotal - 0.01) {
+            shortageDiscount = Math.round((orderTotal - payAmount) * 100) / 100;
         }
 
         setPaymentBillerOrderId(orderId);
@@ -598,6 +594,57 @@ const AdminOrders = () => {
         }
     };
 
+    // Move Table state
+    const [allTables, setAllTables] = useState([]);
+    const [moveSectionFilter, setMoveSectionFilter] = useState('All');
+    const [selectedMoveTableId, setSelectedMoveTableId] = useState('');
+    const [isMovingTable, setIsMovingTable] = useState(false);
+
+    const fetchTables = async () => {
+        try {
+            const res = await getTables();
+            setAllTables(res.data || []);
+        } catch (e) {
+            console.error('Error fetching tables:', e);
+        }
+    };
+
+    useEffect(() => {
+        fetchTables();
+    }, []);
+
+    useEffect(() => {
+        if (socket) {
+            const handleTableSync = () => fetchTables();
+            socket.on('table-updated', handleTableSync);
+            socket.on('table-freed', handleTableSync);
+            socket.on('table-occupied', handleTableSync);
+            return () => {
+                socket.off('table-updated', handleTableSync);
+                socket.off('table-freed', handleTableSync);
+                socket.off('table-occupied', handleTableSync);
+            };
+        }
+    }, [socket]);
+
+    const handleMoveTableSubmit = async () => {
+        if (!editingOrder || !selectedMoveTableId) return;
+        setIsMovingTable(true);
+        try {
+            const res = await moveOrderTable(editingOrder._id, [selectedMoveTableId]);
+            alert(`Customer moved to Table ${res.data.tableNumber} successfully!`);
+            setEditingOrder(res.data);
+            setOrders(prev => prev.map(o => o._id === res.data._id ? res.data : o));
+            setPrepareOrders(prev => prev.map(o => o._id === res.data._id ? res.data : o));
+            setSelectedMoveTableId('');
+            fetchTables();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to change table');
+        } finally {
+            setIsMovingTable(false);
+        }
+    };
+
     const handleOpenModifyOrder = async (order) => {
         setEditingOrder(order);
         const initialList = (order.items || []).map(i => ({
@@ -610,6 +657,9 @@ const AdminOrders = () => {
         setModifyNote('');
         setModifySearchQuery('');
         setModifyCategoryFilter('');
+        setSelectedMoveTableId('');
+        setMoveSectionFilter('All');
+        fetchTables();
         setShowModifyModal(true);
 
         try {
@@ -1753,6 +1803,109 @@ const AdminOrders = () => {
                                     </>
                                 );
                             })()}
+
+                            {/* Change Table / Move Seat Section */}
+                            <div style={{ background: '#FFFBEB', border: '2px solid #F59E0B', borderRadius: '8px', padding: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <label style={{ fontWeight: 'bold', fontSize: '0.88rem', color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        🪑 Change Customer Table / Seat
+                                    </label>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#B45309' }}>
+                                        Current: {editingOrder.tableNumber ? `Table ${editingOrder.tableNumber}` : 'Takeaway'}
+                                    </span>
+                                </div>
+
+                                {(() => {
+                                    const sections = ['All', ...new Set(allTables.map(t => t.section || 'Main Hall').filter(Boolean))];
+                                    const filteredTablesForMove = allTables.filter(t => moveSectionFilter === 'All' || (t.section || 'Main Hall') === moveSectionFilter);
+                                    
+                                    return (
+                                        <>
+                                            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px', marginBottom: '8px' }}>
+                                                {sections.map(sec => (
+                                                    <button
+                                                        key={sec}
+                                                        type="button"
+                                                        onClick={() => setMoveSectionFilter(sec)}
+                                                        style={{
+                                                            padding: '4px 10px',
+                                                            fontSize: '0.78rem',
+                                                            fontWeight: 'bold',
+                                                            borderRadius: '16px',
+                                                            border: '1.5px solid #111',
+                                                            background: moveSectionFilter === sec ? '#F59E0B' : '#FFF',
+                                                            color: moveSectionFilter === sec ? '#FFF' : '#111',
+                                                            cursor: 'pointer',
+                                                            whiteSpace: 'nowrap'
+                                                        }}
+                                                    >
+                                                        📍 {sec}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '8px', maxHeight: '130px', overflowY: 'auto' }}>
+                                                {filteredTablesForMove.map(table => {
+                                                    const isOccupied = table.isOccupied || table.status === 'occupied';
+                                                    const isCurrentTable = (editingOrder.tables || []).some(t => (t._id || t) === table._id) || editingOrder.table === table._id;
+                                                    const isSelected = selectedMoveTableId === table._id;
+
+                                                    return (
+                                                        <button
+                                                            key={table._id}
+                                                            type="button"
+                                                            disabled={isOccupied && !isCurrentTable}
+                                                            onClick={() => setSelectedMoveTableId(table._id)}
+                                                            style={{
+                                                                padding: '6px 4px',
+                                                                borderRadius: '6px',
+                                                                border: isSelected ? '2px solid #7C3AED' : isCurrentTable ? '2px solid #3B82F6' : isOccupied ? '1.5px dashed #9CA3AF' : '1.5px solid #10B981',
+                                                                background: isSelected ? '#EDE9FE' : isCurrentTable ? '#DBEAFE' : isOccupied ? '#F3F4F6' : '#ECFDF5',
+                                                                color: isSelected ? '#7C3AED' : isCurrentTable ? '#1D4ED8' : isOccupied ? '#9CA3AF' : '#047857',
+                                                                fontWeight: 'bold',
+                                                                fontSize: '0.82rem',
+                                                                cursor: (isOccupied && !isCurrentTable) ? 'not-allowed' : 'pointer',
+                                                                opacity: (isOccupied && !isCurrentTable) ? 0.55 : 1,
+                                                                display: 'flex',
+                                                                flexDirection: 'column',
+                                                                alignItems: 'center',
+                                                                gap: '2px'
+                                                            }}
+                                                        >
+                                                            <span>T-{table.tableNumber}</span>
+                                                            <span style={{ fontSize: '0.66rem', fontWeight: 'normal' }}>
+                                                                {isCurrentTable ? '(Current)' : isOccupied ? 'Occupied' : 'Free'}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {selectedMoveTableId && (
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isMovingTable}
+                                                        onClick={handleMoveTableSubmit}
+                                                        style={{
+                                                            padding: '6px 14px',
+                                                            fontSize: '0.82rem',
+                                                            fontWeight: 'bold',
+                                                            borderRadius: '6px',
+                                                            background: '#D97706',
+                                                            color: '#FFF',
+                                                            border: '1.5px solid #111',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {isMovingTable ? 'Moving Table...' : '🔄 Confirm Table Change'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </div>
 
                             {/* Note for KOT */}
                             <div>

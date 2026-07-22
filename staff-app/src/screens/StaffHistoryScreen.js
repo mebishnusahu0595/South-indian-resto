@@ -84,6 +84,39 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCatFilter, setSelectedCatFilter] = useState('All');
 
+  const [tablesList, setTablesList] = useState([]);
+  const [selectedMoveSection, setSelectedMoveSection] = useState('All');
+  const [selectedMoveTableId, setSelectedMoveTableId] = useState('');
+  const [movingTable, setMovingTable] = useState(false);
+
+  const fetchTables = async () => {
+    try {
+      const res = await api.get('/tables');
+      setTablesList(res.data || []);
+    } catch (e) {
+      console.log('Error fetching tables in staff app:', e);
+    }
+  };
+
+  const handleMoveTable = async () => {
+    if (!editingOrder || !selectedMoveTableId) return;
+    setMovingTable(true);
+    try {
+      const res = await api.put(`/orders/${editingOrder._id || editingOrder.id}/move-table`, {
+        newTableIds: [selectedMoveTableId]
+      });
+      alert(`Customer moved to Table ${res.data.tableNumber} successfully!`);
+      setEditingOrder(res.data);
+      setSelectedMoveTableId('');
+      fetchTodayOrders();
+      fetchTables();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to move table');
+    } finally {
+      setMovingTable(false);
+    }
+  };
+
   const handleOpenModify = async (order) => {
     setEditingOrder(order);
     const initialList = (order.items || []).map(i => ({
@@ -95,6 +128,9 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
     setModifyItems(initialList);
     setModifyNote('');
     setSearchQuery('');
+    setSelectedMoveTableId('');
+    setSelectedMoveSection('All');
+    fetchTables();
     setShowModifyModal(true);
 
     try {
@@ -360,6 +396,96 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                 })
               }
             </ScrollView>
+
+            {/* Change Table / Move Seat Section */}
+            <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1.5, borderColor: '#F59E0B', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#92400E' }}>🪑 Change Table / Move Seat</Text>
+                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#B45309' }}>
+                  Current: {editingOrder.tableNumber ? `Table ${editingOrder.tableNumber}` : 'Takeaway'}
+                </Text>
+              </View>
+
+              {/* Section Tabs */}
+              {(() => {
+                const sections = ['All', ...new Set(tablesList.map(t => t.section || 'Main Hall').filter(Boolean))];
+                const filteredTables = tablesList.filter(t => selectedMoveSection === 'All' || (t.section || 'Main Hall') === selectedMoveSection);
+
+                return (
+                  <View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6, maxHeight: 34 }}>
+                      {sections.map(sec => {
+                        const isActive = selectedMoveSection === sec;
+                        return (
+                          <TouchableOpacity
+                            key={sec}
+                            onPress={() => setSelectedMoveSection(sec)}
+                            style={{
+                              paddingVertical: 4,
+                              paddingHorizontal: 10,
+                              borderRadius: 12,
+                              marginRight: 6,
+                              backgroundColor: isActive ? '#F59E0B' : '#FFF',
+                              borderWidth: 1,
+                              borderColor: isActive ? '#D97706' : '#D1D5DB'
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: isActive ? '#FFF' : '#374151' }}>📍 {sec}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
+                    {/* Unoccupied Available Tables List */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 52 }}>
+                      {filteredTables.map(t => {
+                        const isOccupied = t.isOccupied || t.status === 'occupied';
+                        const isCurrentTable = (editingOrder.tables || []).some(tb => (tb._id || tb) === t._id) || editingOrder.table === t._id;
+                        const isSelected = selectedMoveTableId === t._id;
+
+                        return (
+                          <TouchableOpacity
+                            key={t._id}
+                            disabled={isOccupied && !isCurrentTable}
+                            onPress={() => setSelectedMoveTableId(t._id)}
+                            style={{
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                              borderRadius: 6,
+                              marginRight: 6,
+                              borderWidth: 1.5,
+                              borderColor: isSelected ? '#7C3AED' : isCurrentTable ? '#3B82F6' : isOccupied ? '#9CA3AF' : '#10B981',
+                              backgroundColor: isSelected ? '#EDE9FE' : isCurrentTable ? '#DBEAFE' : isOccupied ? '#F3F4F6' : '#ECFDF5',
+                              opacity: (isOccupied && !isCurrentTable) ? 0.5 : 1,
+                              alignItems: 'center'
+                            }}
+                          >
+                            <Text style={{ fontWeight: 'bold', fontSize: 12, color: isSelected ? '#7C3AED' : isCurrentTable ? '#1D4ED8' : isOccupied ? '#6B7280' : '#047857' }}>
+                              T-{t.tableNumber}
+                            </Text>
+                            <Text style={{ fontSize: 9, color: isOccupied ? '#9CA3AF' : '#059669' }}>
+                              {isCurrentTable ? '(Current)' : isOccupied ? 'Occupied' : 'Free'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
+                    {selectedMoveTableId ? (
+                      <TouchableOpacity
+                        disabled={movingTable}
+                        onPress={handleMoveTable}
+                        style={{ marginTop: 8, backgroundColor: '#D97706', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center' }}
+                      >
+                        <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 12 }}>
+                          {movingTable ? 'Moving...' : '🔄 Confirm Table Change'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                );
+              })()}
+            </View>
 
             <TextInput
               style={{ borderWidth: 1.5, borderColor: '#111', borderRadius: 6, padding: 8, fontSize: 13, marginBottom: 12, backgroundColor: '#FFF' }}

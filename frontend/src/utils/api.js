@@ -45,6 +45,7 @@ export const requestBill = (id) => axios.put(`${API_URL}/orders/${id}/request-bi
 export const updatePayment = (id, paymentMethod, amountPaid) => axios.put(`${API_URL}/orders/${id}/payment`, { paymentMethod, amountPaid });
 export const deleteOrder = (id) => axios.delete(`${API_URL}/orders/${id}`);
 export const updateOrderItems = (id, items) => axios.put(`${API_URL}/orders/${id}/items`, { items });
+export const moveOrderTable = (id, newTableIds) => axios.put(`${API_URL}/orders/${id}/move-table`, { newTableIds });
 export const getKOTs = (date) => axios.get(`${API_URL}/orders/kots`, { params: { date } });
 
 // Coupons
