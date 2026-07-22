@@ -147,6 +147,11 @@ const OrderBill = ({ order, orders, onCancel }) => {
 
                 <div className="bill-footer">
                     {mainOrder.billerName && <p style={{ fontWeight: '600', margin: '4px 0', borderTop: '1px dotted #DDD', paddingTop: '4px' }}>Biller: {mainOrder.billerName}</p>}
+                    {mainOrder.status === 'cancelled' && (
+                        <p style={{ color: '#EF4444', fontWeight: 'bold', margin: '4px 0', borderTop: '1px dotted #DDD', paddingTop: '4px' }}>
+                            Cancelled By: {mainOrder.cancelledByName || 'Staff'}
+                        </p>
+                    )}
                     <p>Payment: {mainOrder.paymentMethod?.toUpperCase() || 'NOT PAID'}</p>
                     <p>Thank you for visiting!</p>
                     <p>Visit again soon!</p>

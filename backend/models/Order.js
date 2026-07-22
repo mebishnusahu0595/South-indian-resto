@@ -119,6 +119,15 @@ const orderSchema = new mongoose.Schema({
         ref: 'Employee',
         default: null
     },
+    cancelledBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Employee',
+        default: null
+    },
+    cancelledByName: {
+        type: String,
+        default: ''
+    },
     billerName: {
         type: String,
         default: ''

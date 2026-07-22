@@ -681,14 +681,19 @@ const freeTablesForOrder = async (order, io) => {
 
 // @route   PUT /api/orders/:id/status
 // @desc    Update order status
-// @access  Private/Admin
-router.put('/:id/status', protect, admin, async (req, res) => {
+// @access  Private (Staff can cancel/request bill, Admin/Superadmin can set any status)
+router.put('/:id/status', protect, async (req, res) => {
     try {
         const { status } = req.body;
 
         const validStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'served', 'bill_requested', 'bill_generated', 'paid', 'cancelled'];
         if (!validStatuses.includes(status)) {
             return res.status(400).json({ message: 'Invalid status' });
+        }
+
+        const isAdmin = req.user && (req.user.role === 'admin' || req.user.role === 'superadmin');
+        if (!isAdmin && status !== 'cancelled' && status !== 'bill_requested') {
+            return res.status(403).json({ message: 'Not authorized to update status' });
         }
 
         const order = await Order.findById(req.params.id);
@@ -699,6 +704,38 @@ router.put('/:id/status', protect, admin, async (req, res) => {
         // Block edits on settled orders unless superadmin
         if (order.status === 'paid' && req.user.role !== 'superadmin') {
             return res.status(403).json({ message: 'This order has been settled. Only superadmin can modify settled orders.' });
+        }
+
+        if (status === 'cancelled') {
+            order.cancelledBy = req.user._id;
+            order.cancelledByName = req.user.name;
+
+            // Generate full CANCEL KOT ticket
+            const cleanOrdNo = String(order.orderNumber).replace(/^CD-/, '');
+            const kotCancelNum = `CANCEL-${cleanOrdNo}-${Date.now().toString().slice(-3)}`;
+            const cancelledKotObj = {
+                kotNumber: kotCancelNum,
+                timestamp: new Date(),
+                items: order.items.map(item => ({
+                    menuItem: item.menuItem,
+                    name: item.name,
+                    quantity: item.quantity,
+                    price: item.price
+                })),
+                notes: `[CANCEL ORDER] Cancelled by ${req.user.name || 'Staff'}`
+            };
+            order.kotHistory.push(cancelledKotObj);
+
+            // Emit to print agent
+            const io = req.app.get('io');
+            if (io) {
+                io.emit('new-order', {
+                    ...order.toObject(),
+                    kotTicket: cancelledKotObj.kotNumber,
+                    items: cancelledKotObj.items,
+                    specialInstructions: cancelledKotObj.notes
+                });
+            }
         }
 
         order.status = status;
