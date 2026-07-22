@@ -372,9 +372,14 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
               <TouchableOpacity
                 style={{ backgroundColor: '#FEE2E2', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: '#EF4444' }}
                 onPress={() => {
-                  if (confirm('Cancel this ENTIRE order?')) {
-                    handleCancelEntireOrder(editingOrder);
-                  }
+                  Alert.alert(
+                    'Cancel Order',
+                    'Are you sure you want to cancel this entire order?',
+                    [
+                      { text: 'No', style: 'cancel' },
+                      { text: 'Yes, Cancel', style: 'destructive', onPress: () => handleCancelEntireOrder(editingOrder) }
+                    ]
+                  );
                 }}
               >
                 <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 12 }}>Cancel Order</Text>
