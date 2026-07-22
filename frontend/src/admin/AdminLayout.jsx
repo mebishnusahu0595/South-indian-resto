@@ -68,33 +68,20 @@ const AdminLayout = () => {
                 playNotificationSound();
                 fetchCounts();
 
-                // Global Auto-Print KOT on desktop counter across ANY admin page
-                if (localStorage.getItem('kea_auto_print_kot') === 'true') {
-                    if (window.__lastPrintedOrderId === order._id) {
-                        return; // Already printed on local submit
-                    }
-                    window.__lastPrintedOrderId = order._id;
-                    setTimeout(() => {
-                        if (window.__lastPrintedOrderId === order._id) {
-                            window.__lastPrintedOrderId = null;
-                        }
-                    }, 60000);
-
-                    const tableStr = order.tables?.length 
-                        ? order.tables.map(t => t.name || `Table ${t.tableNumber || t}`).join(', ')
-                        : order.tableNumber || 'Takeaway';
-                    const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
-                    const kotObj = {
-                        kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,
-                        orderNumber: order.orderNumber,
-                        tableName: tableStr || 'Takeaway',
-                        staffName: order.placedBy?.name || order.user?.name || 'Staff',
-                        items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity, notes: i.notes || '' })),
-                        notes: order.specialInstructions,
-                        timestamp: order.createdAt || new Date()
-                    };
-                    setLayoutKOT(kotObj);
-                }
+                const tableStr = order.tables?.length 
+                    ? order.tables.map(t => t.name || `Table ${t.tableNumber || t}`).join(', ')
+                    : order.tableNumber || 'Takeaway';
+                const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
+                const kotObj = {
+                    kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,
+                    orderNumber: order.orderNumber,
+                    tableName: tableStr || 'Takeaway',
+                    staffName: order.placedBy?.name || order.user?.name || 'Staff',
+                    items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity, notes: i.notes || '' })),
+                    notes: order.specialInstructions,
+                    timestamp: order.createdAt || new Date()
+                };
+                setLayoutKOT(kotObj);
             });
 
             socket.on('bill-requested', (order) => {
