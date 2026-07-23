@@ -179,10 +179,14 @@ const AdminOrders = () => {
                 // If Auto-Print KOT is enabled on desktop counter, trigger KOT print slip queue
                 if (localStorage.getItem('kea_auto_print_kot') === 'true') {
                     const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
+                    const fullTableName = order.tableName
+                        || (order.tables?.length > 0 ? order.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ') : null)
+                        || (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : null)
+                        || (order.tableNumber ? `Table ${order.tableNumber}` : 'Takeaway');
                     const kotData = {
                         kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,
                         orderNumber: order.orderNumber,
-                        tableNumber: order.tableId?.tableNumber || (order.tableIds?.length ? order.tableIds.map(t => t.tableNumber || t).join(', ') : 'Takeaway'),
+                        tableNumber: fullTableName,
                         staffName: order.placedBy?.name || order.user?.name || 'Staff',
                         items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity })),
                         notes: order.specialInstructions,
@@ -2055,7 +2059,7 @@ const AdminOrders = () => {
                             </div>
 
                             <div style={{ marginBottom: '8px', fontSize: '12px' }}>
-                                <div><strong>TABLE:</strong> Table {selectedKOTForPrint.tableNumber}</div>
+                                <div><strong>TABLE:</strong> {selectedKOTForPrint.tableNumber}</div>
                                 <div><strong>STAFF:</strong> {selectedKOTForPrint.staffName}</div>
                                 <div><strong>DATE/TIME:</strong> {new Date(selectedKOTForPrint.timestamp).toLocaleDateString('en-IN')} {new Date(selectedKOTForPrint.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                             </div>

@@ -63,7 +63,7 @@ async function printKOTToInterface(order, printerInterface, printerLabel) {
 
   const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
   const orderNum = order.kotTicket || `KOT-${cleanOrdNo}`;
-  const tableStr = order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : (order.tableNumber || order.tableName || 'Takeaway');
+  const tableStr = order.tableName || (order.tables?.length > 0 ? order.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ') : null) || (order.tableNumber ? `Table ${order.tableNumber}` : 'Takeaway');
   const staffStr = order.placedBy?.name || order.user?.name || 'Staff';
   const now = new Date(order.createdAt || Date.now());
   const dateStr = now.toLocaleDateString('en-IN');

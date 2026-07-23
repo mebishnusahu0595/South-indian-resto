@@ -77,6 +77,8 @@ router.get('/kots', protect, admin, async (req, res) => {
         const orders = await Order.find(query)
             .populate('placedBy', 'name')
             .populate('user', 'name phone')
+            .populate('tables', 'tableNumber name section')
+            .populate('table', 'tableNumber name section')
             .populate('items.menuItem', 'name price')
             .sort('-createdAt');
 
@@ -90,8 +92,21 @@ router.get('/kots', protect, admin, async (req, res) => {
             return `KOT-${ord._id.toString().slice(-4).toUpperCase()}`;
         };
 
+        // Build the full table name from populated tables array or single table
+        const getTableName = (order) => {
+            if (order.tables && order.tables.length > 0) {
+                return order.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ');
+            }
+            if (order.table && order.table.name) {
+                return order.table.name || `Table ${order.table.tableNumber}`;
+            }
+            if (order.tableNumber) return `Table ${order.tableNumber}`;
+            return 'Takeaway';
+        };
+
         const kotTickets = [];
         orders.forEach(order => {
+            const tableName = getTableName(order);
             if (order.kotHistory && order.kotHistory.length > 0) {
                 order.kotHistory.forEach(kot => {
                     kotTickets.push({
@@ -99,7 +114,8 @@ router.get('/kots', protect, admin, async (req, res) => {
                         orderId: order._id,
                         orderNumber: order.orderNumber,
                         kotNumber: formatKOTNum(order, kot),
-                        tableNumber: order.tableNumber || 'Takeaway',
+                        tableNumber: tableName,
+                        tableName: tableName,
                         staffName: order.placedBy?.name || order.billerName || 'Staff',
                         timestamp: kot.timestamp || order.createdAt,
                         items: kot.items && kot.items.length > 0 ? kot.items : order.items,
@@ -113,7 +129,8 @@ router.get('/kots', protect, admin, async (req, res) => {
                     orderId: order._id,
                     orderNumber: order.orderNumber,
                     kotNumber: formatKOTNum(order),
-                    tableNumber: order.tableNumber || 'Takeaway',
+                    tableNumber: tableName,
+                    tableName: tableName,
                     staffName: order.placedBy?.name || order.billerName || 'Staff',
                     timestamp: order.createdAt,
                     items: order.items,
@@ -411,12 +428,17 @@ router.post('/', protect, async (req, res) => {
             const populatedOrder = await Order.findById(activeOrder._id)
                 .populate('user', 'phone name')
                 .populate('placedBy', 'name')
+                .populate('tables', 'tableNumber name section')
+                .populate('table', 'tableNumber name section')
                 .populate('items.menuItem', 'name image');
 
             const io = req.app.get('io');
             if (io) {
+                const tn = (populatedOrder.tables?.length > 0)
+                    ? populatedOrder.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ')
+                    : (populatedOrder.table?.name || (populatedOrder.tableNumber ? `Table ${populatedOrder.tableNumber}` : 'Takeaway'));
                 io.emit('order-updated', populatedOrder);
-                io.emit('new-order', populatedOrder);
+                io.emit('new-order', { ...populatedOrder.toObject(), tableName: tn });
             }
 
             return res.status(200).json(populatedOrder);
@@ -473,7 +495,10 @@ router.post('/', protect, async (req, res) => {
         // Emit socket event for real-time update
         const io = req.app.get('io');
         if (io) {
-            io.emit('new-order', populatedOrder);
+            const tn = (populatedOrder.tables?.length > 0)
+                ? populatedOrder.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ')
+                : (populatedOrder.table?.name || (populatedOrder.tableNumber ? `Table ${populatedOrder.tableNumber}` : 'Takeaway'));
+            io.emit('new-order', { ...populatedOrder.toObject(), tableName: tn });
         }
 
         res.status(201).json(populatedOrder);
@@ -610,7 +635,20 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         const populatedOrder = await Order.findById(order._id)
             .populate('user', 'phone name')
             .populate('placedBy', 'name')
+            .populate('tables', 'tableNumber name section')
+            .populate('table', 'tableNumber name section')
             .populate('items.menuItem', 'name image');
+
+        // Compute full table name from populated refs
+        const getEmitTableName = (ord) => {
+            if (ord.tables && ord.tables.length > 0) {
+                return ord.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ');
+            }
+            if (ord.table && ord.table.name) return ord.table.name;
+            if (ord.tableNumber) return `Table ${ord.tableNumber}`;
+            return 'Takeaway';
+        };
+        const emitTableName = getEmitTableName(populatedOrder);
 
         const io = req.app.get('io');
         if (io) {
@@ -619,6 +657,7 @@ router.put('/:id/modify-items', protect, async (req, res) => {
                 io.emit('new-order', {
                     ...populatedOrder.toObject(),
                     kotTicket: addedKotObj.kotNumber,
+                    tableName: emitTableName,
                     items: addedItems,
                     specialInstructions: addedKotObj.notes
                 });
@@ -627,6 +666,7 @@ router.put('/:id/modify-items', protect, async (req, res) => {
                 io.emit('new-order', {
                     ...populatedOrder.toObject(),
                     kotTicket: cancelledKotObj.kotNumber,
+                    tableName: emitTableName,
                     items: cancelledItems,
                     specialInstructions: cancelledKotObj.notes
                 });
