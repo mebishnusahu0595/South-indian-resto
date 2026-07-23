@@ -13,12 +13,18 @@ const { protect, admin, superadmin } = require('../middleware/auth');
 const { generateOrderNumber } = require('../utils/helpers');
 
 // @route   GET /api/orders
-// @desc    Get user's orders
+// @desc    Get orders (All orders for staff/admin, user-specific for customers)
 // @access  Private
 router.get('/', protect, async (req, res) => {
     try {
-        const orders = await Order.find({ user: req.user._id })
-            .populate('items.menuItem', 'name image')
+        const isStaff = req.user && (req.user.isEmployee || req.user.role === 'admin' || req.user.role === 'superadmin');
+        const query = isStaff ? {} : { user: req.user._id };
+        const orders = await Order.find(query)
+            .populate('user', 'phone name')
+            .populate('placedBy', 'name')
+            .populate('tables', 'tableNumber name section')
+            .populate('table', 'tableNumber name section')
+            .populate('items.menuItem', 'name image price')
             .sort('-createdAt');
         res.json(orders);
     } catch (error) {
@@ -208,8 +214,9 @@ router.get('/:id', protect, async (req, res) => {
             return res.status(404).json({ message: 'Order not found' });
         }
 
-        // Check if user owns the order or is admin, or it's a guest order
-        if (order.user && order.user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+        // Check if user owns the order or is staff/admin
+        const isStaff = req.user && (req.user.isEmployee || req.user.role === 'admin' || req.user.role === 'superadmin');
+        if (order.user && order.user._id.toString() !== req.user._id.toString() && !isStaff) {
             return res.status(403).json({ message: 'Not authorized' });
         }
 
