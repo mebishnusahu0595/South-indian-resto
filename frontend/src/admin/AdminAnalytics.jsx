@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend, AreaChart, Area } from 'recharts';
 import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport } from '../utils/api';
-import { exportToCSV, revenueExportColumns, getFilenameDate } from '../utils/exportUtils';
+import { exportToCSV, downloadCSV, revenueExportColumns, getFilenameDate } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
 import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers } from 'react-icons/fi';
@@ -70,24 +70,64 @@ const AdminAnalytics = () => {
         if (!dayEndData) return;
         const dateStr = dayEndData.date || new Date().toISOString().split('T')[0];
 
-        const originalTitle = document.title;
-        document.title = `Day_End_Report_${dateStr}`;
-        window.print();
-        setTimeout(() => {
-            document.title = originalTitle;
-        }, 1000);
+        let csv = `KEA BY THE POOL - DAY-END (EOD) SALES REPORT\n`;
+        csv += `Date,${dateStr}\n\n`;
+        
+        csv += `SUMMARY\n`;
+        csv += `Total Orders,Gross Sales (Rs.),Discounts (Rs.),Taxes GST (Rs.),Net Revenue (Rs.)\n`;
+        csv += `${dayEndData.summary?.totalOrders || 0},${(dayEndData.summary?.grossSales || 0).toFixed(2)},${(dayEndData.summary?.totalDiscount || 0).toFixed(2)},${(dayEndData.summary?.totalTax || 0).toFixed(2)},${(dayEndData.summary?.netRevenue || 0).toFixed(2)}\n\n`;
+
+        csv += `PAYMENT METHOD BREAKDOWN\n`;
+        csv += `Payment Method,Total Amount (Rs.)\n`;
+        csv += `Cash Paid,${(dayEndData.paymentBreakdown?.cash || 0).toFixed(2)}\n`;
+        csv += `UPI / Online Paid,${(dayEndData.paymentBreakdown?.online || 0).toFixed(2)}\n`;
+        csv += `Card Paid,${(dayEndData.paymentBreakdown?.card || 0).toFixed(2)}\n`;
+        csv += `Split Payment Total,${(dayEndData.paymentBreakdown?.split || 0).toFixed(2)}\n`;
+        csv += `  - Split Cash,${(dayEndData.paymentBreakdown?.splitDetails?.cash || 0).toFixed(2)}\n`;
+        csv += `  - Split UPI,${(dayEndData.paymentBreakdown?.splitDetails?.upi || 0).toFixed(2)}\n`;
+        csv += `  - Split Card,${(dayEndData.paymentBreakdown?.splitDetails?.card || 0).toFixed(2)}\n`;
+        csv += `TOTAL COLLECTED,${(dayEndData.summary?.netRevenue || 0).toFixed(2)}\n\n`;
+
+        csv += `CATEGORY-WISE SALES SUMMARY\n`;
+        csv += `Category Name,Total Qty Sold,Total Revenue (Rs.)\n`;
+        (dayEndData.categorySales || []).forEach(cat => {
+            csv += `"${cat.name}",${cat.totalQty},${cat.totalRevenue.toFixed(2)}\n`;
+        });
+        csv += `\n`;
+
+        csv += `DETAILED BILLS RECORD\n`;
+        csv += `Bill No,Time,Order No,Table,Biller,Status,Subtotal,Discount,Tax,Total\n`;
+        (dayEndData.bills || []).forEach(b => {
+            const time = new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const ordNo = b.order?.orderNumber ? `#${b.order.orderNumber}` : '-';
+            const tbl = b.order?.tableNumber ? `Table ${b.order.tableNumber}` : 'Takeaway';
+            csv += `"${b.billNumber}",${time},"${ordNo}","${tbl}","${b.billerName || ''}",${b.order?.status || 'paid'},${(b.subtotal || 0).toFixed(2)},${(b.discount || 0).toFixed(2)},${(b.tax || 0).toFixed(2)},${(b.total || 0).toFixed(2)}\n`;
+        });
+
+        downloadCSV(csv, `Day_End_Report_${dateStr}`);
     };
 
     const handleDownloadSectionReport = (sectionData) => {
         if (!sectionData) return;
         const dateStr = sectionData.date || new Date().toISOString().split('T')[0];
 
-        const originalTitle = document.title;
-        document.title = `Section_Sales_Report_${dateStr}`;
-        window.print();
-        setTimeout(() => {
-            document.title = originalTitle;
-        }, 1000);
+        let csv = `KEA BY THE POOL - SECTION & TABLE SALES REPORT\n`;
+        csv += `Date,${dateStr}\n\n`;
+
+        csv += `SECTION SUMMARY\n`;
+        csv += `Section Name,Total Orders,Total Sales (Rs.)\n`;
+        (sectionData.sectionSummary || []).forEach(s => {
+            csv += `"${s.section}",${s.totalOrders},${s.totalSales.toFixed(2)}\n`;
+        });
+        csv += `\n`;
+
+        csv += `TABLE-WISE BREAKDOWN\n`;
+        csv += `Section,Table,Total Orders,Total Sales (Rs.)\n`;
+        (sectionData.tableSummary || []).forEach(t => {
+            csv += `"${t.section}","${t.tableName || 'Table ' + t.tableNumber}",${t.totalOrders},${t.totalSales.toFixed(2)}\n`;
+        });
+
+        downloadCSV(csv, `Section_Sales_Report_${dateStr}`);
     };
 
     useEffect(() => {
