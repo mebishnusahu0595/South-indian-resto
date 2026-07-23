@@ -236,7 +236,7 @@ const AdminOrders = () => {
             setOrders(prev => prev.filter(o => o._id.toString() !== orderId.toString()));
         } catch (error) {
             console.error('Delete order error:', error);
-            alert('Failed to delete order');
+            alert(error.response?.data?.message || 'Failed to delete order');
         }
     };
 
