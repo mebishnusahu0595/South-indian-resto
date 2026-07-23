@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, FiSearch, FiEdit2, FiPrinter, FiEdit3 } from 'react-icons/fi';
 import { 
     getActiveOrders, updateOrderStatus, updatePayment, deleteOrder, 
-    getAllMenuItems, getCategories, getBillerSuggestions, generateBill, updateOrderItems,
+    getAllMenuItems, getCategories, getBillerSuggestions, generateBill, updateOrderItems, modifyOrderItems,
     getCoupons, getMaxDiscount, getKOTs, getTables, moveOrderTable
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -700,7 +700,7 @@ const AdminOrders = () => {
                 modificationNote: modifyNote
             };
 
-            const res = await axios.put(`/api/orders/${editingOrder._id}/modify-items`, payload);
+            const res = await modifyOrderItems(editingOrder._id, payload);
             const { addedKot, cancelledKot } = res.data;
 
             setShowModifyModal(false);
