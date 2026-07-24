@@ -168,7 +168,14 @@ const AdminOrders = () => {
         if (socket) {
             socket.on('new-order', (order) => {
                 console.log('New order received:', order.orderNumber);
-                setOrders(prev => [order, ...prev]);
+                setOrders(prev => {
+                    const orderIdStr = order._id?.toString() || order.id?.toString();
+                    const exists = prev.some(o => (o._id?.toString() || o.id?.toString()) === orderIdStr);
+                    if (exists) {
+                        return prev.map(o => (o._id?.toString() || o.id?.toString()) === orderIdStr ? order : o);
+                    }
+                    return [order, ...prev];
+                });
 
                 // Play audio notification chime
                 try {
