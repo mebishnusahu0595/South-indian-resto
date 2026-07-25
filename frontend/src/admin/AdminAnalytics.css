@@ -366,7 +366,11 @@
     }
 
     .report-printable-area,
-    .report-printable-area * {
+    .report-printable-area *,
+    #kot-printable-slip,
+    #kot-printable-slip *,
+    .order-bill-printable,
+    .order-bill-printable * {
         visibility: visible !important;
     }
 

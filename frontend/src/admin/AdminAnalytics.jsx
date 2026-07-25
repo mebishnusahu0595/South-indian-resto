@@ -108,26 +108,38 @@ const AdminAnalytics = () => {
     };
 
     const handleDownloadSectionReport = (sectionData) => {
-        if (!sectionData) return;
+        if (!sectionData || !sectionData.sections) return;
         const dateStr = sectionData.date || new Date().toISOString().split('T')[0];
 
-        let csv = `KEA BY THE POOL - SECTION & TABLE SALES REPORT\n`;
+        let csv = `KEA BY THE POOL - SECTION & TABLE SETTLEMENT SALES REPORT\n`;
         csv += `Date,${dateStr}\n\n`;
 
         csv += `SECTION SUMMARY\n`;
         csv += `Section Name,Total Orders,Total Sales (Rs.)\n`;
-        (sectionData.sectionSummary || []).forEach(s => {
-            csv += `"${s.section}",${s.totalOrders},${s.totalSales.toFixed(2)}\n`;
+        (sectionData.sections || []).forEach(sec => {
+            csv += `"${sec.sectionName}",${sec.totalOrders},${(sec.totalRevenue || 0).toFixed(2)}\n`;
         });
         csv += `\n`;
 
-        csv += `TABLE-WISE BREAKDOWN\n`;
-        csv += `Section,Table,Total Orders,Total Sales (Rs.)\n`;
-        (sectionData.tableSummary || []).forEach(t => {
-            csv += `"${t.section}","${t.tableName || 'Table ' + t.tableNumber}",${t.totalOrders},${t.totalSales.toFixed(2)}\n`;
+        csv += `TABLE-WISE SETTLEMENT BREAKDOWN\n`;
+        csv += `Section,Table Name / No,Total Orders,Total Sales (Rs.)\n`;
+        (sectionData.sections || []).forEach(sec => {
+            (sec.tableBreakdown || []).forEach(tbl => {
+                const tblName = typeof tbl.tableNumber === 'string' && tbl.tableNumber.startsWith('Table') ? tbl.tableNumber : `Table ${tbl.tableNumber}`;
+                csv += `"${sec.sectionName}","${tblName}",${tbl.ordersCount},${(tbl.totalRevenue || 0).toFixed(2)}\n`;
+            });
+        });
+        csv += `\n`;
+
+        csv += `SECTION ITEM SALES BREAKDOWN\n`;
+        csv += `Section,Item Name,Qty Sold,Total Sales (Rs.)\n`;
+        (sectionData.sections || []).forEach(sec => {
+            (sec.topItems || []).forEach(item => {
+                csv += `"${sec.sectionName}","${item.name}",${item.qtySold},${(item.totalRevenue || 0).toFixed(2)}\n`;
+            });
         });
 
-        downloadCSV(csv, `Section_Sales_Report_${dateStr}`);
+        downloadCSV(csv, `Table_Section_Settlement_Report_${dateStr}`);
     };
 
     useEffect(() => {
