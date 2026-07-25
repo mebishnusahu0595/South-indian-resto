@@ -670,7 +670,8 @@ const AdminOrders = () => {
             menuItemId: i.menuItem?._id || i.menuItem || i._id,
             name: i.name || i.menuItem?.name || 'Item',
             price: i.price || i.menuItem?.price || 0,
-            quantity: i.quantity
+            quantity: i.quantity,
+            notes: i.notes || i.instruction || i.specialInstructions || i.note || ''
         }));
         setModifyItemsList(initialList);
         setModifyNote('');
@@ -702,7 +703,8 @@ const AdminOrders = () => {
             const payload = {
                 updatedItems: modifyItemsList.map(i => ({
                     menuItemId: i.menuItemId,
-                    quantity: i.quantity
+                    quantity: i.quantity,
+                    notes: i.notes || ''
                 })),
                 modificationNote: modifyNote
             };
@@ -922,12 +924,22 @@ const AdminOrders = () => {
                                     </div>
 
                                     <div className="order-items">
-                                        {order.items.map((item, i) => (
-                                            <div key={i} className="order-item">
-                                                <span>{item.name}</span>
-                                                <span>x{item.quantity}</span>
-                                            </div>
-                                        ))}
+                                        {order.items.map((item, i) => {
+                                            const itemNote = item.notes || item.instruction || item.specialInstructions || item.note;
+                                            return (
+                                                <div key={i} style={{ marginBottom: '4px' }}>
+                                                    <div className="order-item">
+                                                        <span>{item.name}</span>
+                                                        <span>x{item.quantity}</span>
+                                                    </div>
+                                                    {itemNote ? (
+                                                        <div style={{ fontSize: '0.75rem', color: '#D97706', fontStyle: 'italic', fontWeight: 'bold', paddingLeft: '6px' }}>
+                                                            ↳ Note: {itemNote}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
 
                                     {order.specialInstructions && (
@@ -1693,42 +1705,62 @@ const AdminOrders = () => {
                                 </div>
 
                                 {modifyItemsList.map((item, idx) => (
-                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px dashed #E5E7EB' }}>
-                                        <div>
-                                            <strong style={{ fontSize: '0.9rem', display: 'block' }}>{item.name}</strong>
-                                            <span style={{ fontSize: '0.78rem', color: '#6B7280' }}>₹{item.price} each</span>
+                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px dashed #E5E7EB' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div>
+                                                <strong style={{ fontSize: '0.9rem', display: 'block' }}>{item.name}</strong>
+                                                <span style={{ fontSize: '0.78rem', color: '#6B7280' }}>₹{item.price} each</span>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setModifyItemsList(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(0, it.quantity - 1) } : it).filter(it => it.quantity > 0));
+                                                    }}
+                                                    style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #DC2626', background: '#FEE2E2', color: '#DC2626', fontWeight: 'bold', cursor: 'pointer' }}
+                                                >
+                                                    -
+                                                </button>
+                                                <span style={{ fontWeight: 'bold', fontSize: '0.95rem', minWidth: '24px', textAlign: 'center' }}>x{item.quantity}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setModifyItemsList(prev => prev.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it));
+                                                    }}
+                                                    style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #059669', background: '#ECFDF5', color: '#059669', fontWeight: 'bold', cursor: 'pointer' }}
+                                                >
+                                                    +
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setModifyItemsList(prev => prev.filter((_, i) => i !== idx));
+                                                    }}
+                                                    style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', marginLeft: '4px' }}
+                                                    title="Cancel / Remove Item"
+                                                >
+                                                    <FiTrash2 size={16} />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setModifyItemsList(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(0, it.quantity - 1) } : it).filter(it => it.quantity > 0));
-                                                }}
-                                                style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #DC2626', background: '#FEE2E2', color: '#DC2626', fontWeight: 'bold', cursor: 'pointer' }}
-                                            >
-                                                -
-                                            </button>
-                                            <span style={{ fontWeight: 'bold', fontSize: '0.95rem', minWidth: '24px', textAlign: 'center' }}>x{item.quantity}</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setModifyItemsList(prev => prev.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it));
-                                                }}
-                                                style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #059669', background: '#ECFDF5', color: '#059669', fontWeight: 'bold', cursor: 'pointer' }}
-                                            >
-                                                +
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setModifyItemsList(prev => prev.filter((_, i) => i !== idx));
-                                                }}
-                                                style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', marginLeft: '4px' }}
-                                                title="Cancel / Remove Item"
-                                            >
-                                                <FiTrash2 size={16} />
-                                            </button>
-                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="✏️ Item Note / Instruction (e.g. less spicy, no ice)..."
+                                            value={item.notes || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setModifyItemsList(prev => prev.map((it, i) => i === idx ? { ...it, notes: val } : it));
+                                            }}
+                                            style={{
+                                                marginTop: '4px',
+                                                width: '100%',
+                                                padding: '4px 8px',
+                                                fontSize: '0.8rem',
+                                                border: '1px solid #CBD5E1',
+                                                borderRadius: '4px',
+                                                background: '#FFF'
+                                            }}
+                                        />
                                     </div>
                                 ))}
 
@@ -2076,12 +2108,22 @@ const AdminOrders = () => {
                                     <span>ITEM NAME</span>
                                     <span>QTY</span>
                                 </div>
-                                {selectedKOTForPrint.items.map((item, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', margin: '3px 0' }}>
-                                        <span>{item.name}</span>
-                                        <strong>{item.quantity}</strong>
-                                    </div>
-                                ))}
+                                {selectedKOTForPrint.items.map((item, i) => {
+                                    const itemNote = item.notes || item.instruction || item.specialInstructions || item.note;
+                                    return (
+                                        <div key={i} style={{ margin: '4px 0' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                                <span>{item.name || item.menuItem?.name || 'Item'}</span>
+                                                <strong>{item.quantity}</strong>
+                                            </div>
+                                            {itemNote ? (
+                                                <div style={{ fontSize: '11px', color: '#D97706', paddingLeft: '8px', fontStyle: 'italic', fontWeight: 'bold' }}>
+                                                    ↳ Note: {itemNote}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })}
                             </div>
 
                             {selectedKOTForPrint.notes && (

@@ -309,7 +309,8 @@ router.post('/', protect, async (req, res) => {
                 name: menuItem.name,
                 price: menuItem.price,
                 quantity: item.quantity,
-                total: itemTotal
+                total: itemTotal,
+                notes: item.notes || item.instruction || item.specialInstructions || item.note || ''
             });
         }
 
@@ -406,6 +407,9 @@ router.post('/', protect, async (req, res) => {
                 if (existingItemIndex > -1) {
                     activeOrder.items[existingItemIndex].quantity += newItem.quantity;
                     activeOrder.items[existingItemIndex].total += newItem.total;
+                    if (newItem.notes) {
+                        activeOrder.items[existingItemIndex].notes = newItem.notes;
+                    }
                 } else {
                     activeOrder.items.push(newItem);
                 }
@@ -553,15 +557,18 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             const itemTotal = menuItem.price * item.quantity;
             newSubtotal += itemTotal;
 
+            const itemNote = item.notes || item.instruction || item.specialInstructions || item.note || '';
+
             newOrderItems.push({
                 menuItem: menuItem._id,
                 name: menuItem.name,
                 price: menuItem.price,
                 quantity: item.quantity,
-                total: itemTotal
+                total: itemTotal,
+                notes: itemNote
             });
 
-            newMap.set(mId, { name: menuItem.name, quantity: item.quantity, price: menuItem.price });
+            newMap.set(mId, { name: menuItem.name, quantity: item.quantity, price: menuItem.price, notes: itemNote });
         }
 
         oldMap.forEach((oldItem, mId) => {
@@ -590,14 +597,16 @@ router.put('/:id/modify-items', protect, async (req, res) => {
                     menuItem: mId,
                     name: newItem.name,
                     quantity: newItem.quantity,
-                    price: newItem.price
+                    price: newItem.price,
+                    notes: newItem.notes || ''
                 });
             } else if (newItem.quantity > oldItem.quantity) {
                 addedItems.push({
                     menuItem: mId,
                     name: newItem.name,
                     quantity: newItem.quantity - oldItem.quantity,
-                    price: newItem.price
+                    price: newItem.price,
+                    notes: newItem.notes || ''
                 });
             }
         });
