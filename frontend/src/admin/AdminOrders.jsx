@@ -195,8 +195,12 @@ const AdminOrders = () => {
                         orderNumber: order.orderNumber,
                         tableNumber: fullTableName,
                         staffName: order.placedBy?.name || order.user?.name || 'Staff',
-                        items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity })),
-                        notes: order.specialInstructions,
+                        items: (order.items || []).map(i => ({ 
+                            name: i.menuItem?.name || i.name || 'Item', 
+                            quantity: i.quantity,
+                            notes: i.notes || i.instruction || i.specialInstructions || i.note || ''
+                        })),
+                        notes: order.specialInstructions || order.instructions || order.notes || '',
                         timestamp: order.createdAt || new Date()
                     };
                     

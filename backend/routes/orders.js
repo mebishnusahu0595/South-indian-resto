@@ -232,7 +232,8 @@ router.get('/:id', protect, async (req, res) => {
 // @access  Private
 router.post('/', protect, async (req, res) => {
     try {
-        const { items, couponCode, tableId, tableIds, specialInstructions, customerPhone, customerName } = req.body;
+        const { items, couponCode, tableId, tableIds, specialInstructions, instructions, notes, specialNote, customerPhone, customerName } = req.body;
+        const orderInstructions = specialInstructions || instructions || notes || specialNote || '';
 
         if (!items || items.length === 0) {
             return res.status(400).json({ message: 'No items in order' });
@@ -431,7 +432,7 @@ router.post('/', protect, async (req, res) => {
                 kotNumber: kotNum,
                 timestamp: new Date(),
                 items: orderItems,
-                notes: specialInstructions || ''
+                notes: orderInstructions
             });
 
             activeOrder.status = 'confirmed';
@@ -471,7 +472,7 @@ router.post('/', protect, async (req, res) => {
             tableNumber: selectedTables.length > 0 ? selectedTables.map(t => t.tableNumber).join(', ') : '',
             table: table ? table._id : null,
             tables: selectedTables.map(t => t._id),
-            specialInstructions: specialInstructions || '',
+            specialInstructions: orderInstructions,
             loyaltyOffer: (pointsUsed && loyaltyOfferId) ? loyaltyOfferId : null,
             pointsRedeemed: (pointsUsed && loyaltyOfferId) ? pointsUsed : 0,
             status: 'confirmed',
@@ -479,7 +480,7 @@ router.post('/', protect, async (req, res) => {
                 kotNumber: kotNum,
                 timestamp: new Date(),
                 items: orderItems,
-                notes: specialInstructions || ''
+                notes: orderInstructions
             }],
             placedBy: (req.user && req.user.isEmployee) ? req.user._id : null
         });
