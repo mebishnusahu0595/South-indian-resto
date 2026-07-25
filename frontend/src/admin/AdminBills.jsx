@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FiChevronLeft, FiChevronRight, FiCalendar, FiTrash2, FiPrinter, FiX, FiPlus, FiMinus, FiSearch } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiCalendar, FiTrash2, FiPrinter, FiX, FiPlus, FiMinus, FiSearch, FiDownload } from 'react-icons/fi';
 import { getBills, getBillerSuggestions, generateBill, deleteBill, bulkDeleteBills, getAllMenuItems, updateOrderItems, getCoupons, getMaxDiscount } from '../utils/api';
+import { downloadCSV } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
 import '../components/OrderBill.css';
@@ -377,6 +378,89 @@ const AdminBills = () => {
         return true;
     });
 
+    const handleExportExcel = () => {
+        if (!filteredBills || filteredBills.length === 0) {
+            alert('No bills available to export for the selected filters.');
+            return;
+        }
+
+        let csv = `KEA BY THE POOL - BILLING REGISTRY & TABLE SALES REPORT\n`;
+        csv += `Date,${selectedDate}\n`;
+        csv += `Filter,${paymentFilter.toUpperCase()}\n\n`;
+
+        // Section 1: Detailed Bills List
+        csv += `DETAILED BILLS & INVOICES\n`;
+        csv += `Bill No,Time,Order No,Table Name / No,Customer Name,Customer Phone,Biller / Staff,Payment Status,Payment Method,Subtotal (Rs.),Discount (Rs.),Tax (Rs.),Total Bill (Rs.)\n`;
+
+        filteredBills.forEach(bill => {
+            const isPaid = bill.order?.status === 'paid';
+            const billNo = `"${bill.billNumber || ''}"`;
+            const timeStr = `"${new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"`;
+            const orderNo = `"#${bill.order?.orderNumber || 'N/A'}"`;
+            
+            const tblRaw = bill.order?.tableNumber || bill.tableNumber;
+            const tblName = tblRaw 
+                ? (String(tblRaw).startsWith('Table') ? tblRaw : `Table ${tblRaw}`) 
+                : 'Takeaway';
+            
+            const customerName = `"${bill.order?.user?.name || bill.user?.name || 'Walk-in'}"`;
+            const customerPhone = `"${bill.order?.user?.phone || bill.user?.phone || ''}"`;
+            const billerName = `"${bill.billerName || ''}"`;
+            const status = isPaid ? 'PAID' : 'UNPAID';
+            const payMethod = isPaid ? `"${(bill.order?.paymentMethod || 'cash').toUpperCase()}"` : '"-"';
+            const subtotal = (bill.subtotal || 0).toFixed(2);
+            const discount = (bill.discount || 0).toFixed(2);
+            const tax = (bill.tax || 0).toFixed(2);
+            const total = (bill.total || 0).toFixed(2);
+
+            csv += `${billNo},${timeStr},${orderNo},"${tblName}",${customerName},${customerPhone},${billerName},${status},${payMethod},${subtotal},${discount},${tax},${total}\n`;
+        });
+
+        csv += `\n`;
+
+        // Section 2: Table-Wise Sales Summary (Kon se table par kitne ka hua)
+        csv += `TABLE-WISE SALES & SETTLEMENT SUMMARY\n`;
+        csv += `Table Name / No,Total Bills Count,Paid Bills Count,Total Sales Amount (Rs.)\n`;
+
+        const tableSummaryMap = {};
+        filteredBills.forEach(bill => {
+            const tblRaw = bill.order?.tableNumber || bill.tableNumber;
+            const tblName = tblRaw 
+                ? (String(tblRaw).startsWith('Table') ? tblRaw : `Table ${tblRaw}`) 
+                : 'Takeaway';
+
+            if (!tableSummaryMap[tblName]) {
+                tableSummaryMap[tblName] = { tableName: tblName, totalBills: 0, paidBills: 0, totalSales: 0 };
+            }
+            tableSummaryMap[tblName].totalBills += 1;
+            if (bill.order?.status === 'paid') {
+                tableSummaryMap[tblName].paidBills += 1;
+            }
+            tableSummaryMap[tblName].totalSales += (bill.total || 0);
+        });
+
+        Object.values(tableSummaryMap).sort((a, b) => b.totalSales - a.totalSales).forEach(tbl => {
+            csv += `"${tbl.tableName}",${tbl.totalBills},${tbl.paidBills},${tbl.totalSales.toFixed(2)}\n`;
+        });
+
+        csv += `\n`;
+
+        // Section 3: Overall Totals
+        const totalSubtotal = filteredBills.reduce((acc, b) => acc + (b.subtotal || 0), 0);
+        const totalDiscount = filteredBills.reduce((acc, b) => acc + (b.discount || 0), 0);
+        const totalTax = filteredBills.reduce((acc, b) => acc + (b.tax || 0), 0);
+        const grandTotal = filteredBills.reduce((acc, b) => acc + (b.total || 0), 0);
+
+        csv += `OVERALL SUMMARY TOTALS\n`;
+        csv += `Total Bills Count,${filteredBills.length}\n`;
+        csv += `Total Subtotal (Rs.),${totalSubtotal.toFixed(2)}\n`;
+        csv += `Total Discount Given (Rs.),${totalDiscount.toFixed(2)}\n`;
+        csv += `Total Tax (Rs.),${totalTax.toFixed(2)}\n`;
+        csv += `Grand Total Revenue (Rs.),${grandTotal.toFixed(2)}\n`;
+
+        downloadCSV(csv, `Bills_Table_Sales_Report_${selectedDate}`);
+    };
+
     return (
         <div className="admin-bills-page">
             <div className="bills-header-row">
@@ -426,6 +510,28 @@ const AdminBills = () => {
                             <FiChevronRight />
                         </button>
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={handleExportExcel}
+                        title="Export Bills & Table-wise Sales Report to Excel CSV"
+                        style={{
+                            background: '#059669',
+                            color: '#FFF',
+                            border: '2px solid #111',
+                            fontWeight: 'bold',
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            cursor: 'pointer',
+                            padding: '8px 14px',
+                            borderRadius: '6px',
+                            boxShadow: '2px 2px 0px #111'
+                        }}
+                    >
+                        <FiDownload /> Export Excel
+                    </button>
                 </div>
             </div>
 
@@ -503,21 +609,33 @@ const AdminBills = () => {
                                             <td><strong>₹{bill.total.toFixed(2)}</strong></td>
                                             <td className="actions-cell">
                                                 {isPaid ? (
-                                                    <button 
-                                                        className="btn-action print" 
-                                                        title="View & Print Bill"
-                                                        onClick={() => setCreatedBill(bill)}
-                                                        style={{ background: '#059669', color: 'white' }}
-                                                    >
-                                                        <FiPrinter /> View
-                                                    </button>
+                                                    <>
+                                                        <button 
+                                                            className="btn-action print" 
+                                                            title="View & Print Bill"
+                                                            onClick={() => setCreatedBill(bill)}
+                                                            style={{ background: '#059669', color: 'white' }}
+                                                        >
+                                                            <FiPrinter /> View
+                                                        </button>
+                                                        {user?.role === 'superadmin' && (
+                                                            <button
+                                                                className="btn-action reissue"
+                                                                title="Edit Bill (Superadmin)"
+                                                                onClick={() => handleOpenEdit(bill)}
+                                                                style={{ background: '#7C3AED', color: 'white' }}
+                                                            >
+                                                                ✏️ Edit
+                                                            </button>
+                                                        )}
+                                                    </>
                                                 ) : (
                                                     <button 
                                                         className="btn-action reissue" 
-                                                        title="Re-issue Bill"
+                                                        title="Edit & Re-issue Bill"
                                                         onClick={() => handleOpenEdit(bill)}
                                                     >
-                                                        <FiPrinter /> Re-issue
+                                                        ✏️ Edit
                                                     </button>
                                                 )}
                                                 {user && user.role === 'superadmin' && (
