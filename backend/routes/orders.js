@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
@@ -9,8 +10,94 @@ const Settings = require('../models/Settings');
 const User = require('../models/User');
 const LoyaltySettings = require('../models/LoyaltySettings');
 const LoyaltyOffer = require('../models/LoyaltyOffer');
+const KOTPrintJob = require('../models/KOTPrintJob');
+const { getPrinterConfig } = require('../utils/printerConfig');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const { generateOrderNumber } = require('../utils/helpers');
+
+const getKOTEventId = (payload) => {
+    const orderId = payload._id?.toString() || payload.id?.toString() || payload.orderNumber || 'unknown';
+    const ticketId = payload.kotTicket || `KOT-${String(payload.orderNumber || '').replace(/^CD-/, '')}`;
+    return `${orderId}:${ticketId}`;
+};
+
+const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
+    const eventId = getKOTEventId(payload);
+    let printerConfig = { version: 1, enabled: true, defaultPort: 9100, printers: [] };
+
+    try {
+        printerConfig = await getPrinterConfig();
+    } catch (error) {
+        console.error('Could not load printer registry for KOT:', error.message);
+    }
+
+    const eventPayload = JSON.parse(JSON.stringify({
+        ...payload,
+        eventId,
+        kotEventType: eventType,
+        printerConfig
+    }));
+    const durablePayload = {
+        _id: eventPayload._id,
+        eventId,
+        orderNumber: eventPayload.orderNumber,
+        kotTicket: eventPayload.kotTicket,
+        kotCreatedAt: eventPayload.kotCreatedAt,
+        kotEventType: eventType,
+        tableName: eventPayload.tableName,
+        tableNumber: eventPayload.tableNumber,
+        tables: (eventPayload.tables || []).map(table => ({
+            _id: table?._id,
+            name: table?.name,
+            tableNumber: table?.tableNumber
+        })),
+        placedBy: eventPayload.placedBy ? { name: eventPayload.placedBy.name } : null,
+        user: eventPayload.user ? { name: eventPayload.user.name } : null,
+        items: eventPayload.items || [],
+        specialInstructions: eventPayload.specialInstructions || '',
+        createdAt: eventPayload.createdAt,
+        printerConfig
+    };
+
+    try {
+        await KOTPrintJob.findOneAndUpdate(
+            { eventId },
+            {
+                $setOnInsert: {
+                    eventId,
+                    status: 'pending',
+                    payload: durablePayload,
+                    expiresAt: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000))
+                }
+            },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        // Socket delivery must still happen if the durable outbox is temporarily unavailable.
+        console.error(`Could not persist KOT print job ${eventId}:`, error.message);
+    }
+
+    const io = req.app.get('io');
+    if (io) io.emit('new-order', eventPayload);
+    return eventPayload;
+};
+
+const requirePrintAgent = (req, res, next) => {
+    const expected = process.env.PRINT_AGENT_KEY;
+    const supplied = req.get('x-print-agent-key') || '';
+
+    if (!expected) {
+        return res.status(503).json({ message: 'PRINT_AGENT_KEY is not configured on backend' });
+    }
+
+    const expectedBuffer = Buffer.from(expected);
+    const suppliedBuffer = Buffer.from(supplied);
+    if (expectedBuffer.length !== suppliedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)) {
+        return res.status(401).json({ message: 'Invalid print agent key' });
+    }
+
+    next();
+};
 
 // @route   GET /api/orders
 // @desc    Get orders (All orders for staff/admin, user-specific for customers)
@@ -155,13 +242,78 @@ router.get('/kots', protect, admin, async (req, res) => {
     }
 });
 
-const kotPrintLogs = [];
-
 // @route   GET /api/orders/kot-logs
-// @desc    Get KOT print & dispatch audit logs
+// @desc    Get durable KOT dispatch audit logs
 // @access  Private/Admin
-router.get('/kot-logs', protect, admin, (req, res) => {
-    res.json({ logs: kotPrintLogs.slice(0, 100) });
+router.get('/kot-logs', protect, admin, async (req, res) => {
+    try {
+        const logs = await KOTPrintJob.find()
+            .select('eventId status attempts lastError agentId results printedAt createdAt updatedAt')
+            .sort('-createdAt')
+            .limit(100)
+            .lean();
+        res.json({ logs });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Desktop print agent durable catch-up endpoint. Socket delivery remains the
+// fast path; this endpoint recovers KOTs created while the local agent was off.
+router.get('/print-jobs/pending', requirePrintAgent, async (req, res) => {
+    try {
+        const jobs = await KOTPrintJob.find({ status: 'pending' })
+            .sort('createdAt')
+            .limit(100)
+            .lean();
+        res.json({ jobs });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+router.post('/print-jobs/:eventId/ack', requirePrintAgent, async (req, res) => {
+    try {
+        const job = await KOTPrintJob.findOneAndUpdate(
+            { eventId: req.params.eventId },
+            {
+                $set: {
+                    status: 'printed',
+                    printedAt: new Date(),
+                    agentId: String(req.body.agentId || '').slice(0, 100),
+                    results: Array.isArray(req.body.results) ? req.body.results : [],
+                    lastError: ''
+                },
+                $inc: { attempts: 1 }
+            },
+            { new: true }
+        );
+        if (!job) return res.status(404).json({ message: 'KOT print job not found' });
+        res.json({ acknowledged: true, eventId: job.eventId });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+router.post('/print-jobs/:eventId/failure', requirePrintAgent, async (req, res) => {
+    try {
+        const job = await KOTPrintJob.findOneAndUpdate(
+            { eventId: req.params.eventId },
+            {
+                $set: {
+                    agentId: String(req.body.agentId || '').slice(0, 100),
+                    results: Array.isArray(req.body.results) ? req.body.results : [],
+                    lastError: String(req.body.error || 'One or more printer targets failed').slice(0, 1000)
+                },
+                $inc: { attempts: 1 }
+            },
+            { new: true }
+        );
+        if (!job) return res.status(404).json({ message: 'KOT print job not found' });
+        res.json({ recorded: true, eventId: job.eventId });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 });
 
 // @route   GET /api/orders/active
@@ -400,6 +552,7 @@ router.post('/', protect, async (req, res) => {
         }
 
         const kotNum = `KOT-${Date.now().toString().slice(-4)}`;
+        const kotTimestamp = new Date();
 
         if (activeOrder) {
             // Append items to running table order
@@ -430,7 +583,7 @@ router.post('/', protect, async (req, res) => {
             // Add KOT history
             activeOrder.kotHistory.push({
                 kotNumber: kotNum,
-                timestamp: new Date(),
+                timestamp: kotTimestamp,
                 items: orderItems,
                 notes: orderInstructions
             });
@@ -446,13 +599,18 @@ router.post('/', protect, async (req, res) => {
                 .populate('items.menuItem', 'name image');
 
             const io = req.app.get('io');
-            if (io) {
-                const tn = (populatedOrder.tables?.length > 0)
-                    ? populatedOrder.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ')
-                    : (populatedOrder.table?.name || (populatedOrder.tableNumber ? `Table ${populatedOrder.tableNumber}` : 'Takeaway'));
-                io.emit('order-updated', populatedOrder);
-                io.emit('new-order', { ...populatedOrder.toObject(), tableName: tn });
-            }
+            const tn = (populatedOrder.tables?.length > 0)
+                ? populatedOrder.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ')
+                : (populatedOrder.table?.name || (populatedOrder.tableNumber ? `Table ${populatedOrder.tableNumber}` : 'Takeaway'));
+            if (io) io.emit('order-updated', populatedOrder);
+            await dispatchKOT(req, {
+                ...populatedOrder.toObject(),
+                kotTicket: kotNum,
+                kotCreatedAt: kotTimestamp,
+                tableName: tn,
+                items: orderItems,
+                specialInstructions: orderInstructions
+            }, 'ADD');
 
             return res.status(200).json(populatedOrder);
         }
@@ -478,7 +636,7 @@ router.post('/', protect, async (req, res) => {
             status: 'confirmed',
             kotHistory: [{
                 kotNumber: kotNum,
-                timestamp: new Date(),
+                timestamp: kotTimestamp,
                 items: orderItems,
                 notes: orderInstructions
             }],
@@ -505,14 +663,18 @@ router.post('/', protect, async (req, res) => {
             .populate('tables', 'tableNumber name section')
             .populate('items.menuItem', 'name image');
 
-        // Emit socket event for real-time update
-        const io = req.app.get('io');
-        if (io) {
-            const tn = (populatedOrder.tables?.length > 0)
-                ? populatedOrder.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ')
-                : (populatedOrder.table?.name || (populatedOrder.tableNumber ? `Table ${populatedOrder.tableNumber}` : 'Takeaway'));
-            io.emit('new-order', { ...populatedOrder.toObject(), tableName: tn });
-        }
+        // Persist first, then emit for immediate and recoverable KOT delivery.
+        const tn = (populatedOrder.tables?.length > 0)
+            ? populatedOrder.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ')
+            : (populatedOrder.table?.name || (populatedOrder.tableNumber ? `Table ${populatedOrder.tableNumber}` : 'Takeaway'));
+        await dispatchKOT(req, {
+            ...populatedOrder.toObject(),
+            kotTicket: kotNum,
+            kotCreatedAt: kotTimestamp,
+            tableName: tn,
+            items: orderItems,
+            specialInstructions: orderInstructions
+        }, 'CREATE');
 
         res.status(201).json(populatedOrder);
     } catch (error) {
@@ -669,26 +831,26 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         const emitTableName = getEmitTableName(populatedOrder);
 
         const io = req.app.get('io');
-        if (io) {
-            io.emit('order-updated', populatedOrder);
-            if (addedKotObj) {
-                io.emit('new-order', {
-                    ...populatedOrder.toObject(),
-                    kotTicket: addedKotObj.kotNumber,
-                    tableName: emitTableName,
-                    items: addedItems,
-                    specialInstructions: addedKotObj.notes
-                });
-            }
-            if (cancelledKotObj) {
-                io.emit('new-order', {
-                    ...populatedOrder.toObject(),
-                    kotTicket: cancelledKotObj.kotNumber,
-                    tableName: emitTableName,
-                    items: cancelledItems,
-                    specialInstructions: cancelledKotObj.notes
-                });
-            }
+        if (io) io.emit('order-updated', populatedOrder);
+        if (addedKotObj) {
+            await dispatchKOT(req, {
+                ...populatedOrder.toObject(),
+                kotTicket: addedKotObj.kotNumber,
+                kotCreatedAt: addedKotObj.timestamp,
+                tableName: emitTableName,
+                items: addedItems,
+                specialInstructions: addedKotObj.notes
+            }, 'ADD');
+        }
+        if (cancelledKotObj) {
+            await dispatchKOT(req, {
+                ...populatedOrder.toObject(),
+                kotTicket: cancelledKotObj.kotNumber,
+                kotCreatedAt: cancelledKotObj.timestamp,
+                tableName: emitTableName,
+                items: cancelledItems,
+                specialInstructions: cancelledKotObj.notes
+            }, 'CANCEL');
         }
 
         res.json({
@@ -786,16 +948,15 @@ router.put('/:id/status', protect, async (req, res) => {
             };
             order.kotHistory.push(cancelledKotObj);
 
-            // Emit to print agent
-            const io = req.app.get('io');
-            if (io) {
-                io.emit('new-order', {
-                    ...order.toObject(),
-                    kotTicket: cancelledKotObj.kotNumber,
-                    items: cancelledKotObj.items,
-                    specialInstructions: cancelledKotObj.notes
-                });
-            }
+            // Persist and emit the cancellation KOT to every print target.
+            await dispatchKOT(req, {
+                ...order.toObject(),
+                kotTicket: cancelledKotObj.kotNumber,
+                kotCreatedAt: cancelledKotObj.timestamp,
+                tableName: order.tableName || (order.tableNumber ? `Table ${order.tableNumber}` : 'Takeaway'),
+                items: cancelledKotObj.items,
+                specialInstructions: cancelledKotObj.notes
+            }, 'CANCEL');
         }
 
         order.status = status;

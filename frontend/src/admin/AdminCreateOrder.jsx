@@ -48,14 +48,8 @@ const AdminCreateOrder = () => {
     const [generatingBill, setGeneratingBill] = useState(false);
     const [createdKOT, setCreatedKOT] = useState(null);
 
-    useEffect(() => {
-        if (createdKOT) {
-            const timer = setTimeout(() => {
-                window.print();
-            }, 350);
-            return () => clearTimeout(timer);
-        }
-    }, [createdKOT]);
+    // When browser auto-print is disabled, keep a local preview available.
+    // Automatic KOT printing is owned exclusively by AdminLayout.
 
     // Max discount cap
     const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
@@ -259,16 +253,11 @@ const AdminCreateOrder = () => {
                 timestamp: new Date()
             };
 
-            // Set global deduplication flag so socket listener in AdminLayout won't double print
-            window.__lastPrintedOrderId = createdOrder._id;
-            setTimeout(() => {
-                if (window.__lastPrintedOrderId === createdOrder._id) {
-                    window.__lastPrintedOrderId = null;
-                }
-            }, 60000);
-
-            // Set KOT modal preview state
-            setCreatedKOT(kotObj);
+            // AdminLayout receives the socket event and owns automatic printing.
+            // Show this page-level preview only when auto-print was explicitly disabled.
+            if (localStorage.getItem('kea_auto_print_kot') === 'false') {
+                setCreatedKOT(kotObj);
+            }
 
             // Reset cart & inputs
             setCart([]);

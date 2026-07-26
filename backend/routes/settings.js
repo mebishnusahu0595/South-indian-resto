@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
+const { cleanHost, cleanPort, normalizePrinterRegistry, getPrinterConfig } = require('../utils/printerConfig');
 const { protect, admin, superadmin } = require('../middleware/auth');
 
 // Get all settings (public for GST etc.)
@@ -142,43 +143,79 @@ router.get('/app-config', protect, async (req, res) => {
     }
 });
 
-// Admin: Update any setting
+// Get centrally managed printer registry (admin)
+router.get('/printers', protect, admin, async (req, res) => {
+    try {
+        const config = await getPrinterConfig();
+        const byRole = (role) => config.printers.find(printer => printer.role === role)?.host || '';
+        res.json({
+            kitchenIp: byRole('kitchen'),
+            barIp: byRole('bar'),
+            receptionIp: byRole('reception'),
+            printerPort: config.defaultPort,
+            printerEnabled: config.enabled,
+            printers: config.printers
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Update centrally managed printer registry (superadmin)
+router.put('/printers', protect, superadmin, async (req, res) => {
+    try {
+        const currentConfig = await getPrinterConfig();
+        const printerPort = cleanPort(req.body.printerPort, currentConfig.defaultPort);
+        const printerEnabled = req.body.printerEnabled !== false;
+        let printers;
+
+        if (Array.isArray(req.body.printers)) {
+            printers = normalizePrinterRegistry(req.body.printers, printerPort);
+        } else {
+            // Backward compatibility for already-deployed admin clients.
+            const legacyInputs = [
+                { id: 'kitchen', name: 'Kitchen Printer', role: 'kitchen', host: req.body.kitchenIp },
+                { id: 'bar', name: 'Bar Printer', role: 'bar', host: req.body.barIp },
+                { id: 'reception', name: 'Reception Printer', role: 'reception', host: req.body.receptionIp }
+            ];
+            const nonLegacyPrinters = currentConfig.printers.filter(printer => !['kitchen', 'bar', 'reception'].includes(printer.role));
+            printers = normalizePrinterRegistry([...nonLegacyPrinters, ...legacyInputs], printerPort);
+        }
+
+        const roleHost = (role) => cleanHost(printers.find(printer => printer.role === role)?.host || '');
+        await Promise.all([
+            Settings.setSetting('printer_registry', printers, 'All LAN thermal printers that receive every KOT'),
+            Settings.setSetting('printer_kitchen_ip', roleHost('kitchen'), 'Legacy kitchen thermal printer IP'),
+            Settings.setSetting('printer_bar_ip', roleHost('bar'), 'Legacy bar thermal printer IP'),
+            Settings.setSetting('printer_reception_ip', roleHost('reception'), 'Legacy reception thermal printer IP'),
+            Settings.setSetting('printer_port', printerPort, 'Default thermal printer TCP port'),
+            Settings.setSetting('printer_enabled', printerEnabled, 'Enable or disable centralized automatic KOT printing')
+        ]);
+
+        const config = { version: 1, enabled: printerEnabled, defaultPort: printerPort, printers };
+        const io = req.app.get('io');
+        if (io) io.emit('printer-settings-updated', config);
+
+        res.json({
+            message: 'Printer registry updated',
+            kitchenIp: roleHost('kitchen'),
+            barIp: roleHost('bar'),
+            receptionIp: roleHost('reception'),
+            printerPort,
+            printerEnabled,
+            printers
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Admin: Update any setting. Keep this wildcard route after named routes.
 router.put('/:key', protect, admin, async (req, res) => {
     try {
         const { value, description } = req.body;
         const setting = await Settings.setSetting(req.params.key, value, description);
         res.json(setting);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-// Get printer settings (admin)
-router.get('/printers', protect, admin, async (req, res) => {
-    try {
-        const kitchenIp = await Settings.getSetting('printer_kitchen_ip', '');
-        const receptionIp = await Settings.getSetting('printer_reception_ip', '');
-        const printerPort = await Settings.getSetting('printer_port', 9100);
-        const printerEnabled = await Settings.getSetting('printer_enabled', true);
-        res.json({ kitchenIp, receptionIp, printerPort, printerEnabled });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-// Update printer settings (superadmin)
-router.put('/printers', protect, superadmin, async (req, res) => {
-    try {
-        const { kitchenIp, receptionIp, printerPort, printerEnabled } = req.body;
-        await Settings.setSetting('printer_kitchen_ip', kitchenIp || '', 'Kitchen thermal printer IP address');
-        await Settings.setSetting('printer_reception_ip', receptionIp || '', 'Reception thermal printer IP address');
-        await Settings.setSetting('printer_port', printerPort || 9100, 'Thermal printer TCP port');
-        await Settings.setSetting('printer_enabled', printerEnabled !== false, 'Enable/disable auto-print KOT');
-
-        const io = req.app.get('io');
-        if (io) io.emit('printer-settings-updated', { kitchenIp, receptionIp, printerPort, printerEnabled });
-
-        res.json({ message: 'Printer settings updated', kitchenIp, receptionIp, printerPort, printerEnabled });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

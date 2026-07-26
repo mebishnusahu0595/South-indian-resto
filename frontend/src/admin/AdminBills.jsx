@@ -458,7 +458,7 @@ const AdminBills = () => {
         csv += `Total Tax (Rs.),${totalTax.toFixed(2)}\n`;
         csv += `Grand Total Revenue (Rs.),${grandTotal.toFixed(2)}\n`;
 
-        downloadCSV(csv, `Bills_Table_Sales_Report_${selectedDate}`);
+        downloadCSV(csv, `Bills_Table_Sales_Report_${selectedDate}`, { saleReportFolder: true });
     };
 
     return (

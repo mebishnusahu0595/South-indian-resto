@@ -40,14 +40,16 @@ const AdminDashboard = () => {
     }, []);
 
     useEffect(() => {
-        if (socket) {
-            socket.on('new-order', () => fetchData());
-            socket.on('order-updated', () => fetchData());
-            return () => {
-                socket.off('new-order');
-                socket.off('order-updated');
-            };
-        }
+        if (!socket) return undefined;
+
+        const handleOrderChange = () => fetchData();
+        socket.on('new-order', handleOrderChange);
+        socket.on('order-updated', handleOrderChange);
+
+        return () => {
+            socket.off('new-order', handleOrderChange);
+            socket.off('order-updated', handleOrderChange);
+        };
     }, [socket]);
 
     const fetchData = async (start = startDate, end = endDate) => {

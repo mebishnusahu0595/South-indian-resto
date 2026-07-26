@@ -38,9 +38,11 @@ const AdminSettings = () => {
     // Printer settings
     const [printerSettings, setPrinterSettings] = useState({
         kitchenIp: '',
+        barIp: '',
         receptionIp: '',
         printerPort: 9100,
-        printerEnabled: true
+        printerEnabled: true,
+        printers: []
     });
     const [savingPrinters, setSavingPrinters] = useState(false);
 
@@ -82,7 +84,7 @@ const AdminSettings = () => {
         setSavingPrinters(true);
         try {
             await updatePrinterSettings(printerSettings);
-            showNotice('success', 'Printer settings saved! Staff app will reflect on next login.');
+            showNotice('success', 'Printer registry saved. The restaurant desktop print agent will refresh automatically.');
         } catch (err) {
             showNotice('error', err.response?.data?.message || 'Failed to save printer settings');
         } finally {
@@ -372,27 +374,116 @@ const AdminSettings = () => {
                                 </button>
                             </div>
 
-                            <div className="form-group">
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiPrinter /> Kitchen Printer IP Address</label>
-                                <input
-                                    type="text"
-                                    value={printerSettings.kitchenIp}
-                                    onChange={(e) => setPrinterSettings(p => ({ ...p, kitchenIp: e.target.value }))}
-                                    placeholder="e.g. 192.168.1.100"
-                                />
-                                <span className="hint">IP address of kitchen thermal printer on local network (port 9100)</span>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                <div>
+                                    <strong>All KOT Printer Targets</strong>
+                                    <div className="hint">Every enabled printer receives CREATE, ADD and CANCEL KOTs.</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => setPrinterSettings(current => ({
+                                        ...current,
+                                        printers: [
+                                            ...(current.printers || []),
+                                            {
+                                                id: `printer-${Date.now()}`,
+                                                name: `WiFi Printer ${(current.printers || []).length + 1}`,
+                                                role: 'all',
+                                                host: '',
+                                                port: current.printerPort || 9100,
+                                                copies: 1,
+                                                enabled: true
+                                            }
+                                        ]
+                                    }))}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                                >
+                                    <FiPlus /> Add Printer
+                                </button>
                             </div>
 
-                            <div className="form-group">
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiPrinter /> Reception Printer IP Address</label>
-                                <input
-                                    type="text"
-                                    value={printerSettings.receptionIp}
-                                    onChange={(e) => setPrinterSettings(p => ({ ...p, receptionIp: e.target.value }))}
-                                    placeholder="e.g. 192.168.1.101"
-                                />
-                                <span className="hint">IP address of reception/billing thermal printer on local network</span>
-                            </div>
+                            {(printerSettings.printers || []).length === 0 ? (
+                                <div className="info-box" style={{ marginBottom: '16px' }}>
+                                    <FiInfo />
+                                    <p>No fixed IP is registered yet. Add Kitchen and Bar printer IPs, or enable LAN auto-discovery in the desktop print agent.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
+                                    {(printerSettings.printers || []).map((printer, index) => (
+                                        <div key={printer.id || index} style={{ border: '1.5px solid #D1D5DB', borderRadius: '8px', padding: '12px', background: printer.enabled === false ? '#F3F4F6' : '#FFFFFF' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '8px', alignItems: 'end' }}>
+                                                <div className="form-group" style={{ margin: 0 }}>
+                                                    <label>Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={printer.name || ''}
+                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, name: e.target.value } : item) }))}
+                                                        placeholder="Kitchen / Bar"
+                                                    />
+                                                </div>
+                                                <div className="form-group" style={{ margin: 0 }}>
+                                                    <label>Role</label>
+                                                    <select
+                                                        value={printer.role || 'all'}
+                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, role: e.target.value } : item) }))}
+                                                    >
+                                                        <option value="kitchen">Kitchen</option>
+                                                        <option value="bar">Bar</option>
+                                                        <option value="reception">Reception</option>
+                                                        <option value="all">Other / All</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ margin: 0 }}>
+                                                    <label>Printer IP / Host</label>
+                                                    <input
+                                                        type="text"
+                                                        value={printer.host || ''}
+                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, host: e.target.value } : item) }))}
+                                                        placeholder="192.168.1.100"
+                                                    />
+                                                </div>
+                                                <div className="form-group" style={{ margin: 0 }}>
+                                                    <label>Port</label>
+                                                    <input
+                                                        type="number"
+                                                        value={printer.port || printerSettings.printerPort || 9100}
+                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, port: parseInt(e.target.value) || 9100 } : item) }))}
+                                                    />
+                                                </div>
+                                                <div className="form-group" style={{ margin: 0 }}>
+                                                    <label>Copies</label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="5"
+                                                        value={printer.copies || 1}
+                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, copies: Math.max(1, Math.min(5, parseInt(e.target.value) || 1)) } : item) }))}
+                                                    />
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '2px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, enabled: item.enabled === false } : item) }))}
+                                                        title={printer.enabled === false ? 'Enable printer' : 'Disable printer'}
+                                                        style={{ border: 'none', background: 'transparent', color: printer.enabled === false ? '#9CA3AF' : '#059669', cursor: 'pointer', padding: '6px' }}
+                                                    >
+                                                        {printer.enabled === false ? <FiToggleLeft size={24} /> : <FiToggleRight size={24} />}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPrinterSettings(current => ({ ...current, printers: current.printers.filter((_, itemIndex) => itemIndex !== index) }))}
+                                                        title="Remove printer"
+                                                        style={{ border: 'none', background: '#FEE2E2', color: '#DC2626', cursor: 'pointer', borderRadius: '5px', padding: '7px' }}
+                                                    >
+                                                        <FiTrash2 />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             <div className="form-group">
                                 <label>Printer TCP Port</label>
@@ -408,7 +499,7 @@ const AdminSettings = () => {
 
                             <div className="info-box">
                                 <FiInfo />
-                                <p>Both printers must be connected to the same WiFi/LAN as the server. Kitchen IP is used for KOT slips, Reception IP is used for customer bills. Staff app will show these printers as Online/Offline.</p>
+                                <p>Printers must be on the same WiFi/LAN as the restaurant desktop running the print agent. The VPS only stores jobs; the local agent sends each CREATE, ADD and CANCEL KOT to every enabled fixed or auto-discovered TCP/9100 printer.</p>
                             </div>
                         </div>
 

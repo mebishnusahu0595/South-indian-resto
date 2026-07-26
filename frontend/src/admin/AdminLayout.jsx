@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
     FiHome, FiGrid, FiShoppingBag, FiTag, FiPackage,
@@ -9,6 +9,19 @@ import { useAuth } from '../context/AuthContext';
 import { getActiveOrders, getBills, getTables, getBookings } from '../utils/api';
 import './AdminLayout.css';
 import './admin-mobile.css';
+import '../components/OrderBill.css';
+
+const KOT_DEDUPE_STORAGE_KEY = 'kea_handled_kot_keys';
+const MAX_REMEMBERED_KOTS = 200;
+
+const loadHandledKOTKeys = () => {
+    try {
+        const stored = JSON.parse(sessionStorage.getItem(KOT_DEDUPE_STORAGE_KEY) || '[]');
+        return new Set(Array.isArray(stored) ? stored : []);
+    } catch (_) {
+        return new Set();
+    }
+};
 
 const AdminLayout = () => {
     const { user, logout, socket } = useAuth();
@@ -56,90 +69,133 @@ const AdminLayout = () => {
     };
 
     const [layoutKOT, setLayoutKOT] = useState(null);
+    const [kotQueue, setKotQueue] = useState([]);
+    const handledKOTKeysRef = useRef(loadHandledKOTKeys());
+
+    // Only one ticket is mounted and printed at a time. The next ticket waits
+    // until the current browser print job finishes (or its modal is closed).
+    useEffect(() => {
+        if (!layoutKOT && kotQueue.length > 0) {
+            const [nextKOT, ...remainingKOTs] = kotQueue;
+            setKotQueue(remainingKOTs);
+            setLayoutKOT(nextKOT);
+        }
+    }, [layoutKOT, kotQueue]);
 
     useEffect(() => {
-        if (layoutKOT && localStorage.getItem('kea_auto_print_kot') !== 'false') {
-            const timer = setTimeout(() => {
-                window.print();
-            }, 350);
-            return () => clearTimeout(timer);
+        if (!layoutKOT || localStorage.getItem('kea_auto_print_kot') === 'false') {
+            return undefined;
         }
+
+        let fallbackTimer;
+        const activePrintKey = layoutKOT.printKey;
+        const finishPrint = () => {
+            setLayoutKOT(current => current?.printKey === activePrintKey ? null : current);
+        };
+        const handleAfterPrint = () => finishPrint();
+
+        window.addEventListener('afterprint', handleAfterPrint);
+        const printTimer = setTimeout(() => {
+            window.print();
+            // afterprint is supported by production Chromium. This watchdog
+            // prevents a stalled queue in browsers that fail to emit it.
+            fallbackTimer = setTimeout(finishPrint, 60000);
+        }, 350);
+
+        return () => {
+            clearTimeout(printTimer);
+            clearTimeout(fallbackTimer);
+            window.removeEventListener('afterprint', handleAfterPrint);
+        };
     }, [layoutKOT]);
 
     useEffect(() => {
-        if (socket) {
-            const handleOrderChange = () => {
-                fetchCounts();
-            };
+        if (!socket) return undefined;
 
-            socket.on('new-order', (order) => {
-                setNotifications(prev => [...prev, { type: 'order', message: `New order #${order.orderNumber}`, id: order._id }]);
-                playNotificationSound();
-                fetchCounts();
+        const handleOrderChange = () => fetchCounts();
+        const handleNewOrder = (order) => {
+            setNotifications(prev => [...prev, { type: 'order', message: `New order #${order.orderNumber}`, id: order._id }]);
+            playNotificationSound();
+            fetchCounts();
 
-                const tableStr = order.tables?.length 
+            const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
+            const kotNumber = order.kotTicket || `KOT-${cleanOrdNo}`;
+            const orderIdentity = order._id?.toString() || order.id?.toString() || order.orderNumber || 'unknown';
+            const printKey = `${orderIdentity}:${kotNumber}`;
+
+            if (handledKOTKeysRef.current.has(printKey)) return;
+
+            handledKOTKeysRef.current.add(printKey);
+            try {
+                const remembered = Array.from(handledKOTKeysRef.current).slice(-MAX_REMEMBERED_KOTS);
+                handledKOTKeysRef.current = new Set(remembered);
+                sessionStorage.setItem(KOT_DEDUPE_STORAGE_KEY, JSON.stringify(remembered));
+            } catch (_) {
+                // Printing must continue even if browser storage is unavailable.
+            }
+
+            const tableStr = order.tableName
+                || (order.tables?.length
                     ? order.tables.map(t => t.name || `Table ${t.tableNumber || t}`).join(', ')
-                    : order.tableNumber || 'Takeaway';
-                const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
-                const kotObj = {
-                    kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,
-                    orderNumber: order.orderNumber,
-                    tableName: tableStr || 'Takeaway',
-                    staffName: order.placedBy?.name || order.user?.name || 'Staff',
-                    items: (order.items || []).map(i => ({ 
-                        name: i.menuItem?.name || i.name || 'Item', 
-                        quantity: i.quantity, 
-                        notes: i.notes || i.instruction || i.specialInstructions || i.note || '' 
-                    })),
-                    notes: order.specialInstructions || order.instructions || order.notes || '',
-                    timestamp: order.createdAt || new Date()
-                };
-                setLayoutKOT(kotObj);
-            });
+                    : null)
+                || (order.table?.name || (order.table?.tableNumber ? `Table ${order.table.tableNumber}` : null))
+                || (order.tableNumber ? `Table ${order.tableNumber}` : 'Takeaway');
 
-            socket.on('bill-requested', (order) => {
-                setNotifications(prev => [...prev, { type: 'bill', message: `Bill requested for #${order.orderNumber}`, id: order._id }]);
-                playNotificationSound();
-                fetchCounts();
-            });
-
-            socket.on('bill-generated', () => {
-                fetchCounts();
-            });
-
-            socket.on('bill-deleted', () => {
-                fetchCounts();
-            });
-
-            socket.on('new-booking', (booking) => {
-                setNotifications(prev => [...prev, { type: 'booking', message: `New booking: ${booking.guestName} (${booking.guestCount} guests)`, id: booking._id }]);
-                playNotificationSound();
-                fetchCounts();
-            });
-
-            socket.on('booking-updated', () => fetchCounts());
-            socket.on('booking-deleted', () => fetchCounts());
-            socket.on('order-updated', () => fetchCounts());
-            socket.on('order-deleted', () => fetchCounts());
-            socket.on('table-occupied', () => fetchCounts());
-            socket.on('table-freed', () => fetchCounts());
-            socket.on('table-updated', () => fetchCounts());
-
-            return () => {
-                socket.off('new-order');
-                socket.off('bill-requested');
-                socket.off('bill-generated');
-                socket.off('bill-deleted');
-                socket.off('new-booking');
-                socket.off('booking-updated');
-                socket.off('booking-deleted');
-                socket.off('order-updated');
-                socket.off('order-deleted');
-                socket.off('table-occupied');
-                socket.off('table-freed');
-                socket.off('table-updated');
+            const kotObj = {
+                printKey,
+                kotNumber,
+                orderNumber: order.orderNumber,
+                tableName: tableStr,
+                staffName: order.placedBy?.name || order.user?.name || 'Staff',
+                items: (order.items || []).map(i => ({
+                    name: i.menuItem?.name || i.name || 'Item',
+                    quantity: i.quantity,
+                    notes: i.notes || i.instruction || i.specialInstructions || i.note || ''
+                })),
+                notes: order.specialInstructions || order.instructions || order.notes || '',
+                timestamp: order.kotCreatedAt || order.createdAt || new Date()
             };
-        }
+
+            setKotQueue(prev => prev.some(ticket => ticket.printKey === printKey) ? prev : [...prev, kotObj]);
+        };
+        const handleBillRequested = (order) => {
+            setNotifications(prev => [...prev, { type: 'bill', message: `Bill requested for #${order.orderNumber}`, id: order._id }]);
+            playNotificationSound();
+            fetchCounts();
+        };
+        const handleNewBooking = (booking) => {
+            setNotifications(prev => [...prev, { type: 'booking', message: `New booking: ${booking.guestName} (${booking.guestCount} guests)`, id: booking._id }]);
+            playNotificationSound();
+            fetchCounts();
+        };
+
+        socket.on('new-order', handleNewOrder);
+        socket.on('bill-requested', handleBillRequested);
+        socket.on('bill-generated', handleOrderChange);
+        socket.on('bill-deleted', handleOrderChange);
+        socket.on('new-booking', handleNewBooking);
+        socket.on('booking-updated', handleOrderChange);
+        socket.on('booking-deleted', handleOrderChange);
+        socket.on('order-updated', handleOrderChange);
+        socket.on('order-deleted', handleOrderChange);
+        socket.on('table-occupied', handleOrderChange);
+        socket.on('table-freed', handleOrderChange);
+        socket.on('table-updated', handleOrderChange);
+
+        return () => {
+            socket.off('new-order', handleNewOrder);
+            socket.off('bill-requested', handleBillRequested);
+            socket.off('bill-generated', handleOrderChange);
+            socket.off('bill-deleted', handleOrderChange);
+            socket.off('new-booking', handleNewBooking);
+            socket.off('booking-updated', handleOrderChange);
+            socket.off('booking-deleted', handleOrderChange);
+            socket.off('order-updated', handleOrderChange);
+            socket.off('order-deleted', handleOrderChange);
+            socket.off('table-occupied', handleOrderChange);
+            socket.off('table-freed', handleOrderChange);
+            socket.off('table-updated', handleOrderChange);
+        };
     }, [socket]);
 
     const playNotificationSound = () => {

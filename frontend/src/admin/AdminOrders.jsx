@@ -180,76 +180,47 @@ const AdminOrders = () => {
     };
 
     useEffect(() => {
-        if (socket) {
-            socket.on('new-order', (order) => {
-                console.log('New order received:', order.orderNumber);
-                setOrders(prev => {
-                    const orderIdStr = order._id?.toString() || order.id?.toString();
-                    const exists = prev.some(o => (o._id?.toString() || o.id?.toString()) === orderIdStr);
-                    if (exists) {
-                        return prev.map(o => (o._id?.toString() || o.id?.toString()) === orderIdStr ? order : o);
-                    }
-                    return [order, ...prev];
-                });
+        if (!socket) return undefined;
 
-                // Play audio notification chime
-                try {
-                    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-                    audio.play().catch(() => {});
-                } catch (_) {}
-
-                // If Auto-Print KOT is enabled on desktop counter, trigger KOT print slip queue
-                if (localStorage.getItem('kea_auto_print_kot') !== 'false') {
-                    const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
-                    const fullTableName = order.tableName
-                        || (order.tables?.length > 0 ? order.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ') : null)
-                        || (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : null)
-                        || (order.tableNumber ? `Table ${order.tableNumber}` : 'Takeaway');
-                    const kotData = {
-                        kotNumber: order.kotTicket || `KOT-${cleanOrdNo}`,
-                        orderNumber: order.orderNumber,
-                        tableNumber: fullTableName,
-                        staffName: order.placedBy?.name || order.user?.name || 'Staff',
-                        items: (order.items || []).map(i => ({ 
-                            name: i.menuItem?.name || i.name || 'Item', 
-                            quantity: i.quantity,
-                            notes: i.notes || i.instruction || i.specialInstructions || i.note || ''
-                        })),
-                        notes: order.specialInstructions || order.instructions || order.notes || '',
-                        timestamp: order.createdAt || new Date()
-                    };
-                    
-                    // Push to print queue and process sequentially
-                    setSelectedKOTForPrint(kotData);
-                    setTimeout(() => {
-                        window.print();
-                    }, 400);
+        const handleNewOrder = (order) => {
+            console.log('New order received:', order.orderNumber);
+            setOrders(prev => {
+                const orderIdStr = order._id?.toString() || order.id?.toString();
+                const exists = prev.some(o => (o._id?.toString() || o.id?.toString()) === orderIdStr);
+                if (exists) {
+                    return prev.map(o => (o._id?.toString() || o.id?.toString()) === orderIdStr ? order : o);
                 }
+                return [order, ...prev];
             });
-            socket.on('order-updated', (order) => {
-                console.log('Order updated:', order.orderNumber, 'Status:', order.status);
-                setOrders(prev => prev.map(o =>
-                    o._id.toString() === order._id.toString() ? order : o
-                ));
-            });
-            // Also listen for bill-requested to update UI in real-time
-            socket.on('bill-requested', (order) => {
-                console.log('Bill requested for:', order.orderNumber, 'Status:', order.status);
-                setOrders(prev => prev.map(o =>
-                    o._id.toString() === order._id.toString() ? order : o
-                ));
-            });
-            socket.on('order-deleted', (orderId) => {
-                console.log('Order deleted:', orderId);
-                setOrders(prev => prev.filter(o => o._id.toString() !== orderId.toString()));
-            });
-            return () => {
-                socket.off('new-order');
-                socket.off('order-updated');
-                socket.off('bill-requested');
-                socket.off('order-deleted');
-            };
-        }
+        };
+        const handleOrderUpdated = (order) => {
+            console.log('Order updated:', order.orderNumber, 'Status:', order.status);
+            setOrders(prev => prev.map(o =>
+                o._id.toString() === order._id.toString() ? order : o
+            ));
+        };
+        const handleBillRequested = (order) => {
+            console.log('Bill requested for:', order.orderNumber, 'Status:', order.status);
+            setOrders(prev => prev.map(o =>
+                o._id.toString() === order._id.toString() ? order : o
+            ));
+        };
+        const handleOrderDeleted = (orderId) => {
+            console.log('Order deleted:', orderId);
+            setOrders(prev => prev.filter(o => o._id.toString() !== orderId.toString()));
+        };
+
+        socket.on('new-order', handleNewOrder);
+        socket.on('order-updated', handleOrderUpdated);
+        socket.on('bill-requested', handleBillRequested);
+        socket.on('order-deleted', handleOrderDeleted);
+
+        return () => {
+            socket.off('new-order', handleNewOrder);
+            socket.off('order-updated', handleOrderUpdated);
+            socket.off('bill-requested', handleBillRequested);
+            socket.off('order-deleted', handleOrderDeleted);
+        };
     }, [socket]);
 
     const handleDeleteOrder = async (orderId) => {
@@ -746,33 +717,10 @@ const AdminOrders = () => {
                 modificationNote: modifyNote
             };
 
-            const res = await modifyOrderItems(editingOrder._id, payload);
-            const { addedKot, cancelledKot } = res.data;
+            await modifyOrderItems(editingOrder._id, payload);
 
             setShowModifyModal(false);
             fetchOrders();
-
-            if (addedKot) {
-                setSelectedKOTForPrint({
-                    kotNumber: addedKot.kotNumber,
-                    orderNumber: editingOrder.orderNumber,
-                    tableNumber: editingOrder.tableNumber || 'Takeaway',
-                    staffName: user?.name || 'Admin',
-                    items: addedKot.items,
-                    notes: addedKot.notes,
-                    timestamp: new Date()
-                });
-            } else if (cancelledKot) {
-                setSelectedKOTForPrint({
-                    kotNumber: cancelledKot.kotNumber,
-                    orderNumber: editingOrder.orderNumber,
-                    tableNumber: editingOrder.tableNumber || 'Takeaway',
-                    staffName: user?.name || 'Admin',
-                    items: cancelledKot.items,
-                    notes: cancelledKot.notes,
-                    timestamp: new Date()
-                });
-            }
         } catch (err) {
             alert(err.response?.data?.message || 'Failed to modify order items');
         } finally {

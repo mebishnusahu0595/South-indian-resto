@@ -104,7 +104,7 @@ const AdminAnalytics = () => {
             csv += `"${b.billNumber}",${time},"${ordNo}","${tbl}","${b.billerName || ''}",${b.order?.status || 'paid'},${(b.subtotal || 0).toFixed(2)},${(b.discount || 0).toFixed(2)},${(b.tax || 0).toFixed(2)},${(b.total || 0).toFixed(2)}\n`;
         });
 
-        downloadCSV(csv, `Day_End_Report_${dateStr}`);
+        downloadCSV(csv, `Day_End_Report_${dateStr}`, { saleReportFolder: true });
     };
 
     const handleDownloadSectionReport = (sectionData) => {
@@ -139,7 +139,7 @@ const AdminAnalytics = () => {
             });
         });
 
-        downloadCSV(csv, `Table_Section_Settlement_Report_${dateStr}`);
+        downloadCSV(csv, `Table_Section_Settlement_Report_${dateStr}`, { saleReportFolder: true });
     };
 
     useEffect(() => {
@@ -190,7 +190,7 @@ const AdminAnalytics = () => {
 
     const handleExportRevenue = () => {
         const filename = `revenue_${period}_${getFilenameDate()}`;
-        exportToCSV(revenueData, revenueExportColumns, filename);
+        exportToCSV(revenueData, revenueExportColumns, filename, { saleReportFolder: true });
     };
 
     if (loading) return <Loader message="Crunching the numbers..." />;
