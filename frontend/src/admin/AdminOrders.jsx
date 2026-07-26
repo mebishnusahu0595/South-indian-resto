@@ -78,9 +78,18 @@ const AdminOrders = () => {
     const [fetchingKOTs, setFetchingKOTs] = useState(false);
     const [selectedKOTForPrint, setSelectedKOTForPrint] = useState(null);
 
+    useEffect(() => {
+        if (selectedKOTForPrint) {
+            const timer = setTimeout(() => {
+                window.print();
+            }, 350);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedKOTForPrint]);
+
     // Auto-Print KOT state (saved in localStorage)
     const [autoPrintKOT, setAutoPrintKOT] = useState(() => {
-        return localStorage.getItem('kea_auto_print_kot') === 'true';
+        return localStorage.getItem('kea_auto_print_kot') !== 'false';
     });
 
     const toggleAutoPrintKOT = () => {
@@ -184,7 +193,7 @@ const AdminOrders = () => {
                 } catch (_) {}
 
                 // If Auto-Print KOT is enabled on desktop counter, trigger KOT print slip queue
-                if (localStorage.getItem('kea_auto_print_kot') === 'true') {
+                if (localStorage.getItem('kea_auto_print_kot') !== 'false') {
                     const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
                     const fullTableName = order.tableName
                         || (order.tables?.length > 0 ? order.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ') : null)

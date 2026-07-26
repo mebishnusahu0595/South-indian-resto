@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import './OrderBill.css';
 import { FiCheck, FiX, FiFileText } from 'react-icons/fi';
 
 const OrderBill = ({ order, orders, onCancel }) => {
     // Determine the list of orders to display
     const ordersList = orders || (order ? [order] : []);
+
+    useEffect(() => {
+        if (ordersList.length > 0) {
+            const timer = setTimeout(() => {
+                window.print();
+            }, 350);
+            return () => clearTimeout(timer);
+        }
+    }, [ordersList]);
 
     if (ordersList.length === 0) return null;
 

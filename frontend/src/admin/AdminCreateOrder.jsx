@@ -48,6 +48,15 @@ const AdminCreateOrder = () => {
     const [generatingBill, setGeneratingBill] = useState(false);
     const [createdKOT, setCreatedKOT] = useState(null);
 
+    useEffect(() => {
+        if (createdKOT) {
+            const timer = setTimeout(() => {
+                window.print();
+            }, 350);
+            return () => clearTimeout(timer);
+        }
+    }, [createdKOT]);
+
     // Max discount cap
     const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
 
