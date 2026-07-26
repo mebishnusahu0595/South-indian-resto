@@ -58,6 +58,15 @@ const AdminLayout = () => {
     const [layoutKOT, setLayoutKOT] = useState(null);
 
     useEffect(() => {
+        if (layoutKOT && localStorage.getItem('kea_auto_print_kot') !== 'false') {
+            const timer = setTimeout(() => {
+                window.print();
+            }, 350);
+            return () => clearTimeout(timer);
+        }
+    }, [layoutKOT]);
+
+    useEffect(() => {
         if (socket) {
             const handleOrderChange = () => {
                 fetchCounts();
@@ -77,8 +86,12 @@ const AdminLayout = () => {
                     orderNumber: order.orderNumber,
                     tableName: tableStr || 'Takeaway',
                     staffName: order.placedBy?.name || order.user?.name || 'Staff',
-                    items: (order.items || []).map(i => ({ name: i.menuItem?.name || i.name || 'Item', quantity: i.quantity, notes: i.notes || '' })),
-                    notes: order.specialInstructions,
+                    items: (order.items || []).map(i => ({ 
+                        name: i.menuItem?.name || i.name || 'Item', 
+                        quantity: i.quantity, 
+                        notes: i.notes || i.instruction || i.specialInstructions || i.note || '' 
+                    })),
+                    notes: order.specialInstructions || order.instructions || order.notes || '',
                     timestamp: order.createdAt || new Date()
                 };
                 setLayoutKOT(kotObj);
