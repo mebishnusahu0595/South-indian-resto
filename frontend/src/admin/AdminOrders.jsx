@@ -71,6 +71,12 @@ const AdminOrders = () => {
     const [quickPayOrder, setQuickPayOrder] = useState(null);
     const [quickPayAmount, setQuickPayAmount] = useState(0);
 
+    // Edit Paid Amount & Method modal state
+    const [showEditPaidModal, setShowEditPaidModal] = useState(false);
+    const [editingPaidOrder, setEditingPaidOrder] = useState(null);
+    const [newPaidAmount, setNewPaidAmount] = useState(0);
+    const [newPaymentMethod, setNewPaymentMethod] = useState('cash');
+
     // KOTs state
     const [activeTab, setActiveTab] = useState('active'); // 'active' | 'kots' | 'all'
     const [kotList, setKotList] = useState([]);
@@ -508,6 +514,24 @@ const AdminOrders = () => {
         setQuickPayOrder(order);
         setQuickPayAmount(payVal);
         setShowQuickPayModal(true);
+    };
+
+    const handleSaveEditPaidAmount = async (e) => {
+        if (e) e.preventDefault();
+        if (!editingPaidOrder) return;
+        const amt = parseFloat(newPaidAmount);
+        if (isNaN(amt) || amt < 0) {
+            alert('Please enter a valid paid amount (>= 0).');
+            return;
+        }
+        try {
+            await updatePayment(editingPaidOrder._id, newPaymentMethod, amt);
+            setShowEditPaidModal(false);
+            setEditingPaidOrder(null);
+            fetchOrders();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to update payment');
+        }
     };
 
     const handleConfirmPaymentBiller = async (e) => {
@@ -972,10 +996,53 @@ const AdminOrders = () => {
                                                     className="payment-fill"
                                                     style={{ width: `${Math.min((order.amountPaid || 0) / order.total * 100, 100)}%` }}
                                                 ></div>
-                                            </div>
-                                            <div className="payment-labels">
-                                                <span className="paid">Paid: ₹{order.amountPaid || 0}</span>
-                                                <span className="pending">Bal: ₹{Math.max(order.total - (order.amountPaid || 0), 0).toFixed(2)}</span>
+                                                <div className="payment-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                 <span className="paid" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                     Paid: ₹{order.amountPaid || 0}
+                                                     <button
+                                                         type="button"
+                                                         onClick={(e) => {
+                                                             e.stopPropagation();
+                                                             setEditingPaidOrder(order);
+                                                             setNewPaidAmount(order.amountPaid || 0);
+                                                             setNewPaymentMethod(order.paymentMethod || 'cash');
+                                                             setShowEditPaidModal(true);
+                                                         }}
+                                                         style={{
+                                                             background: '#7C3AED',
+                                                             color: '#FFF',
+                                                             border: 'none',
+                                                             borderRadius: '4px',
+                                                             fontSize: '0.72rem',
+                                                             fontWeight: 'bold',
+                                                             padding: '2px 6px',
+                                                             cursor: 'pointer'
+                                                         }}
+                                                         title="Correct or Change Paid Amount & Payment Method"
+                                                     >
+                                                         ✏️ Edit
+                                                     </button>
+                                                 </span>
+                                                 <span className="pending">Bal: ₹{Math.max(order.total - (order.amountPaid || 0), 0).toFixed(2)}</span>
+                                             </div>
+                                             {order.paymentMethod && (
+                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', padding: '4px 8px', background: '#F3F4F6', borderRadius: '4px', fontSize: '0.78rem', fontWeight: 'bold' }}>
+                                                     <span>Mode: {(order.paymentMethod || 'cash').toUpperCase()}</span>
+                                                     <button
+                                                         type="button"
+                                                         onClick={(e) => {
+                                                             e.stopPropagation();
+                                                             setEditingPaidOrder(order);
+                                                             setNewPaidAmount(order.amountPaid || 0);
+                                                             setNewPaymentMethod(order.paymentMethod || 'cash');
+                                                             setShowEditPaidModal(true);
+                                                         }}
+                                                         style={{ background: 'transparent', border: 'none', color: '#2563EB', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}
+                                                     >
+                                                         ✏️ Change Mode
+                                                     </button>
+                                                 </div>
+                                             )}
                                             </div>
                                         </div>
                                     </div>
@@ -2157,6 +2224,99 @@ const AdminOrders = () => {
                                 <FiPrinter /> Print 80MM KOT
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Paid Amount & Payment Method Modal */}
+            {showEditPaidModal && editingPaidOrder && (
+                <div className="modal-overlay" onClick={() => setShowEditPaidModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px', width: '92%' }}>
+                        <div className="modal-header">
+                            <h2>✏️ Edit Paid Amount & Payment Mode</h2>
+                            <button className="modal-close" onClick={() => setShowEditPaidModal(false)}>×</button>
+                        </div>
+                        <form onSubmit={handleSaveEditPaidAmount} style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '10px' }}>
+                            <div style={{ background: '#F9FAFB', padding: '10px', borderRadius: '6px', border: '1px solid #E5E7EB', fontSize: '0.85rem' }}>
+                                <div><strong>Order Number:</strong> #{editingPaidOrder.orderNumber}</div>
+                                <div><strong>Table:</strong> {editingPaidOrder.tableNumber || 'Takeaway'}</div>
+                                <div><strong>Order Total:</strong> ₹{(editingPaidOrder.total || 0).toFixed(2)}</div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '4px' }}>
+                                    Paid Amount (₹):
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={newPaidAmount}
+                                    onChange={(e) => setNewPaidAmount(e.target.value)}
+                                    style={{ width: '100%', padding: '8px', fontSize: '1rem', fontWeight: 'bold', border: '2px solid #111', borderRadius: '6px' }}
+                                    required
+                                />
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewPaidAmount(editingPaidOrder.total)}
+                                        style={{ flex: 1, padding: '4px 8px', fontSize: '0.75rem', background: '#DCFCE7', color: '#166534', border: '1px solid #22C55E', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                                    >
+                                        Set Full Paid (₹{editingPaidOrder.total.toFixed(2)})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewPaidAmount(0)}
+                                        style={{ flex: 1, padding: '4px 8px', fontSize: '0.75rem', background: '#FEE2E2', color: '#991B1B', border: '1px solid #EF4444', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                                    >
+                                        Reset Paid to ₹0
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '6px' }}>
+                                    Payment Method / Mode:
+                                </label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    {['cash', 'online', 'card', 'split'].map(mode => (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            onClick={() => setNewPaymentMethod(mode)}
+                                            style={{
+                                                padding: '8px',
+                                                borderRadius: '6px',
+                                                border: '2px solid #111',
+                                                background: newPaymentMethod === mode ? '#7C3AED' : '#FFF',
+                                                color: newPaymentMethod === mode ? '#FFF' : '#111',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer',
+                                                fontSize: '0.85rem',
+                                                textTransform: 'uppercase'
+                                            }}
+                                        >
+                                            {mode === 'online' ? 'UPI / Online' : mode}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditPaidModal(false)}
+                                    style={{ flex: 1, padding: '10px', border: '1px solid #CCC', borderRadius: '6px', background: '#FFF', cursor: 'pointer', fontWeight: 'bold' }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '6px', background: '#059669', color: '#FFF', cursor: 'pointer', fontWeight: 'bold' }}
+                                >
+                                    💾 Save Payment
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

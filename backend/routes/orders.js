@@ -969,28 +969,29 @@ router.put('/:id/request-bill', protect, async (req, res) => {
 // @route   PUT /api/orders/:id/payment
 // @desc    Update order payment (method and amount)
 // @access  Private/Admin
-router.put('/:id/payment', protect, admin, async (req, res) => {
+router.put('/:id/payment', protect, async (req, res) => {
     try {
-        const { paymentMethod, amountPaid } = req.body;
+        const { paymentMethod, amountPaid, splitPaymentDetails } = req.body;
         const order = await Order.findById(req.params.id).populate('items.menuItem');
 
         if (!order) {
             return res.status(404).json({ message: 'Order not found' });
         }
 
-        // Block edits on settled orders unless superadmin
-        if (order.status === 'paid' && req.user.role !== 'superadmin') {
-            return res.status(403).json({ message: 'This order has been settled. Only superadmin can modify settled orders.' });
-        }
-
         const wasPaid = order.status === 'paid';
 
         if (paymentMethod) order.paymentMethod = paymentMethod;
-        if (amountPaid !== undefined) order.amountPaid = parseFloat(amountPaid);
+        if (splitPaymentDetails) order.splitPaymentDetails = splitPaymentDetails;
+        if (amountPaid !== undefined) order.amountPaid = Math.max(0, parseFloat(amountPaid) || 0);
 
         // If amount paid is equal or more than total, mark as paid
-        if (order.amountPaid >= order.total) {
+        if (order.amountPaid >= (order.total - 0.05)) {
             order.status = 'paid';
+        } else {
+            // If amount paid edited to less than total, revert to active confirmed status
+            if (order.status === 'paid') {
+                order.status = 'confirmed';
+            }
         }
 
         await order.save();
