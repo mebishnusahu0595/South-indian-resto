@@ -123,7 +123,8 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
       menuItemId: i.menuItem?._id || i.menuItem || i._id,
       name: i.name || i.menuItem?.name || 'Item',
       price: i.price || i.menuItem?.price || 0,
-      quantity: i.quantity
+      quantity: i.quantity,
+      notes: i.notes || i.instruction || i.specialInstructions || i.note || ''
     }));
     setModifyItems(initialList);
     setModifyNote('');
@@ -148,7 +149,8 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
       const payload = {
         updatedItems: modifyItems.map(i => ({
           menuItemId: i.menuItemId,
-          quantity: i.quantity
+          quantity: i.quantity,
+          notes: i.notes || ''
         })),
         modificationNote: modifyNote
       };
@@ -285,41 +287,51 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
 
             <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 180, marginBottom: 12, borderBottomWidth: 1, borderColor: '#E5E7EB' }}>
               {modifyItems.map((item, idx) => (
-                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderColor: '#F3F4F6' }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: 'bold', fontSize: 14, color: '#111' }}>{item.name}</Text>
-                    <Text style={{ fontSize: 12, color: '#6B7280' }}>₹{item.price} each</Text>
+                <View key={idx} style={{ paddingVertical: 8, borderBottomWidth: 1, borderColor: '#F3F4F6' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: 'bold', fontSize: 14, color: '#111' }}>{item.name}</Text>
+                      <Text style={{ fontSize: 12, color: '#6B7280' }}>₹{item.price} each</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(0, it.quantity - 1) } : it).filter(it => it.quantity > 0));
+                        }}
+                        style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}
+                      >
+                        <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 16 }}>-</Text>
+                      </TouchableOpacity>
+
+                      <Text style={{ fontWeight: 'bold', fontSize: 15, minWidth: 20, textAlign: 'center' }}>x{item.quantity}</Text>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it));
+                        }}
+                        style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: '#ECFDF5', justifyContent: 'center', alignItems: 'center' }}
+                      >
+                        <Text style={{ color: '#059669', fontWeight: 'bold', fontSize: 16 }}>+</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          setModifyItems(prev => prev.filter((_, i) => i !== idx));
+                        }}
+                        style={{ paddingHorizontal: 6, paddingVertical: 4, backgroundColor: '#FEE2E2', borderRadius: 4 }}
+                      >
+                        <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 11 }}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(0, it.quantity - 1) } : it).filter(it => it.quantity > 0));
-                      }}
-                      style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}
-                    >
-                      <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 16 }}>-</Text>
-                    </TouchableOpacity>
-
-                    <Text style={{ fontWeight: 'bold', fontSize: 15, minWidth: 20, textAlign: 'center' }}>x{item.quantity}</Text>
-
-                    <TouchableOpacity
-                      onPress={() => {
-                        setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it));
-                      }}
-                      style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: '#ECFDF5', justifyContent: 'center', alignItems: 'center' }}
-                    >
-                      <Text style={{ color: '#059669', fontWeight: 'bold', fontSize: 16 }}>+</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => {
-                        setModifyItems(prev => prev.filter((_, i) => i !== idx));
-                      }}
-                      style={{ paddingHorizontal: 6, paddingVertical: 4, backgroundColor: '#FEE2E2', borderRadius: 4 }}
-                    >
-                      <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 11 }}>Remove</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {/* Per-item note input */}
+                  <TextInput
+                    style={{ marginTop: 4, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, fontSize: 11, color: '#374151', backgroundColor: '#FFFBEB' }}
+                    placeholder={`Note for ${item.name} (optional)`}
+                    placeholderTextColor="#9CA3AF"
+                    value={item.notes || ''}
+                    onChangeText={(txt) => setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, notes: txt } : it))}
+                  />
                 </View>
               ))}
             </ScrollView>
@@ -382,7 +394,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                         if (existsIndex >= 0) {
                           setModifyItems(prev => prev.map((it, i) => i === existsIndex ? { ...it, quantity: it.quantity + 1 } : it));
                         } else {
-                          setModifyItems(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1 }]);
+                          setModifyItems(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1, notes: '' }]);
                         }
                       }}
                     >

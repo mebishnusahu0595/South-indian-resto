@@ -27,10 +27,10 @@ router.get('/day-end', protect, admin, async (req, res) => {
         const start = new Date(targetDate + 'T00:00:00');
         const end = new Date(targetDate + 'T23:59:59.999');
 
-        // Fetch settled bills & non-cancelled, non-deleted orders for the date
+        // Fetch ONLY PAID/SETTLED orders for the date (final bills only in report)
         const orders = await Order.find({
             createdAt: { $gte: start, $lte: end },
-            status: { $nin: ['cancelled', 'deleted'] }
+            status: 'paid'
         })
         .populate('items.menuItem', 'name category price')
         .populate({ path: 'items.menuItem', populate: { path: 'category', select: 'name' } })
@@ -38,7 +38,7 @@ router.get('/day-end', protect, admin, async (req, res) => {
 
         const bills = await Bill.find({
             createdAt: { $gte: start, $lte: end }
-        });
+        }).populate('order', 'orderNumber tableNumber status tables');
 
         // Summary totals
         let grossSales = 0;
@@ -156,6 +156,23 @@ router.get('/day-end', protect, admin, async (req, res) => {
         const productSales = Object.values(productMap).sort((a, b) => b.qtySold - a.qtySold);
         const staffSales = Object.values(staffMap).sort((a, b) => b.totalSales - a.totalSales);
 
+        // Build detailed bills list for export (only finalized/generated bills)
+        const detailedBills = bills.map(b => ({
+            billNumber: b.billNumber,
+            createdAt: b.createdAt,
+            billerName: b.billerName || '',
+            subtotal: b.subtotal || 0,
+            discount: b.discount || 0,
+            tax: b.tax || 0,
+            total: b.total || 0,
+            paymentMethod: b.paymentMethod || 'cash',
+            order: b.order ? {
+                orderNumber: b.order.orderNumber,
+                tableNumber: b.order.tableNumber || (b.order.tables && b.order.tables.length > 0 ? b.order.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ') : null),
+                status: b.order.status
+            } : null
+        }));
+
         res.json({
             date: targetDate,
             summary: {
@@ -169,7 +186,8 @@ router.get('/day-end', protect, admin, async (req, res) => {
             paymentBreakdown,
             categorySales,
             productSales,
-            staffSales
+            staffSales,
+            bills: detailedBills
         });
     } catch (error) {
         console.error('Day-end report error:', error);
