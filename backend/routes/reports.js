@@ -27,6 +27,25 @@ router.get('/day-end', protect, admin, async (req, res) => {
         const start = new Date(targetDate + 'T00:00:00');
         const end = new Date(targetDate + 'T23:59:59.999');
 
+        // Sync order totals with bill totals for any bills generated on this date
+        const existingBills = await Bill.find({ createdAt: { $gte: start, $lte: end } });
+        for (const b of existingBills) {
+            if (b.order) {
+                const updateFields = {
+                    total: b.total,
+                    subtotal: b.subtotal,
+                    discount: b.discount,
+                    tax: b.tax
+                };
+                if (b.paymentMethod && b.paymentMethod !== 'pending') {
+                    updateFields.status = 'paid';
+                    updateFields.paymentMethod = b.paymentMethod;
+                    updateFields.amountPaid = b.total;
+                }
+                await Order.findByIdAndUpdate(b.order, updateFields);
+            }
+        }
+
         // Fetch ONLY PAID/SETTLED orders for the date (final bills only in report)
         const orders = await Order.find({
             createdAt: { $gte: start, $lte: end },
@@ -64,18 +83,24 @@ router.get('/day-end', protect, admin, async (req, res) => {
         });
 
         orders.forEach(order => {
-            grossSales += (order.subtotal || 0);
-            totalDiscount += (order.discount || 0);
-            totalTax += (order.tax || 0);
-            netRevenue += (order.total || 0);
+            const linkedBill = billByOrderId[order._id.toString()];
+
+            const subtotalVal = linkedBill ? (linkedBill.subtotal || 0) : (order.subtotal || 0);
+            const discountVal = linkedBill ? (linkedBill.discount || 0) : (order.discount || 0);
+            const taxVal = linkedBill ? (linkedBill.tax || 0) : (order.tax || 0);
+            const totalVal = linkedBill ? (linkedBill.total || 0) : (order.total || 0);
+
+            grossSales += subtotalVal;
+            totalDiscount += discountVal;
+            totalTax += taxVal;
+            netRevenue += totalVal;
 
             // Use bill's paymentMethod if order's is missing/pending
-            const linkedBill = billByOrderId[order._id.toString()];
             const method = (order.paymentMethod && order.paymentMethod !== 'pending')
                 ? order.paymentMethod
                 : (linkedBill?.paymentMethod || 'pending');
 
-            const amount = order.total || 0;
+            const amount = totalVal;
             if (method === 'cash') paymentBreakdown.cash += amount;
             else if (method === 'online' || method === 'upi') paymentBreakdown.online += amount;
             else if (method === 'card') paymentBreakdown.card += amount;
