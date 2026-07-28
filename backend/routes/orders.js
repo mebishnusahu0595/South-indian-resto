@@ -1145,7 +1145,13 @@ router.put('/:id/payment', protect, async (req, res) => {
         if (splitPaymentDetails) order.splitPaymentDetails = splitPaymentDetails;
         if (amountPaid !== undefined) order.amountPaid = Math.max(0, parseFloat(amountPaid) || 0);
 
-        // If amount paid is equal or more than total, mark as paid
+        // If the paid amount is the final discounted amount, update order.total to match
+        // This prevents the phantom "remaining balance" when discount reduces total below original
+        if (amountPaid !== undefined && req.body.finalTotal !== undefined) {
+            order.total = parseFloat(req.body.finalTotal);
+        }
+
+        // If amount paid covers the (possibly updated) total, mark as paid
         if (order.amountPaid >= (order.total - 0.05)) {
             order.status = 'paid';
         } else {

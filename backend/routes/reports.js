@@ -55,22 +55,37 @@ router.get('/day-end', protect, admin, async (req, res) => {
             splitDetails: { cash: 0, upi: 0, card: 0 }
         };
 
+        // Build bill lookup map: orderId -> bill for payment method cross-reference
+        const billByOrderId = {};
+        bills.forEach(b => {
+            if (b.order && b.order._id) {
+                billByOrderId[b.order._id.toString()] = b;
+            }
+        });
+
         orders.forEach(order => {
             grossSales += (order.subtotal || 0);
             totalDiscount += (order.discount || 0);
             totalTax += (order.tax || 0);
             netRevenue += (order.total || 0);
 
-            const method = order.paymentMethod || 'pending';
-            if (method === 'cash') paymentBreakdown.cash += order.total;
-            else if (method === 'online') paymentBreakdown.online += order.total;
-            else if (method === 'card') paymentBreakdown.card += order.total;
+            // Use bill's paymentMethod if order's is missing/pending
+            const linkedBill = billByOrderId[order._id.toString()];
+            const method = (order.paymentMethod && order.paymentMethod !== 'pending')
+                ? order.paymentMethod
+                : (linkedBill?.paymentMethod || 'pending');
+
+            const amount = order.total || 0;
+            if (method === 'cash') paymentBreakdown.cash += amount;
+            else if (method === 'online' || method === 'upi') paymentBreakdown.online += amount;
+            else if (method === 'card') paymentBreakdown.card += amount;
             else if (method === 'split') {
-                paymentBreakdown.split += order.total;
-                if (order.splitPaymentDetails) {
-                    paymentBreakdown.splitDetails.cash += (order.splitPaymentDetails.cash || 0);
-                    paymentBreakdown.splitDetails.upi += (order.splitPaymentDetails.upi || 0);
-                    paymentBreakdown.splitDetails.card += (order.splitPaymentDetails.card || 0);
+                paymentBreakdown.split += amount;
+                const splitSrc = order.splitPaymentDetails || linkedBill?.splitPaymentDetails;
+                if (splitSrc) {
+                    paymentBreakdown.splitDetails.cash += (splitSrc.cash || 0);
+                    paymentBreakdown.splitDetails.upi += (splitSrc.upi || 0);
+                    paymentBreakdown.splitDetails.card += (splitSrc.card || 0);
                 }
             }
         });

@@ -42,7 +42,7 @@ export const getOrder = (id) => axios.get(`${API_URL}/orders/${id}`);
 export const createOrder = (data) => axios.post(`${API_URL}/orders`, data);
 export const updateOrderStatus = (id, status) => axios.put(`${API_URL}/orders/${id}/status`, { status });
 export const requestBill = (id) => axios.put(`${API_URL}/orders/${id}/request-bill`);
-export const updatePayment = (id, paymentMethod, amountPaid) => axios.put(`${API_URL}/orders/${id}/payment`, { paymentMethod, amountPaid });
+export const updatePayment = (id, paymentMethod, amountPaid, finalTotal) => axios.put(`${API_URL}/orders/${id}/payment`, { paymentMethod, amountPaid, ...(finalTotal !== undefined ? { finalTotal } : {}) });
 export const deleteOrder = (id) => axios.delete(`${API_URL}/orders/${id}`);
 export const updateOrderItems = (id, items) => axios.put(`${API_URL}/orders/${id}/items`, { items });
 export const modifyOrderItems = (id, payload) => axios.put(`${API_URL}/orders/${id}/modify-items`, payload);

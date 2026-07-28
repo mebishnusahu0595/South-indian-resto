@@ -477,8 +477,12 @@ const AdminOrders = () => {
 
     const handlePayButtonClick = (order) => {
         const customInput = paymentAmount[order._id];
-        const remBalance = Math.max(order.total - (order.amountPaid || 0), 0);
-        const payVal = (customInput && parseFloat(customInput) > 0) ? parseFloat(customInput) : remBalance;
+        // Use the order's actual total (which may already be discounted via bill generation)
+        const orderTotal = order.total || 0;
+        const alreadyPaid = order.amountPaid || 0;
+        const remBalance = Math.max(orderTotal - alreadyPaid, 0);
+        // If custom amount entered, use it; otherwise use full remaining balance
+        const payVal = (customInput && parseFloat(customInput) > 0) ? parseFloat(customInput) : (remBalance > 0.05 ? remBalance : orderTotal);
 
         if (payVal <= 0) return;
 
@@ -533,9 +537,10 @@ const AdminOrders = () => {
                 discountName: paymentDiscountName
             });
 
-            // 2. Complete payment
-            const finalPayable = ((baseSubtotal - discountVal) * 1.05);
-            const res = await updatePayment(paymentBillerOrderId, paymentBillerMethod, finalPayable > 0 ? finalPayable : paymentBillerAmount);
+            // 2. Complete payment - pass finalPayable as both amountPaid AND finalTotal to sync order.total
+            const finalPayable = Math.max(0, ((baseSubtotal - discountVal) * 1.05));
+            const finalAmount = finalPayable > 0 ? finalPayable : paymentBillerAmount;
+            const res = await updatePayment(paymentBillerOrderId, paymentBillerMethod, finalAmount, finalAmount);
             localStorage.setItem('lastBillerName', paymentBillerName);
             setShowPaymentBillerModal(false);
             fetchOrders();
@@ -592,6 +597,8 @@ const AdminOrders = () => {
             const baseSubtotal = sessionOrders.reduce((sum, o) => sum + (o.subtotal || o.total), 0);
             const discountVal = parseDiscount(paymentDiscountInput, baseSubtotal, paymentDiscountType);
 
+            const finalSplitPayable = Math.max(0, ((baseSubtotal - discountVal) * 1.05));
+
             await generateBill({
                 orderIds: orderIds.length > 0 ? orderIds : [paymentBillerOrderId],
                 billerName: paymentBillerName,
@@ -604,6 +611,9 @@ const AdminOrders = () => {
                     card: cardVal
                 }
             });
+
+            // Also update the order's payment info and sync total
+            await updatePayment(paymentBillerOrderId, 'split', finalSplitPayable, finalSplitPayable);
 
             localStorage.setItem('lastBillerName', paymentBillerName);
             setShowSplitModal(false);
@@ -2027,14 +2037,27 @@ const AdminOrders = () => {
                             <div style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '12px', marginBottom: '14px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px' }}>
                                     <span>Order Total:</span>
-                                    <strong>₹{quickPayOrder.total.toFixed(2)}</strong>
+                                    <strong>₹{quickPayAmount.toFixed(2)}</strong>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 'bold', color: '#7C3AED', marginBottom: '4px' }}>
-                                    <span>Customer Paying:</span>
-                                    <span>₹{quickPayAmount.toFixed(2)}</span>
+                                {/* Editable paying amount */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1.05rem', fontWeight: 'bold', color: '#7C3AED', marginBottom: '4px', gap: '8px' }}>
+                                    <span style={{ whiteSpace: 'nowrap' }}>Customer Paying:</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '1rem' }}>₹</span>
+                                        <input
+                                            type="number"
+                                            value={quickPayAmount.toFixed(2)}
+                                            onChange={e => {
+                                                const v = parseFloat(e.target.value);
+                                                if (!isNaN(v) && v >= 0) setQuickPayAmount(v);
+                                            }}
+                                            style={{ width: '90px', padding: '4px 6px', border: '1.5px solid #7C3AED', borderRadius: '6px', fontSize: '1rem', fontWeight: 'bold', color: '#7C3AED', textAlign: 'right' }}
+                                        />
+                                    </div>
                                 </div>
+                                <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '4px 0 0' }}>💡 Edit amount above if customer paid different amount</p>
 
-                                {quickPayAmount < quickPayOrder.total && (
+                                {quickPayAmount < (quickPayOrder.total - 0.5) && (
                                     <div style={{ marginTop: '8px', background: '#FEF3C7', border: '1px solid #F59E0B', padding: '8px 10px', borderRadius: '6px', fontSize: '0.82rem', color: '#92400E' }}>
                                         💡 Shortage of <strong>₹{(quickPayOrder.total - quickPayAmount).toFixed(2)}</strong> will be automatically applied as <strong>Change Shortage Discount</strong>!
                                     </div>
