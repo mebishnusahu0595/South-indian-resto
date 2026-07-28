@@ -369,8 +369,8 @@ const AdminBills = () => {
     const [paymentFilter, setPaymentFilter] = useState('all');
 
     const filteredBills = bills.filter(bill => {
-        const isPaid = bill.order?.status === 'paid';
-        const method = (bill.order?.paymentMethod || 'cash').toLowerCase();
+        const isPaid = bill.order?.status === 'paid' || (bill.paymentMethod && bill.paymentMethod !== 'pending');
+        const method = (bill.paymentMethod || bill.order?.paymentMethod || 'cash').toLowerCase();
         if (paymentFilter === 'paid') return isPaid;
         if (paymentFilter === 'pending') return !isPaid;
         if (paymentFilter === 'cash') return isPaid && method === 'cash';
@@ -393,7 +393,7 @@ const AdminBills = () => {
         csv += `Bill No,Time,Order No,Table Name / No,Customer Name,Customer Phone,Biller / Staff,Payment Status,Payment Method,Subtotal (Rs.),Discount (Rs.),Tax (Rs.),Total Bill (Rs.)\n`;
 
         filteredBills.forEach(bill => {
-            const isPaid = bill.order?.status === 'paid';
+            const isPaid = bill.order?.status === 'paid' || (bill.paymentMethod && bill.paymentMethod !== 'pending');
             const billNo = `"${bill.billNumber || ''}"`;
             const timeStr = `"${new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"`;
             const orderNo = `"#${bill.order?.orderNumber || 'N/A'}"`;
@@ -406,8 +406,7 @@ const AdminBills = () => {
             const customerName = `"${bill.order?.user?.name || bill.user?.name || 'Walk-in'}"`;
             const customerPhone = `"${bill.order?.user?.phone || bill.user?.phone || ''}"`;
             const billerName = `"${bill.billerName || ''}"`;
-            const status = isPaid ? 'PAID' : 'UNPAID';
-            const payMethod = isPaid ? `"${(bill.order?.paymentMethod || 'cash').toUpperCase()}"` : '"-"';
+            const payMethod = isPaid ? `"${(bill.paymentMethod || bill.order?.paymentMethod || 'cash').toUpperCase()}"` : '"-"';
             const subtotal = (bill.subtotal || 0).toFixed(2);
             const discount = (bill.discount || 0).toFixed(2);
             const tax = (bill.tax || 0).toFixed(2);
@@ -537,7 +536,7 @@ const AdminBills = () => {
 
             {error && <div className="alert alert-danger">{error}</div>}
 
-            {loading ? (
+            {loading && bills.length === 0 ? (
                 <Loader message="Loading invoices..." fullScreen={false} />
             ) : (
                 <div className="bills-table-container sketch-border-subtle sketch-shadow">
@@ -571,7 +570,8 @@ const AdminBills = () => {
                             </thead>
                             <tbody>
                                 {filteredBills.map(bill => {
-                                    const isPaid = bill.order?.status === 'paid';
+                                    const isPaid = bill.order?.status === 'paid' || (bill.paymentMethod && bill.paymentMethod !== 'pending');
+                                    const effectiveMethod = (bill.paymentMethod || bill.order?.paymentMethod || 'cash').toUpperCase();
                                     return (
                                         <tr key={bill._id}>
                                             {user?.role === 'superadmin' && (
@@ -595,11 +595,11 @@ const AdminBills = () => {
                                                     padding: '3px 8px',
                                                     borderRadius: '4px',
                                                     fontWeight: 'bold',
-                                                    background: isPaid ? '#D1FAE5' : '#FEF3C7',
+                                                    background: isPaid ? '#D1FAE5' : '#FEF3F7',
                                                     color: isPaid ? '#047857' : '#D97706',
                                                     border: `1px solid ${isPaid ? '#10B981' : '#F59E0B'}`
                                                 }}>
-                                                    {isPaid ? `PAID (${(bill.order?.paymentMethod || 'cash').toUpperCase()})` : 'UNPAID'}
+                                                    {isPaid ? `PAID (${effectiveMethod})` : 'UNPAID'}
                                                 </span>
                                             </td>
                                             <td>₹{bill.subtotal.toFixed(2)}</td>

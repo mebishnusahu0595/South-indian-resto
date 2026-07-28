@@ -193,7 +193,7 @@ const AdminAnalytics = () => {
         exportToCSV(revenueData, revenueExportColumns, filename, { saleReportFolder: true });
     };
 
-    if (loading) return <Loader message="Crunching the numbers..." />;
+    if (loading && (!stats || Object.keys(stats).length === 0)) return <Loader message="Crunching the numbers..." />;
 
     const totalRevenue = revenueData.reduce((sum, d) => sum + d.revenue, 0);
     const totalProfit = revenueData.reduce((sum, d) => sum + d.profit, 0);

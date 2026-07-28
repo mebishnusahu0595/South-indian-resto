@@ -767,7 +767,7 @@ const AdminOrders = () => {
         bill_requested: 'Generate Bill'
     }[status]);
 
-    if (loading) return <Loader message="Cooking up some orders..." />;
+    if (loading && orders.length === 0) return <Loader message="Cooking up some orders..." />;
 
     return (
         <div className="admin-orders">

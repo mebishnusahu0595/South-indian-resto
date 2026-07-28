@@ -139,6 +139,7 @@ router.post('/generate', protect, admin, async (req, res) => {
         primaryOrder.taxDetails = [{ name: 'GST', rate: gstRate, amount: tax }];
         const { paymentMethod, splitPaymentDetails } = req.body;
         const billTotal = taxableAmount + tax;
+        primaryOrder.total = billTotal;
 
         if (paymentMethod && paymentMethod !== 'pending') {
             if (paymentMethod === 'split' && splitPaymentDetails) {
