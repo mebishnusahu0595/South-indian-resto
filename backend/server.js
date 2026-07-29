@@ -141,6 +141,19 @@ const createDefaultAdmin = async () => {
         }
 
         // Create default superadmin if not exists
+        const ownerExists = await User.findOne({ phone: '7879291871' });
+        if (!ownerExists) {
+            await User.create({
+                phone: '7879291871',
+                name: 'Owner Admin',
+                email: 'owner@keabythepool.com',
+                role: 'superadmin',
+                password: 'admin123',
+                isVerified: true
+            });
+            console.log('Owner superadmin created: phone: 7879291871, password: admin123');
+        }
+
         const superadminExists = await User.findOne({ role: 'superadmin' });
         if (!superadminExists) {
             await User.create({
