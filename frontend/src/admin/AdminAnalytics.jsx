@@ -1,17 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend, AreaChart, Area } from 'recharts';
 import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport } from '../utils/api';
-import { exportToCSV, downloadCSV, revenueExportColumns, getFilenameDate } from '../utils/exportUtils';
+import { exportToCSV, downloadCSV, revenueExportColumns } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
-import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers } from 'react-icons/fi';
+import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers, FiCalendar } from 'react-icons/fi';
 import './AdminAnalytics.css';
 
 const COLORS = ['#C87316', '#E08A2E', '#22C55E', '#3B82F6', '#9333EA', '#EC4899'];
 
+const getLocalDateString = (date = new Date()) => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+};
+
+const getRelativeBusinessDate = days => {
+    const today = new Date(`${getLocalDateString()}T00:00:00+05:30`);
+    return getLocalDateString(new Date(today.getTime() + days * 86400000));
+};
+
+const formatBusinessDate = (dateString, options) => new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    ...options
+}).format(new Date(`${dateString}T00:00:00+05:30`));
+
 const AdminAnalytics = () => {
     const { user, socket } = useAuth();
     const [period, setPeriod] = useState('week');
+    const [customStartDate, setCustomStartDate] = useState(getLocalDateString());
+    const [customEndDate, setCustomEndDate] = useState(getLocalDateString());
+    const [customRange, setCustomRange] = useState(null);
     const [stats, setStats] = useState(null);
     const [revenueData, setRevenueData] = useState([]);
     const [categorySales, setCategorySales] = useState([]);
@@ -23,7 +47,7 @@ const AdminAnalytics = () => {
 
     // EOD & Section Report state
     const [activeTab, setActiveTab] = useState('day-end'); // 'day-end' | 'section-wise' | 'analytics'
-    const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+    const [reportDate, setReportDate] = useState(getLocalDateString());
     const [dayEndData, setDayEndData] = useState(null);
     const [sectionData, setSectionData] = useState(null);
     const [fetchingReport, setFetchingReport] = useState(false);
@@ -40,7 +64,7 @@ const AdminAnalytics = () => {
         } else {
             fetchData();
         }
-    }, [period, user]);
+    }, [period, user, customRange]);
 
     const fetchDayEndReport = async (dateVal) => {
         setFetchingReport(true);
@@ -68,7 +92,7 @@ const AdminAnalytics = () => {
 
     const handleDownloadDayEndReport = (dayEndData) => {
         if (!dayEndData) return;
-        const dateStr = dayEndData.date || new Date().toISOString().split('T')[0];
+        const dateStr = dayEndData.date || getLocalDateString();
 
         let csv = `KEA BY THE POOL - DAY-END (EOD) SALES REPORT\n`;
         csv += `Date,${dateStr}\n\n`;
@@ -99,9 +123,14 @@ const AdminAnalytics = () => {
         csv += `Bill No,Time,Order No,Table,Biller,Status,Subtotal,Discount,Tax,Total\n`;
         (dayEndData.bills || []).forEach(b => {
             const time = new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const ordNo = b.order?.orderNumber ? `#${b.order.orderNumber}` : '-';
-            const tbl = b.order?.tableNumber ? `Table ${b.order.tableNumber}` : 'Takeaway';
-            csv += `"${b.billNumber}",${time},"${ordNo}","${tbl}","${b.billerName || ''}",${b.order?.status || 'paid'},${(b.subtotal || 0).toFixed(2)},${(b.discount || 0).toFixed(2)},${(b.tax || 0).toFixed(2)},${(b.total || 0).toFixed(2)}\n`;
+            const ordNo = b.orderNumbers?.length
+                ? `#${b.orderNumbers.join(' / ')}`
+                : (b.order?.orderNumber ? `#${b.order.orderNumber}` : '-');
+            const tbl = b.tableNumbers?.length
+                ? b.tableNumbers.join(', ')
+                : (b.order?.tableNumber || 'Takeaway');
+            const status = b.paymentMethod && b.paymentMethod !== 'pending' ? 'paid' : (b.order?.status || 'pending');
+            csv += `"${b.billNumber}",${time},"${ordNo}","${tbl}","${b.billerName || ''}",${status},${(b.subtotal || 0).toFixed(2)},${(b.discount || 0).toFixed(2)},${(b.tax || 0).toFixed(2)},${(b.total || 0).toFixed(2)}\n`;
         });
 
         downloadCSV(csv, `Day_End_Report_${dateStr}`, { saleReportFolder: true });
@@ -109,7 +138,7 @@ const AdminAnalytics = () => {
 
     const handleDownloadSectionReport = (sectionData) => {
         if (!sectionData || !sectionData.sections) return;
-        const dateStr = sectionData.date || new Date().toISOString().split('T')[0];
+        const dateStr = sectionData.date || getLocalDateString();
 
         let csv = `KEA BY THE POOL - SECTION & TABLE SETTLEMENT SALES REPORT\n`;
         csv += `Date,${dateStr}\n\n`;
@@ -143,26 +172,27 @@ const AdminAnalytics = () => {
     };
 
     useEffect(() => {
-        if (socket) {
-            socket.on('order-updated', () => fetchData());
-            return () => socket.off('order-updated');
-        }
-    }, [socket]);
+        if (!socket) return undefined;
+        const handleOrderUpdate = () => fetchData();
+        socket.on('order-updated', handleOrderUpdate);
+        return () => socket.off('order-updated', handleOrderUpdate);
+    }, [socket, period, customRange]);
 
     const fetchData = async () => {
         try {
+            const dateParams = period === 'custom' && customRange ? customRange : {};
             const [statsRes, revenueRes, catRes, topRes, userRes, settingsRes] = await Promise.all([
                 getDashboardStats(),
-                getRevenueData(period),
-                getCategorySales(period),
-                getTopItems(),
-                getUserAnalytics(period),
+                getRevenueData(period, dateParams),
+                getCategorySales(period, dateParams),
+                getTopItems({ period, ...dateParams }),
+                getUserAnalytics(period, dateParams),
                 getAllSettings()
             ]);
             setStats(statsRes.data);
             setRevenueData(revenueRes.data.map(d => ({
                 ...d,
-                date: new Date(d._id).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                date: formatBusinessDate(d._id, { day: 'numeric', month: 'short' })
             })));
             setCategorySales(catRes.data);
             setTopItems(topRes.data);
@@ -188,8 +218,33 @@ const AdminAnalytics = () => {
         }
     };
 
+    const handlePeriodSelect = selectedPeriod => {
+        setCustomRange(null);
+        setPeriod(selectedPeriod);
+    };
+
+    const handleApplyCustomRange = () => {
+        if (!customStartDate || !customEndDate) {
+            alert('Please select both From and To dates.');
+            return;
+        }
+        if (customStartDate > customEndDate) {
+            alert('From date cannot be after To date.');
+            return;
+        }
+        setCustomRange({ startDate: customStartDate, endDate: customEndDate });
+        setPeriod('custom');
+    };
+
+    const periodLabel = period === 'custom' && customRange
+        ? `${customRange.startDate} to ${customRange.endDate}`
+        : period.charAt(0).toUpperCase() + period.slice(1);
+
     const handleExportRevenue = () => {
-        const filename = `revenue_${period}_${getFilenameDate()}`;
+        const rangeName = period === 'custom' && customRange
+            ? `${customRange.startDate}_to_${customRange.endDate}`
+            : period;
+        const filename = `revenue_${rangeName}_${getLocalDateString()}`;
         exportToCSV(revenueData, revenueExportColumns, filename, { saleReportFolder: true });
     };
 
@@ -208,16 +263,43 @@ const AdminAnalytics = () => {
                         <FiDownload /> Export CSV
                     </button>
                     {user && user.role === 'superadmin' ? (
-                        <div className="period-selector">
-                            {['today', 'week', 'month', 'year'].map(p => (
-                                <button
-                                    key={p}
-                                    className={`period-btn ${period === p ? 'active' : ''}`}
-                                    onClick={() => setPeriod(p)}
-                                >
-                                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                        <div className="analytics-filter-controls">
+                            <div className="period-selector">
+                                {['today', 'yesterday', 'week', 'month', 'year'].map(p => (
+                                    <button
+                                        key={p}
+                                        className={`period-btn ${period === p ? 'active' : ''}`}
+                                        onClick={() => handlePeriodSelect(p)}
+                                    >
+                                        {p.charAt(0).toUpperCase() + p.slice(1)}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className={`custom-date-filter ${period === 'custom' ? 'active' : ''}`}>
+                                <FiCalendar />
+                                <label>
+                                    From
+                                    <input
+                                        type="date"
+                                        value={customStartDate}
+                                        max={getLocalDateString()}
+                                        onChange={event => setCustomStartDate(event.target.value)}
+                                    />
+                                </label>
+                                <label>
+                                    To
+                                    <input
+                                        type="date"
+                                        value={customEndDate}
+                                        min={customStartDate}
+                                        max={getLocalDateString()}
+                                        onChange={event => setCustomEndDate(event.target.value)}
+                                    />
+                                </label>
+                                <button type="button" className="period-btn custom-apply-btn" onClick={handleApplyCustomRange}>
+                                    Apply Date
                                 </button>
-                            ))}
+                            </div>
                         </div>
                     ) : (
                         <div className="period-restricted-label" style={{ background: '#FFFFFF', color: '#000000', border: '2.5px solid #111111', padding: '8px 14px', borderRadius: '8px', fontSize: '0.92rem', fontWeight: 'bold', boxShadow: '3px 3px 0px #111111' }}>
@@ -281,9 +363,9 @@ const AdminAnalytics = () => {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <label style={{ fontWeight: 'bold' }}>Date:</label>
                                     <button
-                                        className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
+                                        className={`btn ${reportDate === getLocalDateString() ? 'btn-primary' : 'btn-secondary'}`}
                                         onClick={() => {
-                                            const t = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                                            const t = getLocalDateString();
                                             setReportDate(t);
                                             fetchDayEndReport(t);
                                         }}
@@ -291,9 +373,9 @@ const AdminAnalytics = () => {
                                         Today
                                     </button>
                                     <button
-                                        className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
+                                        className={`btn ${reportDate === getRelativeBusinessDate(-1) ? 'btn-primary' : 'btn-secondary'}`}
                                         onClick={() => {
-                                            const y = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000).toISOString().split('T')[0];
+                                            const y = getRelativeBusinessDate(-1);
                                             setReportDate(y);
                                             fetchDayEndReport(y);
                                         }}
@@ -323,7 +405,7 @@ const AdminAnalytics = () => {
                                 <h1 style={{ margin: '0 0 4px', fontSize: '1.8rem', textTransform: 'uppercase' }}>Kea By The Pool</h1>
                                 <h3 style={{ margin: '0 0 4px', color: '#7C3AED' }}>DAY-END (EOD) SALES REPORT</h3>
                                 <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
-                                    Date: <strong>{new Date(dayEndData.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> | Printed: {new Date().toLocaleTimeString()}
+                                    Date: <strong>{formatBusinessDate(dayEndData.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> | Printed: {new Date().toLocaleTimeString()}
                                 </p>
                             </div>
 
@@ -490,9 +572,9 @@ const AdminAnalytics = () => {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <label style={{ fontWeight: 'bold' }}>Date:</label>
                                     <button
-                                        className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
+                                        className={`btn ${reportDate === getLocalDateString() ? 'btn-primary' : 'btn-secondary'}`}
                                         onClick={() => {
-                                            const t = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                                            const t = getLocalDateString();
                                             setReportDate(t);
                                             fetchSectionReport(t);
                                         }}
@@ -500,9 +582,9 @@ const AdminAnalytics = () => {
                                         Today
                                     </button>
                                     <button
-                                        className={`btn ${reportDate === (new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000).toISOString().split('T')[0]) ? 'btn-primary' : 'btn-secondary'}`}
+                                        className={`btn ${reportDate === getRelativeBusinessDate(-1) ? 'btn-primary' : 'btn-secondary'}`}
                                         onClick={() => {
-                                            const y = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000).toISOString().split('T')[0];
+                                            const y = getRelativeBusinessDate(-1);
                                             setReportDate(y);
                                             fetchSectionReport(y);
                                         }}
@@ -532,7 +614,7 @@ const AdminAnalytics = () => {
                                 <h1 style={{ margin: '0 0 4px', fontSize: '1.8rem', textTransform: 'uppercase' }}>Kea By The Pool</h1>
                                 <h3 style={{ margin: '0 0 4px', color: '#7C3AED' }}>SECTION & TABLE-WISE SALES REPORT</h3>
                                 <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
-                                    Date: <strong>{new Date(sectionData.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> | Printed: {new Date().toLocaleTimeString()}
+                                    Date: <strong>{formatBusinessDate(sectionData.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> | Printed: {new Date().toLocaleTimeString()}
                                 </p>
                             </div>
 
@@ -613,7 +695,7 @@ const AdminAnalytics = () => {
                 <div className="summary-card revenue">
                     <h3>Total Revenue</h3>
                     <p className="value">₹{totalRevenue.toFixed(2)}</p>
-                    <span className="label">This {period}</span>
+                    <span className="label">{periodLabel}</span>
                 </div>
                 <div className="summary-card profit">
                     <div className="card-header-with-action">
@@ -667,13 +749,13 @@ const AdminAnalytics = () => {
                             <div className="card-icon"><FiUserPlus /></div>
                             <h3>New Users</h3>
                             <p className="value">{userStats.newUsers}</p>
-                            <span className="label">This {period}</span>
+                            <span className="label">{periodLabel}</span>
                         </div>
                         <div className="summary-card active">
                             <div className="card-icon"><FiActivity /></div>
                             <h3>Active Users</h3>
                             <p className="value">{userStats.activeUsers}</p>
-                            <span className="label">Ordered this {period}</span>
+                            <span className="label">Ordered: {periodLabel}</span>
                         </div>
                         <div className="summary-card returning">
                             <div className="card-icon"><FiRepeat /></div>

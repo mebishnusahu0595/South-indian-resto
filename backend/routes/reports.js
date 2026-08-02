@@ -6,6 +6,7 @@ const Table = require('../models/Table');
 const MenuItem = require('../models/MenuItem');
 const Employee = require('../models/Employee');
 const { protect, admin, superadmin } = require('../middleware/auth');
+const { getBusinessDate, getBusinessDayRange } = require('../utils/orderCalculations');
 
 // @route   GET /api/reports/day-end
 // @desc    Get Day-End EOD Sales Report (Category, Item, Staff, Payment breakdown)
@@ -13,51 +14,37 @@ const { protect, admin, superadmin } = require('../middleware/auth');
 router.get('/day-end', protect, admin, async (req, res) => {
     try {
         const { date } = req.query;
-        let targetDate = date;
-        const todayStr = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        const yesterdayDate = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000);
-        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+        let targetDate = date || getBusinessDate();
+        const todayStr = getBusinessDate();
+        const yesterdayStr = getBusinessDate(new Date(Date.now() - 86400000));
 
-        if (req.user.role !== 'superadmin') {
-            if (targetDate !== todayStr && targetDate !== yesterdayStr) {
-                targetDate = todayStr;
-            }
+        if (req.user.role !== 'superadmin' && targetDate !== todayStr && targetDate !== yesterdayStr) {
+            targetDate = todayStr;
         }
+        const { start, end } = getBusinessDayRange(targetDate);
 
-        const start = new Date(targetDate + 'T00:00:00');
-        const end = new Date(targetDate + 'T23:59:59.999');
-
-        // Sync order totals with bill totals for any bills generated on this date
-        const existingBills = await Bill.find({ createdAt: { $gte: start, $lte: end } });
-        for (const b of existingBills) {
-            if (b.order) {
-                const updateFields = {
-                    total: b.total,
-                    subtotal: b.subtotal,
-                    discount: b.discount,
-                    tax: b.tax
-                };
-                if (b.paymentMethod && b.paymentMethod !== 'pending') {
-                    updateFields.status = 'paid';
-                    updateFields.paymentMethod = b.paymentMethod;
-                    updateFields.amountPaid = b.total;
-                }
-                await Order.findByIdAndUpdate(b.order, updateFields);
-            }
-        }
-
-        // Fetch ONLY PAID/SETTLED orders for the date (final bills only in report)
-        const orders = await Order.find({
-            createdAt: { $gte: start, $lte: end },
-            status: 'paid'
+        const datedBills = await Bill.find({
+            $or: [
+                { businessDate: targetDate },
+                { businessDate: { $in: ['', null] }, createdAt: { $gte: start, $lte: end } },
+                { businessDate: { $exists: false }, createdAt: { $gte: start, $lte: end } }
+            ]
         })
-        .populate('items.menuItem', 'name category price')
-        .populate({ path: 'items.menuItem', populate: { path: 'category', select: 'name' } })
-        .populate('placedBy', 'name');
+            .populate('order', 'orderNumber tableNumber status paymentMethod splitPaymentDetails tables')
+            .populate('orders', 'orderNumber tableNumber status paymentMethod splitPaymentDetails tables');
+        const bills = datedBills.filter(bill =>
+            (bill.paymentMethod && bill.paymentMethod !== 'pending')
+            || [...(bill.orders || []), bill.order].some(order => order?.status === 'paid')
+        );
 
-        const bills = await Bill.find({
-            createdAt: { $gte: start, $lte: end }
-        }).populate('order', 'orderNumber tableNumber status tables');
+        const paidOrderIds = [...new Set(bills.flatMap(bill => [
+            ...(bill.orders || []).map(order => order?._id?.toString()),
+            bill.order?._id?.toString()
+        ]).filter(Boolean))];
+        const orders = await Order.find({ _id: { $in: paidOrderIds }, status: 'paid' })
+            .populate('items.menuItem', 'name category price')
+            .populate({ path: 'items.menuItem', populate: { path: 'category', select: 'name' } })
+            .populate('placedBy', 'name');
 
         // Summary totals
         let grossSales = 0;
@@ -74,44 +61,40 @@ router.get('/day-end', protect, admin, async (req, res) => {
             splitDetails: { cash: 0, upi: 0, card: 0 }
         };
 
-        // Build bill lookup map: orderId -> bill for payment method cross-reference
+        // Map every source order to its Bill for staff/item attribution.
         const billByOrderId = {};
-        bills.forEach(b => {
-            if (b.order && b.order._id) {
-                billByOrderId[b.order._id.toString()] = b;
-            }
+        bills.forEach(bill => {
+            [...(bill.orders || []), bill.order].filter(Boolean).forEach(orderRef => {
+                billByOrderId[orderRef._id.toString()] = bill;
+            });
         });
 
-        orders.forEach(order => {
-            const linkedBill = billByOrderId[order._id.toString()];
+        // Monetary totals and payment methods are counted once per Bill, never once per linked order.
+        bills.forEach(bill => {
+            grossSales += bill.subtotal || 0;
+            totalDiscount += bill.discount || 0;
+            totalTax += bill.tax || 0;
+            netRevenue += bill.total || 0;
 
-            const subtotalVal = linkedBill ? (linkedBill.subtotal || 0) : (order.subtotal || 0);
-            const discountVal = linkedBill ? (linkedBill.discount || 0) : (order.discount || 0);
-            const taxVal = linkedBill ? (linkedBill.tax || 0) : (order.tax || 0);
-            const totalVal = linkedBill ? (linkedBill.total || 0) : (order.total || 0);
-
-            grossSales += subtotalVal;
-            totalDiscount += discountVal;
-            totalTax += taxVal;
-            netRevenue += totalVal;
-
-            // Use bill's paymentMethod if order's is missing/pending
-            const method = (order.paymentMethod && order.paymentMethod !== 'pending')
-                ? order.paymentMethod
-                : (linkedBill?.paymentMethod || 'pending');
-
-            const amount = totalVal;
-            if (method === 'cash') paymentBreakdown.cash += amount;
-            else if (method === 'online' || method === 'upi') paymentBreakdown.online += amount;
-            else if (method === 'card') paymentBreakdown.card += amount;
+            const linkedOrderMethod = [...(bill.orders || []), bill.order]
+                .find(order => order?.paymentMethod && order.paymentMethod !== 'pending')?.paymentMethod;
+            const method = (bill.paymentMethod && bill.paymentMethod !== 'pending')
+                ? bill.paymentMethod
+                : (linkedOrderMethod || 'pending');
+            if (method === 'cash') paymentBreakdown.cash += bill.total || 0;
+            else if (method === 'online' || method === 'upi') paymentBreakdown.online += bill.total || 0;
+            else if (method === 'card') paymentBreakdown.card += bill.total || 0;
             else if (method === 'split') {
-                paymentBreakdown.split += amount;
-                const splitSrc = order.splitPaymentDetails || linkedBill?.splitPaymentDetails;
-                if (splitSrc) {
-                    paymentBreakdown.splitDetails.cash += (splitSrc.cash || 0);
-                    paymentBreakdown.splitDetails.upi += (splitSrc.upi || 0);
-                    paymentBreakdown.splitDetails.card += (splitSrc.card || 0);
-                }
+                paymentBreakdown.split += bill.total || 0;
+                const billSplitTotal = (bill.splitPaymentDetails?.cash || 0)
+                    + (bill.splitPaymentDetails?.upi || 0)
+                    + (bill.splitPaymentDetails?.card || 0);
+                const linkedSplit = [...(bill.orders || []), bill.order]
+                    .find(order => order?.paymentMethod === 'split' && order.splitPaymentDetails)?.splitPaymentDetails;
+                const splitSource = billSplitTotal > 0 ? bill.splitPaymentDetails : (linkedSplit || {});
+                paymentBreakdown.splitDetails.cash += splitSource.cash || 0;
+                paymentBreakdown.splitDetails.upi += splitSource.upi || 0;
+                paymentBreakdown.splitDetails.card += splitSource.card || 0;
             }
         });
 
@@ -156,39 +139,22 @@ router.get('/day-end', protect, admin, async (req, res) => {
             staffMap[staffName].totalSales += (order.total || 0);
         });
 
-        // Also incorporate standalone / pre-booking bills not linked to orders
+        // Attribute standalone/pre-booking Bills without adding their money a second time.
         bills.forEach(bill => {
-            if (!bill.order) {
-                grossSales += (bill.subtotal || 0);
-                totalDiscount += (bill.discount || 0);
-                totalTax += (bill.tax || 0);
-                netRevenue += (bill.total || 0);
-
-                const method = bill.paymentMethod || 'cash';
-                if (method === 'cash') paymentBreakdown.cash += bill.total;
-                else if (method === 'online') paymentBreakdown.online += bill.total;
-                else if (method === 'card') paymentBreakdown.card += bill.total;
-                else if (method === 'split') {
-                    paymentBreakdown.split += bill.total;
-                    if (bill.splitPaymentDetails) {
-                        paymentBreakdown.splitDetails.cash += (bill.splitPaymentDetails.cash || 0);
-                        paymentBreakdown.splitDetails.upi += (bill.splitPaymentDetails.upi || 0);
-                        paymentBreakdown.splitDetails.card += (bill.splitPaymentDetails.card || 0);
-                    }
-                }
-
+            const hasLinkedOrder = Boolean(bill.order) || (bill.orders && bill.orders.length > 0);
+            if (!hasLinkedOrder) {
                 const staffName = bill.billerName || 'Pre-Booking';
                 if (!staffMap[staffName]) {
                     staffMap[staffName] = { name: staffName, ordersCount: 0, totalSales: 0 };
                 }
                 staffMap[staffName].ordersCount += 1;
-                staffMap[staffName].totalSales += (bill.total || 0);
+                staffMap[staffName].totalSales += bill.total || 0;
 
                 if (!categoryMap['Pre-Bookings']) {
                     categoryMap['Pre-Bookings'] = { name: 'Pre-Bookings', itemsCount: 0, totalQty: 0, totalRevenue: 0 };
                 }
                 categoryMap['Pre-Bookings'].totalQty += 1;
-                categoryMap['Pre-Bookings'].totalRevenue += (bill.total || 0);
+                categoryMap['Pre-Bookings'].totalRevenue += bill.total || 0;
             }
         });
 
@@ -205,7 +171,13 @@ router.get('/day-end', protect, admin, async (req, res) => {
             discount: b.discount || 0,
             tax: b.tax || 0,
             total: b.total || 0,
-            paymentMethod: b.paymentMethod || 'cash',
+            paymentMethod: (b.paymentMethod && b.paymentMethod !== 'pending')
+                ? b.paymentMethod
+                : ([...(b.orders || []), b.order].find(order => order?.paymentMethod && order.paymentMethod !== 'pending')?.paymentMethod || 'cash'),
+            orderNumbers: (b.orderNumbers && b.orderNumbers.length > 0)
+                ? b.orderNumbers
+                : [...(b.orders || []), b.order].filter(Boolean).map(order => order.orderNumber),
+            tableNumbers: b.tableNumbers || [],
             order: b.order ? {
                 orderNumber: b.order.orderNumber,
                 tableNumber: b.order.tableNumber || (b.order.tables && b.order.tables.length > 0 ? b.order.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ') : null),
@@ -241,23 +213,21 @@ router.get('/day-end', protect, admin, async (req, res) => {
 router.get('/section-wise', protect, admin, async (req, res) => {
     try {
         const { date } = req.query;
-        let targetDate = date;
-        const todayStr = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        const yesterdayDate = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000) - 86400000);
-        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+        let targetDate = date || getBusinessDate();
+        const todayStr = getBusinessDate();
+        const yesterdayStr = getBusinessDate(new Date(Date.now() - 86400000));
 
-        if (req.user.role !== 'superadmin') {
-            if (targetDate !== todayStr && targetDate !== yesterdayStr) {
-                targetDate = todayStr;
-            }
+        if (req.user.role !== 'superadmin' && targetDate !== todayStr && targetDate !== yesterdayStr) {
+            targetDate = todayStr;
         }
-
-        const start = new Date(targetDate + 'T00:00:00');
-        const end = new Date(targetDate + 'T23:59:59.999');
+        const { start, end } = getBusinessDayRange(targetDate);
 
         const orders = await Order.find({
-            createdAt: { $gte: start, $lte: end },
-            status: { $nin: ['cancelled', 'deleted'] }
+            status: 'paid',
+            $or: [
+                { settledAt: { $gte: start, $lte: end } },
+                { settledAt: null, createdAt: { $gte: start, $lte: end } }
+            ]
         })
         .populate('table', 'section tableNumber name areaType')
         .populate('tables', 'section tableNumber name areaType')

@@ -140,6 +140,14 @@ const orderSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    settledAt: {
+        type: Date,
+        default: null
+    },
+    businessDate: {
+        type: String,
+        default: ''
+    },
     createdAt: {
         type: Date,
         default: Date.now

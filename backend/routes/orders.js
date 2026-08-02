@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
+const Bill = require('../models/Bill');
 const MenuItem = require('../models/MenuItem');
 const Coupon = require('../models/Coupon');
 const Table = require('../models/Table');
@@ -14,6 +15,15 @@ const KOTPrintJob = require('../models/KOTPrintJob');
 const { getPrinterConfig } = require('../utils/printerConfig');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const { generateOrderNumber } = require('../utils/helpers');
+const {
+    normalizeItems,
+    getConfiguredTax,
+    calculateTotals,
+    allocateBillTotals,
+    getBusinessDate,
+    roundMoney
+} = require('../utils/orderCalculations');
+const { runAtomic, sessionOptions } = require('../utils/transactions');
 
 const getKOTEventId = (payload) => {
     const orderId = payload._id?.toString() || payload.id?.toString() || payload.orderNumber || 'unknown';
@@ -441,11 +451,17 @@ router.post('/', protect, async (req, res) => {
         }
         const table = selectedTables[0] || null;
 
+        // Consolidate duplicate menu rows before looking up prices. One menu item is one order row.
+        const requestedItems = normalizeItems(items);
+        if (requestedItems.length === 0) {
+            return res.status(400).json({ message: 'No valid items in order' });
+        }
+
         // Calculate totals
         let subtotal = 0;
         const orderItems = [];
 
-        for (const item of items) {
+        for (const item of requestedItems) {
             const menuItem = await MenuItem.findById(item.menuItem);
             if (!menuItem) {
                 return res.status(400).json({ message: `Menu item not found: ${item.menuItem}` });
@@ -549,12 +565,21 @@ router.post('/', protect, async (req, res) => {
                 tables: { $in: selectedTables.map(t => t._id) },
                 status: { $nin: ['paid', 'cancelled'] }
             });
+            if (activeOrder) {
+                const settledBillExists = await Bill.exists({
+                    $or: [{ order: activeOrder._id }, { orders: activeOrder._id }],
+                    paymentMethod: { $in: ['cash', 'online', 'upi', 'card', 'split'] }
+                });
+                if (settledBillExists) activeOrder = null;
+            }
         }
 
         const kotNum = `KOT-${Date.now().toString().slice(-4)}`;
         const kotTimestamp = new Date();
 
         if (activeOrder) {
+            // Heal any historical duplicate rows before applying this KOT exactly once.
+            activeOrder.items = normalizeItems(activeOrder.items);
             // Append items to running table order
             for (const newItem of orderItems) {
                 const existingItemIndex = activeOrder.items.findIndex(i => i.menuItem.toString() === newItem.menuItem.toString());
@@ -643,18 +668,20 @@ router.post('/', protect, async (req, res) => {
             placedBy: (req.user && req.user.isEmployee) ? req.user._id : null
         });
 
-        await order.save();
-
-        // Occupy all selected tables
         if (selectedTables.length > 0) {
+            await runAtomic(async session => {
+                await order.save(sessionOptions(session));
+                await Table.updateMany(
+                    { _id: { $in: selectedTables.map(selectedTable => selectedTable._id) } },
+                    { status: 'occupied', isOccupied: true, currentOrder: order._id },
+                    sessionOptions(session)
+                );
+            });
             const io = req.app.get('io');
-            for (const t of selectedTables) {
-                t.status = 'occupied';
-                t.isOccupied = true;
-                t.currentOrder = order._id;
-                await t.save();
-                if (io) io.emit('table-occupied', t);
-            }
+            const occupiedTables = await Table.find({ _id: { $in: selectedTables.map(selectedTable => selectedTable._id) } });
+            if (io) occupiedTables.forEach(occupiedTable => io.emit('table-occupied', occupiedTable));
+        } else {
+            await order.save();
         }
 
         const populatedOrder = await Order.findById(order._id)
@@ -679,7 +706,7 @@ router.post('/', protect, async (req, res) => {
         res.status(201).json(populatedOrder);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
     }
 });
 // @desc    Modify order items (add, edit qty, or partial cancel/remove items) & generate ADD / CANCEL KOT
@@ -693,9 +720,17 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             return res.status(404).json({ message: 'Order not found' });
         }
 
+        const linkedBill = await Bill.findOne({ $or: [{ order: order._id }, { orders: order._id }] });
+        if (linkedBill?.paymentMethod && linkedBill.paymentMethod !== 'pending' && req.user.role !== 'superadmin') {
+            return res.status(403).json({ message: 'This bill is settled. Only superadmin can modify it.' });
+        }
+
         if (order.status === 'paid' || order.status === 'cancelled') {
             return res.status(400).json({ message: `Cannot modify a ${order.status} order` });
         }
+
+        order.items = normalizeItems(order.items);
+        const consolidatedUpdatedItems = normalizeItems(updatedItems || []);
 
         const addedItems = [];
         const cancelledItems = [];
@@ -709,7 +744,7 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         });
 
         const newMap = new Map();
-        for (const item of updatedItems) {
+        for (const item of consolidatedUpdatedItems) {
             if (item.quantity <= 0) continue;
 
             const mIdToFind = item.menuItem?._id || item.menuItem || item.menuItemId;
@@ -778,11 +813,15 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             return res.status(400).json({ message: 'Order cannot be left with 0 items. Use Cancel Order instead.' });
         }
 
-        order.items = newOrderItems;
-        order.subtotal = newSubtotal;
-        const taxableAmount = Math.max(order.subtotal - (order.discount || 0), 0);
-        order.tax = taxableAmount * 0.05;
-        order.total = taxableAmount + order.tax;
+        order.items = normalizeItems(newOrderItems);
+        const taxConfig = await getConfiguredTax(Settings);
+        const totals = calculateTotals(order.items, order.discount || 0, taxConfig);
+        order.subtotal = totals.subtotal;
+        order.discount = totals.discount;
+        order.taxDetails = totals.taxDetails;
+        order.tax = totals.tax;
+        order.gstRate = taxConfig.reduce((sum, taxItem) => sum + taxItem.rate, 0);
+        order.total = totals.total;
 
         const cleanOrdNo = String(order.orderNumber).replace(/^CD-/, '');
 
@@ -863,14 +902,14 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         });
     } catch (error) {
         console.error('Error modifying order items:', error);
-        res.status(500).json({ message: error.message || 'Server error' });
+        res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
     }
 });
 
-const freeTablesForOrder = async (order, io) => {
+const freeTablesForOrder = async (order, io, session = null) => {
     try {
         const tableIdsToFree = [...(order.tables || []), order.table].filter(Boolean);
-        let orConditions = [];
+        const orConditions = [];
         if (tableIdsToFree.length > 0) {
             orConditions.push({ _id: { $in: tableIdsToFree } });
         }
@@ -884,12 +923,14 @@ const freeTablesForOrder = async (order, io) => {
             }
         }
         if (orConditions.length > 0) {
-            const tablesToFree = await Table.find({ $or: orConditions });
+            let tablesQuery = Table.find({ $or: orConditions });
+            if (session) tablesQuery = tablesQuery.session(session);
+            const tablesToFree = await tablesQuery;
             for (const t of tablesToFree) {
                 t.status = 'available';
                 t.isOccupied = false;
                 t.currentOrder = null;
-                await t.save();
+                await t.save(sessionOptions(session));
                 if (io) {
                     io.emit('table-freed', t);
                     io.emit('table-updated', t);
@@ -898,6 +939,7 @@ const freeTablesForOrder = async (order, io) => {
         }
     } catch (err) {
         console.error('Error freeing tables:', err);
+        if (session) throw err;
     }
 };
 
@@ -923,8 +965,9 @@ router.put('/:id/status', protect, async (req, res) => {
             return res.status(404).json({ message: 'Order not found' });
         }
 
-        // Block edits on settled orders unless superadmin
-        if (order.status === 'paid' && req.user.role !== 'superadmin') {
+        // Block edits on settled orders/Bills unless superadmin.
+        const linkedBill = await Bill.findOne({ $or: [{ order: order._id }, { orders: order._id }] });
+        if ((order.status === 'paid' || (linkedBill?.paymentMethod && linkedBill.paymentMethod !== 'pending')) && req.user.role !== 'superadmin') {
             return res.status(403).json({ message: 'This order has been settled. Only superadmin can modify settled orders.' });
         }
 
@@ -1001,6 +1044,10 @@ router.put('/:id/move-table', protect, async (req, res) => {
         if (!order) {
             return res.status(404).json({ message: 'Order not found' });
         }
+        const linkedBill = await Bill.findOne({ $or: [{ order: order._id }, { orders: order._id }] });
+        if (linkedBill?.paymentMethod && linkedBill.paymentMethod !== 'pending' && req.user.role !== 'superadmin') {
+            return res.status(403).json({ message: 'This bill is settled. Only superadmin can move its table.' });
+        }
 
         if (order.status === 'paid' || order.status === 'cancelled') {
             return res.status(400).json({ message: `Cannot change table for a ${order.status} order` });
@@ -1018,26 +1065,37 @@ router.put('/:id/move-table', protect, async (req, res) => {
         }
 
         const io = req.app.get('io');
-
-        // Free old tables
-        await freeTablesForOrder(order, io);
-
-        // Occupy new tables
-        for (const t of newTables) {
-            t.status = 'occupied';
-            t.isOccupied = true;
-            t.currentOrder = order._id;
-            await t.save();
-            if (io) {
-                io.emit('table-occupied', t);
-                io.emit('table-updated', t);
+        const oldTableIds = [...new Set([...(order.tables || []), order.table].filter(Boolean).map(id => id.toString()))];
+        await runAtomic(async session => {
+            await Table.updateMany(
+                { $or: [{ _id: { $in: oldTableIds } }, { currentOrder: order._id }] },
+                { status: 'available', isOccupied: false, currentOrder: null },
+                sessionOptions(session)
+            );
+            const occupyResult = await Table.updateMany(
+                { _id: { $in: newTableIds }, status: 'available', isOccupied: { $ne: true } },
+                { status: 'occupied', isOccupied: true, currentOrder: order._id },
+                sessionOptions(session)
+            );
+            if (occupyResult.modifiedCount !== newTableIds.length) {
+                const conflict = new Error('One or more selected tables became occupied. Please select again.');
+                conflict.statusCode = 409;
+                throw conflict;
             }
-        }
 
-        order.table = newTables[0]._id;
-        order.tables = newTables.map(t => t._id);
-        order.tableNumber = newTables.map(t => t.tableNumber).join(', ');
-        await order.save();
+            order.table = newTables[0]._id;
+            order.tables = newTables.map(t => t._id);
+            order.tableNumber = newTables.map(t => t.tableNumber).join(', ');
+            await order.save(sessionOptions(session));
+        });
+
+        if (io) {
+            const changedTables = await Table.find({ _id: { $in: [...oldTableIds, ...newTableIds] } });
+            changedTables.forEach(tableDoc => {
+                io.emit(tableDoc.isOccupied ? 'table-occupied' : 'table-freed', tableDoc);
+                io.emit('table-updated', tableDoc);
+            });
+        }
 
         const populatedOrder = await Order.findById(order._id)
             .populate('user', 'phone name')
@@ -1052,7 +1110,7 @@ router.put('/:id/move-table', protect, async (req, res) => {
         res.json(populatedOrder);
     } catch (error) {
         console.error('Error moving table:', error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
     }
 });
 
@@ -1068,6 +1126,13 @@ router.put('/:id/request-bill', protect, async (req, res) => {
         if (!currentOrder) {
             return res.status(404).json({ message: 'Order not found' });
         }
+        if (currentOrder.status === 'paid' && req.user.role !== 'superadmin') {
+            return res.status(403).json({ message: 'This order is already settled and cannot be requested again.' });
+        }
+        const currentBill = await Bill.findOne({ $or: [{ order: currentOrder._id }, { orders: currentOrder._id }] });
+        if (currentBill?.paymentMethod && currentBill.paymentMethod !== 'pending' && req.user.role !== 'superadmin') {
+            return res.status(403).json({ message: 'This bill is settled and cannot be requested again.' });
+        }
 
         console.log('Bill Request:', {
             orderId: currentOrder._id,
@@ -1075,45 +1140,61 @@ router.put('/:id/request-bill', protect, async (req, res) => {
             currentUser: req.user._id
         });
 
-        // Find query for all associated orders
-        let query = {
-            status: { $nin: ['paid', 'cancelled', 'bill_requested'] }
+        // A table session is defined only by shared table IDs. Takeaway orders never auto-group.
+        const currentTableIds = [...new Set([...(currentOrder.tables || []), currentOrder.table]
+            .filter(Boolean)
+            .map(id => id.toString()))];
+        const query = {
+            status: { $nin: ['paid', 'cancelled', 'bill_requested'] },
+            ...(currentTableIds.length > 0
+                ? { $or: [{ tables: { $in: currentTableIds } }, { table: { $in: currentTableIds } }] }
+                : { _id: currentOrder._id })
         };
 
-        if (currentOrder.table) {
-            query.table = currentOrder.table;
-        } else {
-            query.user = currentOrder.user;
-        }
-
-        // Find all orders to update
-        const ordersToUpdate = await Order.find(query);
+        let ordersToUpdate = await Order.find(query);
 
         // Also include the current order if it wasn't picked up (though it should be)
         if (!ordersToUpdate.find(o => o._id.toString() === currentOrder._id.toString())) {
-            // If current order status was already bill_requested/generated, we might still want to trigger socket
             ordersToUpdate.push(currentOrder);
+        }
+
+        if (req.user.role !== 'superadmin' && ordersToUpdate.length > 0) {
+            const settledBills = await Bill.find({
+                paymentMethod: { $in: ['cash', 'online', 'upi', 'card', 'split'] },
+                $or: [
+                    { order: { $in: ordersToUpdate.map(order => order._id) } },
+                    { orders: { $in: ordersToUpdate.map(order => order._id) } }
+                ]
+            }).select('order orders');
+            const settledOrderIds = new Set(settledBills.flatMap(bill => [bill.order, ...(bill.orders || [])])
+                .filter(Boolean).map(id => id.toString()));
+            ordersToUpdate = ordersToUpdate.filter(order => !settledOrderIds.has(order._id.toString()));
+        }
+
+        if (ordersToUpdate.length === 0) {
+            return res.status(403).json({ message: 'All matching orders are already settled.' });
         }
 
         const io = req.app.get('io');
         const updatedOrders = [];
+        await runAtomic(async session => {
+            await Order.updateMany(
+                { _id: { $in: ordersToUpdate.map(order => order._id) } },
+                { $set: { status: 'bill_requested', updatedAt: new Date() } },
+                sessionOptions(session)
+            );
+        });
 
-        // Update all identified orders
-        for (const order of ordersToUpdate) {
-            order.status = 'bill_requested';
-            await order.save();
-
-            const populatedOrder = await Order.findById(order._id)
-                .populate('user', 'phone name')
-                .populate('placedBy', 'name')
-                .populate('items.menuItem', 'name image');
-
+        const populatedOrders = await Order.find({ _id: { $in: ordersToUpdate.map(order => order._id) } })
+            .populate('user', 'phone name')
+            .populate('placedBy', 'name')
+            .populate('items.menuItem', 'name image');
+        for (const populatedOrder of populatedOrders) {
             updatedOrders.push(populatedOrder);
-
             if (io) {
                 io.emit('order-updated', populatedOrder);
                 io.emit('bill-requested', populatedOrder);
-                io.to(`user-${order.user}`).emit('my-order-updated', populatedOrder);
+                io.to(`user-${populatedOrder.user?._id || populatedOrder.user}`).emit('my-order-updated', populatedOrder);
             }
         }
 
@@ -1123,7 +1204,7 @@ router.put('/:id/request-bill', protect, async (req, res) => {
         res.json(finalCurrentOrder);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
     }
 });
 
@@ -1134,82 +1215,222 @@ router.put('/:id/payment', protect, async (req, res) => {
     try {
         const { paymentMethod, amountPaid, splitPaymentDetails } = req.body;
         const order = await Order.findById(req.params.id).populate('items.menuItem');
+        if (!order) return res.status(404).json({ message: 'Order not found' });
 
-        if (!order) {
-            return res.status(404).json({ message: 'Order not found' });
+        const validMethods = ['cash', 'online', 'upi', 'card', 'split'];
+        if (!validMethods.includes(paymentMethod)) {
+            return res.status(400).json({ message: 'A valid settlement payment method is required.' });
         }
 
-        const wasPaid = order.status === 'paid';
+        const linkedBill = await Bill.findOne({
+            $or: [{ order: order._id }, { orders: order._id }]
+        });
 
-        if (paymentMethod) order.paymentMethod = paymentMethod;
-        if (splitPaymentDetails) order.splitPaymentDetails = splitPaymentDetails;
-        if (amountPaid !== undefined) order.amountPaid = Math.max(0, parseFloat(amountPaid) || 0);
-
-        // If the paid amount is the final discounted amount, update order.total to match
-        // This prevents the phantom "remaining balance" when discount reduces total below original
-        if (amountPaid !== undefined && req.body.finalTotal !== undefined) {
-            order.total = parseFloat(req.body.finalTotal);
-        }
-
-        // If amount paid covers the (possibly updated) total, mark as paid
-        if (order.amountPaid >= (order.total - 0.05)) {
-            order.status = 'paid';
-        } else {
-            // If amount paid edited to less than total, revert to active confirmed status
-            if (order.status === 'paid') {
-                order.status = 'confirmed';
+        if (linkedBill) {
+            const wasPaid = linkedBill.paymentMethod && linkedBill.paymentMethod !== 'pending';
+            if (wasPaid && req.user.role !== 'superadmin') {
+                return res.status(403).json({ message: 'This bill is already settled. Only superadmin can modify settlement.' });
             }
-        }
+            if (req.body.finalTotal !== undefined) {
+                const requestedFinalTotal = Number(req.body.finalTotal);
+                if (!Number.isFinite(requestedFinalTotal) || Math.round(requestedFinalTotal * 100) !== Math.round(linkedBill.total * 100)) {
+                    return res.status(400).json({ message: 'Payment total does not match the authoritative bill total.' });
+                }
+            }
 
-        await order.save();
+            const paidAmount = roundMoney(Number(amountPaid));
+            if (!Number.isFinite(paidAmount) || Math.round(paidAmount * 100) !== Math.round(linkedBill.total * 100)) {
+                return res.status(400).json({
+                    message: `Settlement amount must exactly match bill total ₹${linkedBill.total.toFixed(2)}. Apply any discount before settlement.`
+                });
+            }
 
-        // Award loyalty points ONLY if it just transitioned to paid
-        if (order.status === 'paid' && !wasPaid) {
-            try {
-                const loyaltySettings = await LoyaltySettings.getSettings();
-                if (loyaltySettings.isActive && order.total >= loyaltySettings.minOrderForPoints) {
-                    let pointsEarned = Math.floor(order.total * loyaltySettings.pointsPerRupee);
+            const rawSplitValues = paymentMethod === 'split'
+                ? ['cash', 'upi', 'card'].map(key => Number(splitPaymentDetails?.[key] ?? 0))
+                : [0, 0, 0];
+            if (paymentMethod === 'split' && rawSplitValues.some(value => !Number.isFinite(value) || value < 0)) {
+                return res.status(400).json({ message: 'Split payment amounts must be valid non-negative numbers.' });
+            }
+            const split = paymentMethod === 'split' ? {
+                cash: roundMoney(rawSplitValues[0]),
+                upi: roundMoney(rawSplitValues[1]),
+                card: roundMoney(rawSplitValues[2])
+            } : { cash: 0, upi: 0, card: 0 };
+            if (paymentMethod === 'split') {
+                const splitTotal = roundMoney(split.cash + split.upi + split.card);
+                if (Math.round(splitTotal * 100) !== Math.round(linkedBill.total * 100)) {
+                    return res.status(400).json({ message: 'Split payment does not match the bill total.' });
+                }
+            }
 
-                    for (const item of order.items) {
-                        if (item.menuItem && item.menuItem.bonusLoyaltyPoints) {
-                            pointsEarned += item.menuItem.bonusLoyaltyPoints * item.quantity;
+            const linkedIds = [...new Set([...(linkedBill.orders || []), linkedBill.order]
+                .filter(Boolean).map(id => id.toString()))];
+            const linkedOrders = await Order.find({ _id: { $in: linkedIds } }).populate('items.menuItem');
+            if (linkedOrders.length !== linkedIds.length) {
+                return res.status(409).json({ message: 'A linked source order is missing. Settlement was not changed.' });
+            }
+            const totals = {
+                discount: linkedBill.discount,
+                tax: linkedBill.tax,
+                total: linkedBill.total,
+                taxDetails: linkedBill.taxDetails || []
+            };
+            const allocations = allocateBillTotals(linkedOrders, totals);
+            const now = new Date();
+            const businessDate = !wasPaid
+                ? getBusinessDate(now)
+                : (linkedBill.businessDate || getBusinessDate(now));
+
+            await runAtomic(async session => {
+                await Order.bulkWrite(allocations.map(allocation => ({
+                    updateOne: {
+                        filter: { _id: allocation.order._id },
+                        update: { $set: {
+                            items: allocation.items,
+                            subtotal: allocation.subtotal,
+                            discount: allocation.discount,
+                            tax: allocation.tax,
+                            taxDetails: allocation.taxDetails,
+                            total: allocation.total,
+                            paymentMethod,
+                            splitPaymentDetails: split,
+                            amountPaid: allocation.total,
+                            status: 'paid',
+                            settledAt: now,
+                            businessDate,
+                            updatedAt: now
+                        } }
+                    }
+                })), sessionOptions(session));
+
+                linkedBill.paymentMethod = paymentMethod;
+                linkedBill.splitPaymentDetails = split;
+                linkedBill.paidAt = now;
+                linkedBill.businessDate = businessDate;
+                await linkedBill.save(sessionOptions(session));
+                await Table.updateMany(
+                    { currentOrder: { $in: linkedOrders.map(linkedOrder => linkedOrder._id) } },
+                    { status: 'available', isOccupied: false, currentOrder: null },
+                    sessionOptions(session)
+                );
+            });
+
+            // Award loyalty once per Bill, on its primary order only.
+            if (!wasPaid) {
+                try {
+                    const primary = linkedOrders.find(linkedOrder => linkedOrder._id.toString() === linkedBill.order?.toString()) || linkedOrders[0];
+                    const loyaltySettings = await LoyaltySettings.getSettings();
+                    if (primary && loyaltySettings.isActive && linkedBill.total >= loyaltySettings.minOrderForPoints) {
+                        let pointsEarned = Math.floor(linkedBill.total * loyaltySettings.pointsPerRupee);
+                        for (const item of primary.items) {
+                            if (item.menuItem?.bonusLoyaltyPoints) pointsEarned += item.menuItem.bonusLoyaltyPoints * item.quantity;
+                        }
+                        if (pointsEarned > 0) {
+                            await User.findByIdAndUpdate(primary.user, {
+                                $inc: { loyaltyPoints: pointsEarned, totalPointsEarned: pointsEarned }
+                            });
                         }
                     }
-
-                    if (pointsEarned > 0) {
-                        await User.findByIdAndUpdate(order.user, {
-                            $inc: {
-                                loyaltyPoints: pointsEarned,
-                                totalPointsEarned: pointsEarned
-                            }
-                        });
-                    }
+                } catch (loyaltyError) {
+                    console.error('Error awarding loyalty points:', loyaltyError);
                 }
-            } catch (loyaltyError) {
-                console.error('Error awarding loyalty points:', loyaltyError);
             }
 
-            // Free all tables the order occupied
-            const ioFree = req.app.get('io');
-            await freeTablesForOrder(order, ioFree);
+            const populatedOrders = await Order.find({ _id: { $in: linkedIds } })
+                .populate('user', 'phone name')
+                .populate('placedBy', 'name')
+                .populate('items.menuItem', 'name image');
+            const io = req.app.get('io');
+            if (io) {
+                populatedOrders.forEach(linkedOrder => io.emit('order-updated', linkedOrder));
+                const populatedBill = await Bill.findById(linkedBill._id)
+                    .populate({ path: 'order', populate: { path: 'user', select: 'name phone' } })
+                    .populate({ path: 'orders', populate: { path: 'user', select: 'name phone' } });
+                io.emit('bill-generated', populatedBill);
+            }
+            return res.json(populatedOrders.find(item => item._id.toString() === order._id.toString()) || populatedOrders[0]);
+        }
+
+        // Legacy/no-Bill payment: totals are still recomputed server-side; finalTotal cannot overwrite them.
+        if (order.status === 'paid' && req.user.role !== 'superadmin') {
+            return res.status(403).json({ message: 'This order is already settled. Only superadmin can modify settlement.' });
+        }
+        const taxConfig = await getConfiguredTax(Settings);
+        const totals = calculateTotals(order.items, order.discount || 0, taxConfig);
+        if (req.body.finalTotal !== undefined) {
+            const requestedFinalTotal = Number(req.body.finalTotal);
+            if (!Number.isFinite(requestedFinalTotal) || Math.round(requestedFinalTotal * 100) !== Math.round(totals.total * 100)) {
+                return res.status(400).json({ message: 'Payment total does not match the server-calculated order total.' });
+            }
+        }
+        const paidAmount = roundMoney(Number(amountPaid));
+        if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+            return res.status(400).json({ message: 'Invalid paid amount.' });
+        }
+        const legacySplitValues = paymentMethod === 'split'
+            ? ['cash', 'upi', 'card'].map(key => Number(splitPaymentDetails?.[key] ?? 0))
+            : [0, 0, 0];
+        if (paymentMethod === 'split' && legacySplitValues.some(value => !Number.isFinite(value) || value < 0)) {
+            return res.status(400).json({ message: 'Split payment amounts must be valid non-negative numbers.' });
+        }
+        const roundedLegacySplitValues = legacySplitValues.map(roundMoney);
+        if (paymentMethod === 'split' && Math.round(roundedLegacySplitValues.reduce((sum, value) => sum + value, 0) * 100) !== Math.round(totals.total * 100)) {
+            return res.status(400).json({ message: 'Split payment does not match the server-calculated order total.' });
+        }
+
+        order.items = totals.items;
+        order.subtotal = totals.subtotal;
+        order.discount = totals.discount;
+        order.tax = totals.tax;
+        order.taxDetails = totals.taxDetails;
+        order.total = totals.total;
+        order.paymentMethod = paymentMethod;
+        order.splitPaymentDetails = paymentMethod === 'split'
+            ? { cash: roundedLegacySplitValues[0], upi: roundedLegacySplitValues[1], card: roundedLegacySplitValues[2] }
+            : { cash: 0, upi: 0, card: 0 };
+        order.amountPaid = paidAmount;
+        if (Math.round(paidAmount * 100) >= Math.round(totals.total * 100)) {
+            order.status = 'paid';
+            order.amountPaid = totals.total;
+            order.settledAt = new Date();
+            order.businessDate = getBusinessDate(order.settledAt);
+        } else if (order.status === 'paid') {
+            order.status = 'confirmed';
+            order.settledAt = null;
+            order.businessDate = '';
+        }
+        const settledNow = order.status === 'paid';
+        if (settledNow) {
+            await runAtomic(async session => {
+                await order.save(sessionOptions(session));
+                await freeTablesForOrder(order, null, session);
+            });
+        } else {
+            await order.save();
+        }
+
+        const io = req.app.get('io');
+        if (settledNow && io) {
+            const tableIds = [...new Set([...(order.tables || []), order.table].filter(Boolean).map(id => id.toString()))];
+            const freedTables = await Table.find({ _id: { $in: tableIds } });
+            freedTables.forEach(tableDoc => {
+                io.emit('table-freed', tableDoc);
+                io.emit('table-updated', tableDoc);
+            });
         }
 
         const populatedOrder = await Order.findById(order._id)
             .populate('user', 'phone name')
             .populate('placedBy', 'name')
             .populate('items.menuItem', 'name image');
-
-        // Emit socket event
-        const io = req.app.get('io');
         if (io) {
             io.emit('order-updated', populatedOrder);
             io.to(`user-${order.user}`).emit('my-order-updated', populatedOrder);
         }
-
         res.json(populatedOrder);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
     }
 });
 
@@ -1218,81 +1439,115 @@ router.put('/:id/payment', protect, async (req, res) => {
 // @access  Private
 router.put('/:id/items', protect, async (req, res) => {
     try {
-        const { items } = req.body;
         const order = await Order.findById(req.params.id);
-        if (!order) {
-            return res.status(404).json({ message: 'Order not found' });
-        }
-
-        // Block edits on settled orders unless superadmin
+        if (!order) return res.status(404).json({ message: 'Order not found' });
         if (order.status === 'paid' && req.user.role !== 'superadmin') {
             return res.status(403).json({ message: 'This order has been settled. Only superadmin can modify settled orders.' });
         }
 
-        let subtotal = 0;
-        const orderItems = [];
-
-        for (const item of items) {
-            const menuItem = await MenuItem.findById(item.menuItem);
-            if (!menuItem) {
-                return res.status(400).json({ message: `Menu item not found: ${item.menuItem}` });
-            }
-            const itemTotal = menuItem.price * item.quantity;
-            subtotal += itemTotal;
-
-            orderItems.push({
+        const requestedItems = normalizeItems(req.body.items || []);
+        if (requestedItems.length === 0) {
+            return res.status(400).json({ message: 'Order cannot be left with 0 items. Delete the order instead.' });
+        }
+        const menuItems = await MenuItem.find({ _id: { $in: requestedItems.map(item => item.menuItem) } });
+        if (menuItems.length !== requestedItems.length) {
+            return res.status(400).json({ message: 'One or more menu items no longer exist.' });
+        }
+        const menuById = new Map(menuItems.map(item => [item._id.toString(), item]));
+        const canonicalItems = requestedItems.map(item => {
+            const menuItem = menuById.get(item.menuItem.toString());
+            return {
                 menuItem: menuItem._id,
                 name: menuItem.name,
                 price: menuItem.price,
                 quantity: item.quantity,
-                total: itemTotal
-            });
+                total: roundMoney(menuItem.price * item.quantity),
+                notes: item.notes || ''
+            };
+        });
+
+        const taxConfig = await getConfiguredTax(Settings);
+        const bill = await Bill.findOne({ $or: [{ order: order._id }, { orders: order._id }] });
+        if (bill && bill.paymentMethod && bill.paymentMethod !== 'pending' && req.user.role !== 'superadmin') {
+            return res.status(403).json({ message: 'This bill is settled. Only superadmin can modify it.' });
         }
-
-        order.items = orderItems;
-        order.subtotal = subtotal;
-        
-        const gstRate = order.gstRate || 5;
-        const taxableAmount = subtotal - order.discount;
-        const tax = taxableAmount * (gstRate / 100);
-        order.tax = tax;
-        order.taxDetails = [{ name: 'GST', rate: gstRate, amount: tax }];
-        order.total = taxableAmount + tax;
-
-        await order.save();
-
-        const Bill = require('../models/Bill');
-        let bill = await Bill.findOne({ order: order._id });
-        if (bill) {
-            bill.subtotal = subtotal;
-            bill.tax = tax;
-            bill.total = (subtotal - bill.discount) + tax;
-            await bill.save();
-
-            const io = req.app.get('io');
-            if (io) {
-                const populatedBill = await Bill.findById(bill._id).populate({
-                    path: 'order',
-                    populate: { path: 'user', select: 'name phone' }
-                });
-                io.emit('bill-generated', populatedBill);
+        if (!bill) {
+            const totals = calculateTotals(canonicalItems, order.discount || 0, taxConfig);
+            if (totals.discount > totals.subtotal) {
+                return res.status(400).json({ message: 'Existing discount exceeds the new subtotal.' });
             }
+            order.items = totals.items;
+            order.subtotal = totals.subtotal;
+            order.discount = totals.discount;
+            order.tax = totals.tax;
+            order.taxDetails = totals.taxDetails;
+            order.gstRate = taxConfig.reduce((sum, taxItem) => sum + taxItem.rate, 0);
+            order.total = totals.total;
+            await order.save();
+        } else {
+            const linkedIds = [...new Set([...(bill.orders || []), bill.order]
+                .filter(Boolean).map(id => id.toString()))];
+            const linkedOrders = await Order.find({ _id: { $in: linkedIds } });
+            if (linkedOrders.length !== linkedIds.length) {
+                return res.status(409).json({ message: 'A linked source order is missing. Bill was not changed.' });
+            }
+            const changedOrder = linkedOrders.find(item => item._id.toString() === order._id.toString());
+            changedOrder.items = canonicalItems;
+            const combinedItems = normalizeItems(linkedOrders.flatMap(item => item.items || []));
+            const totals = calculateTotals(combinedItems, bill.discount || 0, taxConfig);
+            if (totals.discount > totals.subtotal) {
+                return res.status(400).json({ message: 'Existing bill discount exceeds the new subtotal.' });
+            }
+            const allocations = allocateBillTotals(linkedOrders, totals);
+            const settled = bill.paymentMethod && bill.paymentMethod !== 'pending';
+            const now = new Date();
+
+            await runAtomic(async session => {
+                await Order.bulkWrite(allocations.map(allocation => ({
+                    updateOne: {
+                        filter: { _id: allocation.order._id },
+                        update: { $set: {
+                            items: allocation.items,
+                            subtotal: allocation.subtotal,
+                            discount: allocation.discount,
+                            tax: allocation.tax,
+                            taxDetails: allocation.taxDetails,
+                            gstRate: taxConfig.reduce((sum, taxItem) => sum + taxItem.rate, 0),
+                            total: allocation.total,
+                            amountPaid: settled ? allocation.total : 0,
+                            updatedAt: now
+                        } }
+                    }
+                })), sessionOptions(session));
+
+                bill.items = totals.items;
+                bill.taxDetails = totals.taxDetails;
+                bill.subtotal = totals.subtotal;
+                bill.discount = totals.discount;
+                bill.tax = totals.tax;
+                bill.total = totals.total;
+                await bill.save(sessionOptions(session));
+            });
         }
 
         const populatedOrder = await Order.findById(order._id)
             .populate('user', 'phone name')
             .populate('items.menuItem', 'name image');
-
         const io = req.app.get('io');
         if (io) {
             io.emit('order-updated', populatedOrder);
             io.to(`user-${order.user}`).emit('my-order-updated', populatedOrder);
+            if (bill) {
+                const populatedBill = await Bill.findById(bill._id)
+                    .populate({ path: 'order', populate: { path: 'user', select: 'name phone' } })
+                    .populate({ path: 'orders', populate: { path: 'user', select: 'name phone' } });
+                io.emit('bill-generated', populatedBill);
+            }
         }
-
         res.json(populatedOrder);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
     }
 });
 
@@ -1304,39 +1559,39 @@ router.delete('/:id', protect, superadmin, async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ message: 'Invalid Order ID' });
         }
-
         const order = await Order.findById(req.params.id);
-        if (!order) {
-            return res.status(404).json({ message: 'Order not found' });
-        }
+        if (!order) return res.status(404).json({ message: 'Order not found' });
 
-        // Free all tables the order occupied
-        {
-            const tableIdsToFree = [...(order.tables || []), order.table].filter(Boolean);
-            const io = req.app.get('io');
-            for (const tid of tableIdsToFree) {
-                const t = await Table.findByIdAndUpdate(tid, { status: 'available', isOccupied: false, currentOrder: null }, { new: true });
-                if (t && io) io.emit('table-freed', t);
-            }
-        }
+        const linkedBill = await Bill.findOne({
+            $or: [{ order: order._id }, { orders: order._id }]
+        });
+        const orderIds = linkedBill
+            ? [...new Set([...(linkedBill.orders || []), linkedBill.order].filter(Boolean).map(id => id.toString()))]
+            : [order._id.toString()];
 
-        await Order.findByIdAndDelete(req.params.id);
+        await runAtomic(async session => {
+            await Table.updateMany(
+                { currentOrder: { $in: orderIds } },
+                { status: 'available', isOccupied: false, currentOrder: null },
+                sessionOptions(session)
+            );
+            await Order.deleteMany({ _id: { $in: orderIds } }, sessionOptions(session));
+            if (linkedBill) await Bill.findByIdAndDelete(linkedBill._id, sessionOptions(session));
+        });
 
-        // Delete corresponding bill if any
-        const Bill = require('../models/Bill');
-        await Bill.deleteMany({ order: req.params.id });
-
-        // Emit socket event for real-time delete
         const io = req.app.get('io');
         if (io) {
-            io.emit('order-deleted', req.params.id);
-            io.emit('bill-deleted-for-order', req.params.id);
+            orderIds.forEach(id => io.emit('order-deleted', id));
+            if (linkedBill) io.emit('bill-deleted', linkedBill._id.toString());
         }
-
-        res.json({ message: 'Order deleted successfully' });
+        res.json({
+            message: linkedBill
+                ? 'Linked bill and all source orders deleted successfully'
+                : 'Order deleted successfully'
+        });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
     }
 });
 

@@ -5,41 +5,56 @@ const User = require('../models/User');
 const Settings = require('../models/Settings');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const { getDateRange } = require('../utils/helpers');
+const { getBusinessDate, getBusinessDayRange } = require('../utils/orderCalculations');
 
 const getStartDateForUser = (user, period) => {
+    const today = getBusinessDate();
     if (user && user.role === 'admin') {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        return getBusinessDayRange(`${today.slice(0, 7)}-01`).start;
     }
-    return getDateRange(period);
+    return getBusinessDayRange(getBusinessDate(getDateRange(period))).start;
 };
 
 const resolveDateRange = (user, period, reqStartDate, reqEndDate) => {
+    const today = getBusinessDate();
+    const todayRange = getBusinessDayRange(today);
     let start;
-    let end = reqEndDate ? new Date(reqEndDate) : new Date();
-    end.setHours(23, 59, 59, 999);
-    
-    if (reqStartDate) {
-        start = new Date(reqStartDate);
-        start.setHours(0, 0, 0, 0);
-    } else {
-        start = getStartDateForUser(user, period);
+    let end;
+
+    if (reqStartDate) start = getBusinessDayRange(reqStartDate).start;
+    if (reqEndDate) end = getBusinessDayRange(reqEndDate).end;
+
+    if (!start || !end) {
+        if (period === 'yesterday') {
+            const yesterday = getBusinessDate(new Date(todayRange.start.getTime() - 86400000));
+            const range = getBusinessDayRange(yesterday);
+            start = start || range.start;
+            end = end || range.end;
+        } else if (period === 'today') {
+            start = start || todayRange.start;
+            end = end || todayRange.end;
+        } else {
+            start = start || getStartDateForUser(user, period);
+            end = end || todayRange.end;
+        }
     }
-    
+
     if (user && user.role === 'admin') {
-        const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1, 0, 0, 0, 0);
-        if (start < startOfMonth) {
-            start = startOfMonth;
-        }
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-        if (end > todayEnd) {
-            end = todayEnd;
-        }
+        const monthStart = getBusinessDayRange(`${today.slice(0, 7)}-01`).start;
+        if (start < monthStart) start = monthStart;
+        if (end > todayRange.end) end = todayRange.end;
     }
-    
+
     return { start, end };
 };
+
+const getPaidOrderDateMatch = (start, end) => ({
+    status: 'paid',
+    $or: [
+        { settledAt: { $gte: start, $lte: end } },
+        { settledAt: null, createdAt: { $gte: start, $lte: end } }
+    ]
+});
 
 // @route   GET /api/analytics/customers
 // @desc    Get all customers with spending data (searchable, sortable)
@@ -188,24 +203,14 @@ router.get('/customer/:id', protect, superadmin, async (req, res) => {
 // Get dashboard stats
 router.get('/dashboard', protect, admin, async (req, res) => {
     try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-
-        const todayOrders = await Order.find({
-            createdAt: { $gte: today, $lt: tomorrow },
-            status: 'paid'
-        });
-
+        const todayString = getBusinessDate();
+        const todayRange = getBusinessDayRange(todayString);
+        const todayOrders = await Order.find(getPaidOrderDateMatch(todayRange.start, todayRange.end));
         const todayRevenue = todayOrders.reduce((sum, order) => sum + order.total, 0);
         const todayOrderCount = todayOrders.length;
 
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        const monthOrders = await Order.find({
-            createdAt: { $gte: monthStart },
-            status: 'paid'
-        });
+        const monthStart = getBusinessDayRange(`${todayString.slice(0, 7)}-01`).start;
+        const monthOrders = await Order.find(getPaidOrderDateMatch(monthStart, todayRange.end));
 
         const monthRevenue = monthOrders.reduce((sum, order) => sum + order.total, 0);
         const monthOrderCount = monthOrders.length;
@@ -234,10 +239,16 @@ router.get('/revenue', protect, admin, async (req, res) => {
         const profitMargin = await Settings.getSetting('profit_margin', 30) / 100;
 
         const orders = await Order.aggregate([
-            { $match: { createdAt: { $gte: start, $lte: end }, status: 'paid' } },
+            { $match: getPaidOrderDateMatch(start, end) },
             {
                 $group: {
-                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                    _id: {
+                        $dateToString: {
+                            format: '%Y-%m-%d',
+                            date: { $ifNull: ['$settledAt', '$createdAt'] },
+                            timezone: 'Asia/Kolkata'
+                        }
+                    },
                     revenue: { $sum: '$total' },
                     orders: { $sum: 1 },
                     profit: { $sum: { $multiply: ['$total', profitMargin] } }
@@ -259,7 +270,7 @@ router.get('/category-sales', protect, admin, async (req, res) => {
         const { start, end } = resolveDateRange(req.user, period, startDate, endDate);
 
         const sales = await Order.aggregate([
-            { $match: { createdAt: { $gte: start, $lte: end }, status: 'paid' } },
+            { $match: getPaidOrderDateMatch(start, end) },
             { $unwind: '$items' },
             {
                 $lookup: {
@@ -300,10 +311,7 @@ router.get('/top-items', protect, admin, async (req, res) => {
         const { period = 'month', startDate, endDate } = req.query;
         const { start, end } = resolveDateRange(req.user, period, startDate, endDate);
 
-        const matchStage = { 
-            createdAt: { $gte: start, $lte: end },
-            status: 'paid' 
-        };
+        const matchStage = getPaidOrderDateMatch(start, end);
         const topItems = await Order.aggregate([
             { $match: matchStage },
             { $unwind: '$items' },
@@ -328,33 +336,37 @@ router.get('/top-items', protect, admin, async (req, res) => {
 // Get user analytics
 router.get('/users', protect, admin, async (req, res) => {
     try {
-        const { period = 'month' } = req.query;
-        const startDate = getStartDateForUser(req.user, period);
+        const { period = 'month', startDate, endDate } = req.query;
+        const { start, end } = resolveDateRange(req.user, period, startDate, endDate);
+        const paidDateMatch = getPaidOrderDateMatch(start, end);
 
         const totalUsers = await User.countDocuments({ role: 'customer' });
-        const newUsers = await User.countDocuments({ role: 'customer', createdAt: { $gte: startDate } });
+        const newUsers = await User.countDocuments({
+            role: 'customer',
+            createdAt: { $gte: start, $lte: end }
+        });
 
         const activeUsersData = await Order.aggregate([
-            { $match: { createdAt: { $gte: startDate }, status: 'paid' } },
+            { $match: paidDateMatch },
             { $group: { _id: '$user' } }
         ]);
         const activeUsers = activeUsersData.length;
 
         const returningCustomersData = await Order.aggregate([
-            { $match: { status: 'paid' } },
+            { $match: paidDateMatch },
             { $group: { _id: '$user', orderCount: { $sum: 1 } } },
             { $match: { orderCount: { $gt: 1 } } }
         ]);
         const returningCustomers = returningCustomersData.length;
 
         const userGrowth = await User.aggregate([
-            { $match: { role: 'customer', createdAt: { $gte: startDate } } },
-            { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+            { $match: { role: 'customer', createdAt: { $gte: start, $lte: end } } },
+            { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Kolkata' } }, count: { $sum: 1 } } },
             { $sort: { _id: 1 } }
         ]);
 
         const topCustomers = await Order.aggregate([
-            { $match: { status: { $ne: 'cancelled' } } },
+            { $match: paidDateMatch },
             { $group: { _id: '$user', orderCount: { $sum: 1 }, totalSpent: { $sum: '$total' } } },
             { $sort: { totalSpent: -1 } },
             { $limit: 5 },

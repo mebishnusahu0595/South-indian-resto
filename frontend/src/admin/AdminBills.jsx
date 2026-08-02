@@ -8,9 +8,61 @@ import '../components/OrderBill.css';
 import './AdminBills.css';
 
 const getLocalDateString = (date = new Date()) => {
-    const offset = date.getTimezoneOffset();
-    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
-    return localDate.toISOString().split('T')[0];
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+};
+
+const shiftBusinessDate = (dateString, days) => {
+    const base = new Date(`${dateString}T00:00:00+05:30`);
+    return getLocalDateString(new Date(base.getTime() + days * 86400000));
+};
+
+const getBillOrders = bill => bill?.orders?.length
+    ? bill.orders
+    : [bill?.order].filter(Boolean);
+
+const getBillIsPaid = bill => Boolean(
+    (bill?.paymentMethod && bill.paymentMethod !== 'pending')
+    || getBillOrders(bill).some(order => order?.status === 'paid')
+);
+
+const getBillPaymentMethod = bill => {
+    const orderMethod = getBillOrders(bill).find(order => order?.paymentMethod && order.paymentMethod !== 'pending')?.paymentMethod;
+    return (bill?.paymentMethod !== 'pending' ? bill?.paymentMethod : orderMethod) || 'pending';
+};
+
+const consolidateOrderItems = (items = []) => {
+    const itemMap = new Map();
+    items.forEach(item => {
+        const id = (item.menuItem?._id || item.menuItem || item.name)?.toString();
+        if (!id) return;
+        const existing = itemMap.get(id);
+        if (existing) {
+            existing.quantity += Number(item.quantity) || 0;
+            existing.total = (Number(existing.price) || 0) * existing.quantity;
+        } else itemMap.set(id, { ...item, quantity: Number(item.quantity) || 0 });
+    });
+    return [...itemMap.values()].filter(item => item.quantity > 0);
+};
+
+const getBillTaxRate = bill => {
+    const configuredRate = (bill?.taxDetails || []).reduce((sum, tax) => sum + (Number(tax.rate) || 0), 0);
+    if (configuredRate > 0) return configuredRate;
+    const taxable = (Number(bill?.subtotal) || 0) - (Number(bill?.discount) || 0);
+    return taxable > 0 ? ((Number(bill?.tax) || 0) / taxable) * 100 : 0;
+};
+
+const calculateBillPreview = (bill, discount) => {
+    const taxable = Math.max(0, (Number(bill?.subtotal) || 0) - (Number(discount) || 0));
+    const rate = getBillTaxRate(bill);
+    const tax = taxable * rate / 100;
+    return { rate, tax, total: taxable + tax };
 };
 
 const AdminBills = () => {
@@ -58,38 +110,32 @@ const AdminBills = () => {
 
     // WebSocket listeners for real-time updates
     useEffect(() => {
-        if (socket) {
-            socket.on('bill-generated', (newBill) => {
-                const billDate = new Date(newBill.createdAt).toISOString().split('T')[0];
-                if (billDate === selectedDate) {
-                    setBills(prev => {
-                        const exists = prev.find(b => b._id === newBill._id);
-                        let updated;
-                        if (exists) {
-                            updated = prev.map(b => b._id === newBill._id ? newBill : b);
-                        } else {
-                            updated = [newBill, ...prev];
-                        }
-                        // Keep descending order
-                        return updated.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-                    });
-                }
-            });
+        if (!socket) return undefined;
 
-            socket.on('bill-deleted', (billId) => {
-                setBills(prev => prev.filter(b => b._id !== billId));
+        const handleBillGenerated = newBill => {
+            const billDate = newBill.businessDate || getLocalDateString(new Date(newBill.createdAt));
+            if (billDate !== selectedDate) return;
+            setBills(previous => {
+                const exists = previous.some(bill => bill._id === newBill._id);
+                const updated = exists
+                    ? previous.map(bill => bill._id === newBill._id ? newBill : bill)
+                    : [newBill, ...previous];
+                return updated.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
             });
+        };
+        const handleBillDeleted = billId => setBills(previous => previous.filter(bill => bill._id !== billId));
+        const handleBillDeletedForOrder = orderId => setBills(previous => previous.filter(bill =>
+            !getBillOrders(bill).some(order => order?._id === orderId)
+        ));
 
-            socket.on('bill-deleted-for-order', (orderId) => {
-                setBills(prev => prev.filter(b => b.order?._id !== orderId));
-            });
-
-            return () => {
-                socket.off('bill-generated');
-                socket.off('bill-deleted');
-                socket.off('bill-deleted-for-order');
-            };
-        }
+        socket.on('bill-generated', handleBillGenerated);
+        socket.on('bill-deleted', handleBillDeleted);
+        socket.on('bill-deleted-for-order', handleBillDeletedForOrder);
+        return () => {
+            socket.off('bill-generated', handleBillGenerated);
+            socket.off('bill-deleted', handleBillDeleted);
+            socket.off('bill-deleted-for-order', handleBillDeletedForOrder);
+        };
     }, [socket, selectedDate]);
 
     const fetchBills = async () => {
@@ -107,17 +153,17 @@ const AdminBills = () => {
         }
     };
 
-    const handlePrevDay = () => {
-        const d = new Date(selectedDate);
-        d.setDate(d.getDate() - 1);
-        setSelectedDate(getLocalDateString(d));
+    const refreshBillsAndActiveBill = async billId => {
+        const response = await getBills(selectedDate);
+        const sorted = (response.data || []).slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        setBills(sorted);
+        const refreshed = sorted.find(bill => bill._id === billId);
+        if (refreshed) setActiveBill(refreshed);
     };
 
-    const handleNextDay = () => {
-        const d = new Date(selectedDate);
-        d.setDate(d.getDate() + 1);
-        setSelectedDate(getLocalDateString(d));
-    };
+    const handlePrevDay = () => setSelectedDate(previous => shiftBusinessDate(previous, -1));
+
+    const handleNextDay = () => setSelectedDate(previous => shiftBusinessDate(previous, 1));
 
     const handleDelete = async (billId) => {
         if (!window.confirm('Deleting this bill will also PERMANENTLY delete the corresponding order and remove its revenue. Continue?')) {
@@ -164,7 +210,7 @@ const AdminBills = () => {
 
     const handleOpenEdit = async (bill) => {
         // Block editing settled bills unless superadmin
-        if (bill.order?.status === 'paid' && user?.role !== 'superadmin') {
+        if (getBillIsPaid(bill) && user?.role !== 'superadmin') {
             alert('This bill has been settled. Only superadmin can modify settled bills.');
             return;
         }
@@ -175,7 +221,7 @@ const AdminBills = () => {
         setDiscountName(bill.discountName || '');
         setSearchQuery('');
         // Pre-fill payment method for superadmin
-        const pm = bill.order?.paymentMethod || bill.paymentMethod || 'pending';
+        const pm = getBillPaymentMethod(bill);
         setEditPaymentMethod(pm);
         const sp = bill.order?.splitPaymentDetails || bill.splitPaymentDetails || {};
         setEditSplitCash(sp.cash ? String(sp.cash) : '');
@@ -212,38 +258,18 @@ const AdminBills = () => {
         const order = activeBill.order;
         if (!order) return;
 
-        const updatedItems = order.items.map(item => {
+        const updatedItems = consolidateOrderItems(order.items).map(item => {
             const isMatch = (item.menuItem?._id || item.menuItem) === menuItemId;
-            if (isMatch) {
-                const newQty = item.quantity + delta;
-                return { ...item, quantity: newQty };
-            }
-            return item;
+            return isMatch ? { ...item, quantity: item.quantity + delta } : item;
         }).filter(item => item.quantity > 0);
 
         try {
-            const res = await updateOrderItems(orderId, updatedItems.map(i => ({
+            await updateOrderItems(orderId, updatedItems.map(i => ({
                 menuItem: i.menuItem?._id || i.menuItem,
                 quantity: i.quantity
             })));
             
-            const updatedOrder = res.data;
-            setActiveBill(prev => {
-                const subtotal = updatedOrder.subtotal;
-                const gstRate = updatedOrder.gstRate || 5;
-                const discountVal = parseDiscount(discountInput, subtotal);
-                const taxableAmount = subtotal - discountVal;
-                const tax = taxableAmount * (gstRate / 100);
-                const total = taxableAmount + tax;
-                return {
-                    ...prev,
-                    order: updatedOrder,
-                    subtotal,
-                    tax,
-                    total
-                };
-            });
-            fetchBills();
+            await refreshBillsAndActiveBill(activeBill._id);
         } catch (err) {
             alert('Failed to update item quantity');
         }
@@ -253,31 +279,16 @@ const AdminBills = () => {
         const order = activeBill.order;
         if (!order) return;
 
-        const updatedItems = order.items.filter(item => (item.menuItem?._id || item.menuItem) !== menuItemId);
+        const updatedItems = consolidateOrderItems(order.items)
+            .filter(item => (item.menuItem?._id || item.menuItem) !== menuItemId);
 
         try {
-            const res = await updateOrderItems(orderId, updatedItems.map(i => ({
+            await updateOrderItems(orderId, updatedItems.map(i => ({
                 menuItem: i.menuItem?._id || i.menuItem,
                 quantity: i.quantity
             })));
             
-            const updatedOrder = res.data;
-            setActiveBill(prev => {
-                const subtotal = updatedOrder.subtotal;
-                const gstRate = updatedOrder.gstRate || 5;
-                const discountVal = parseDiscount(discountInput, subtotal);
-                const taxableAmount = subtotal - discountVal;
-                const tax = taxableAmount * (gstRate / 100);
-                const total = taxableAmount + tax;
-                return {
-                    ...prev,
-                    order: updatedOrder,
-                    subtotal,
-                    tax,
-                    total
-                };
-            });
-            fetchBills();
+            await refreshBillsAndActiveBill(activeBill._id);
         } catch (err) {
             alert('Failed to remove item');
         }
@@ -287,45 +298,22 @@ const AdminBills = () => {
         const order = activeBill.order;
         if (!order) return;
 
-        const existing = order.items.find(i => (i.menuItem?._id || i.menuItem) === menuItem._id);
-        let updatedItems = [];
-        if (existing) {
-            updatedItems = order.items.map(i => 
-                (i.menuItem?._id || i.menuItem) === menuItem._id 
-                    ? { ...i, quantity: i.quantity + 1 }
-                    : i
-            );
-        } else {
-            updatedItems = [...order.items, {
-                menuItem: menuItem._id,
-                quantity: 1
-            }];
-        }
+        const currentItems = consolidateOrderItems(order.items);
+        const existing = currentItems.find(item => (item.menuItem?._id || item.menuItem) === menuItem._id);
+        const updatedItems = existing
+            ? currentItems.map(item => (item.menuItem?._id || item.menuItem) === menuItem._id
+                ? { ...item, quantity: item.quantity + 1 }
+                : item)
+            : [...currentItems, { menuItem: menuItem._id, quantity: 1 }];
 
         try {
-            const res = await updateOrderItems(orderId, updatedItems.map(i => ({
+            await updateOrderItems(orderId, updatedItems.map(i => ({
                 menuItem: i.menuItem?._id || i.menuItem,
                 quantity: i.quantity
             })));
             
-            const updatedOrder = res.data;
-            setActiveBill(prev => {
-                const subtotal = updatedOrder.subtotal;
-                const gstRate = updatedOrder.gstRate || 5;
-                const discountVal = parseDiscount(discountInput, subtotal);
-                const taxableAmount = subtotal - discountVal;
-                const tax = taxableAmount * (gstRate / 100);
-                const total = taxableAmount + tax;
-                return {
-                    ...prev,
-                    order: updatedOrder,
-                    subtotal,
-                    tax,
-                    total
-                };
-            });
+            await refreshBillsAndActiveBill(activeBill._id);
             setSearchQuery('');
-            fetchBills();
         } catch (err) {
             alert('Failed to add item');
         }
@@ -337,7 +325,7 @@ const AdminBills = () => {
         try {
             const isSuperadmin = user?.role === 'superadmin';
             const payload = {
-                orderId: activeBill.order?._id || activeBill.order,
+                orderIds: getBillOrders(activeBill).map(order => order?._id || order).filter(Boolean),
                 billerName,
                 discount: parseDiscount(discountInput, activeBill.subtotal),
                 discountName: discountName
@@ -369,12 +357,13 @@ const AdminBills = () => {
     const [paymentFilter, setPaymentFilter] = useState('all');
 
     const filteredBills = bills.filter(bill => {
-        const isPaid = bill.order?.status === 'paid' || (bill.paymentMethod && bill.paymentMethod !== 'pending');
-        const method = (bill.paymentMethod || bill.order?.paymentMethod || 'cash').toLowerCase();
+        const isPaid = getBillIsPaid(bill);
+        const method = getBillPaymentMethod(bill).toLowerCase();
         if (paymentFilter === 'paid') return isPaid;
         if (paymentFilter === 'pending') return !isPaid;
         if (paymentFilter === 'cash') return isPaid && method === 'cash';
         if (paymentFilter === 'online') return isPaid && (method === 'online' || method === 'upi' || method === 'card');
+        if (paymentFilter === 'split') return isPaid && method === 'split';
         return true;
     });
 
@@ -393,20 +382,18 @@ const AdminBills = () => {
         csv += `Bill No,Time,Order No,Table Name / No,Customer Name,Customer Phone,Biller / Staff,Payment Status,Payment Method,Subtotal (Rs.),Discount (Rs.),Tax (Rs.),Total Bill (Rs.)\n`;
 
         filteredBills.forEach(bill => {
-            const isPaid = bill.order?.status === 'paid' || (bill.paymentMethod && bill.paymentMethod !== 'pending');
+            const isPaid = getBillIsPaid(bill);
+            const primaryOrder = bill.order || getBillOrders(bill)[0];
             const billNo = `"${bill.billNumber || ''}"`;
             const timeStr = `"${new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"`;
-            const orderNo = `"#${bill.order?.orderNumber || 'N/A'}"`;
-            
-            const tblRaw = bill.order?.tableNumber || bill.tableNumber;
-            const tblName = tblRaw 
-                ? (String(tblRaw).startsWith('Table') ? tblRaw : `Table ${tblRaw}`) 
-                : 'Takeaway';
-            
-            const customerName = `"${bill.order?.user?.name || bill.user?.name || 'Walk-in'}"`;
-            const customerPhone = `"${bill.order?.user?.phone || bill.user?.phone || ''}"`;
+            const orderNo = `"#${bill.orderNumbers?.join(' / ') || primaryOrder?.orderNumber || 'N/A'}"`;
+            const tblRaw = bill.tableNumbers?.join(', ') || primaryOrder?.tableNumber;
+            const tblName = tblRaw || 'Takeaway';
+            const customerName = `"${bill.customer?.name || primaryOrder?.user?.name || 'Walk-in'}"`;
+            const customerPhone = `"${bill.customer?.phone || primaryOrder?.user?.phone || ''}"`;
             const billerName = `"${bill.billerName || ''}"`;
-            const payMethod = isPaid ? `"${(bill.paymentMethod || bill.order?.paymentMethod || 'cash').toUpperCase()}"` : '"-"';
+            const status = isPaid ? '"PAID"' : '"UNPAID"';
+            const payMethod = isPaid ? `"${getBillPaymentMethod(bill).toUpperCase()}"` : '"-"';
             const subtotal = (bill.subtotal || 0).toFixed(2);
             const discount = (bill.discount || 0).toFixed(2);
             const tax = (bill.tax || 0).toFixed(2);
@@ -423,16 +410,15 @@ const AdminBills = () => {
 
         const tableSummaryMap = {};
         filteredBills.forEach(bill => {
-            const tblRaw = bill.order?.tableNumber || bill.tableNumber;
-            const tblName = tblRaw 
-                ? (String(tblRaw).startsWith('Table') ? tblRaw : `Table ${tblRaw}`) 
-                : 'Takeaway';
+            const primaryOrder = bill.order || getBillOrders(bill)[0];
+            const tblRaw = bill.tableNumbers?.join(', ') || primaryOrder?.tableNumber;
+            const tblName = tblRaw || 'Takeaway';
 
             if (!tableSummaryMap[tblName]) {
                 tableSummaryMap[tblName] = { tableName: tblName, totalBills: 0, paidBills: 0, totalSales: 0 };
             }
             tableSummaryMap[tblName].totalBills += 1;
-            if (bill.order?.status === 'paid') {
+            if (getBillIsPaid(bill)) {
                 tableSummaryMap[tblName].paidBills += 1;
             }
             tableSummaryMap[tblName].totalSales += (bill.total || 0);
@@ -478,7 +464,8 @@ const AdminBills = () => {
                             <option value="paid">Paid & Settled</option>
                             <option value="pending">Pending Payment</option>
                             <option value="cash">Cash Paid</option>
-                            <option value="online">Online / UPI Paid</option>
+                            <option value="online">Online / UPI / Card</option>
+                            <option value="split">Split Payment</option>
                         </select>
                     </div>
 
@@ -570,8 +557,9 @@ const AdminBills = () => {
                             </thead>
                             <tbody>
                                 {filteredBills.map(bill => {
-                                    const isPaid = bill.order?.status === 'paid' || (bill.paymentMethod && bill.paymentMethod !== 'pending');
-                                    const effectiveMethod = (bill.paymentMethod || bill.order?.paymentMethod || 'cash').toUpperCase();
+                                    const isPaid = getBillIsPaid(bill);
+                                    const effectiveMethod = getBillPaymentMethod(bill).toUpperCase();
+                                    const primaryOrder = bill.order || getBillOrders(bill)[0];
                                     return (
                                         <tr key={bill._id}>
                                             {user?.role === 'superadmin' && (
@@ -585,9 +573,9 @@ const AdminBills = () => {
                                             )}
                                             <td><strong>{bill.billNumber}</strong></td>
                                             <td>{new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                                            <td>#{bill.order?.orderNumber || 'Deleted'}</td>
-                                            <td>{bill.order?.tableNumber ? `Table ${bill.order.tableNumber}` : 'Takeaway'}</td>
-                                            <td>{bill.order?.user?.name || 'Walk-in'}</td>
+                                            <td>#{bill.orderNumbers?.join(' / ') || primaryOrder?.orderNumber || 'Deleted'}</td>
+                                            <td>{bill.tableNumbers?.join(', ') || primaryOrder?.tableNumber || 'Takeaway'}</td>
+                                            <td>{bill.customer?.name || primaryOrder?.user?.name || 'Walk-in'}</td>
                                             <td>{bill.billerName}</td>
                                             <td>
                                                 <span style={{
@@ -856,12 +844,12 @@ const AdminBills = () => {
                                     <span>- ₹{parseDiscount(discountInput, activeBill.subtotal).toFixed(2)}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#111111' }}>
-                                    <span>GST (5%):</span>
-                                    <span>₹{((activeBill.subtotal - parseDiscount(discountInput, activeBill.subtotal)) * 0.05).toFixed(2)}</span>
+                                    <span>Tax ({calculateBillPreview(activeBill, parseDiscount(discountInput, activeBill.subtotal)).rate.toFixed(2)}%):</span>
+                                    <span>₹{calculateBillPreview(activeBill, parseDiscount(discountInput, activeBill.subtotal)).tax.toFixed(2)}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1rem', borderTop: '1px dashed #D1D5DB', paddingTop: '4px', color: '#7C3AED' }}>
                                     <span>GRAND TOTAL:</span>
-                                    <span>₹{((activeBill.subtotal - parseDiscount(discountInput, activeBill.subtotal)) * 1.05).toFixed(2)}</span>
+                                    <span>₹{calculateBillPreview(activeBill, parseDiscount(discountInput, activeBill.subtotal)).total.toFixed(2)}</span>
                                 </div>
                             </div>
 
@@ -883,7 +871,7 @@ const AdminBills = () => {
                                         <option value="split">🔀 Split Payment</option>
                                     </select>
                                     {editPaymentMethod === 'split' && (() => {
-                                        const grandTotal = ((activeBill.subtotal - parseDiscount(discountInput, activeBill.subtotal)) * 1.05);
+                                        const grandTotal = calculateBillPreview(activeBill, parseDiscount(discountInput, activeBill.subtotal)).total;
                                         const sumSplit = (parseFloat(editSplitCash) || 0) + (parseFloat(editSplitUpi) || 0) + (parseFloat(editSplitCard) || 0);
                                         const diff = Math.abs(sumSplit - grandTotal);
                                         return (
@@ -924,7 +912,7 @@ const AdminBills = () => {
 
                             <button
                                 type="submit"
-                                disabled={saving || (activeBill.order && activeBill.order.items.length === 0) || (editPaymentMethod === 'split' && user?.role === 'superadmin' && Math.abs(((parseFloat(editSplitCash)||0)+(parseFloat(editSplitUpi)||0)+(parseFloat(editSplitCard)||0)) - ((activeBill.subtotal - parseDiscount(discountInput, activeBill.subtotal)) * 1.05)) > 1)}
+                                disabled={saving || (activeBill.order && activeBill.order.items.length === 0) || (editPaymentMethod === 'split' && user?.role === 'superadmin' && Math.abs(((parseFloat(editSplitCash)||0)+(parseFloat(editSplitUpi)||0)+(parseFloat(editSplitCard)||0)) - calculateBillPreview(activeBill, parseDiscount(discountInput, activeBill.subtotal)).total) > 1)}
                                 className="btn btn-primary btn-full sketch-border sketch-shadow"
                                 style={{ padding: '8px', fontSize: '0.95rem' }}
                             >
@@ -947,11 +935,11 @@ const AdminBills = () => {
                             <FiX />
                         </button>
                         <div className="bill-header">
-                            <h2>{createdBill.order?.restaurantInfo?.name || 'Kea By The Pool'}</h2>
+                            <h2>{createdBill.restaurantInfo?.name || createdBill.order?.restaurantInfo?.name || 'Kea By The Pool'}</h2>
                             <p>Eat • Chill • Repeat</p>
-                            <p>{createdBill.order?.restaurantInfo?.address || 'Risali, Bhilai'}</p>
-                            <p>Ph: {createdBill.order?.restaurantInfo?.phone || '+91 98765 43210'}</p>
-                            {createdBill.order?.restaurantInfo?.gstNumber && <p>GSTIN: {createdBill.order.restaurantInfo.gstNumber}</p>}
+                            <p>{createdBill.restaurantInfo?.address || createdBill.order?.restaurantInfo?.address || 'Risali, Bhilai'}</p>
+                            <p>Ph: {createdBill.restaurantInfo?.phone || createdBill.order?.restaurantInfo?.phone || '+91 98765 43210'}</p>
+                            {(createdBill.restaurantInfo?.gstNumber || createdBill.order?.restaurantInfo?.gstNumber) && <p>GSTIN: {createdBill.restaurantInfo?.gstNumber || createdBill.order?.restaurantInfo?.gstNumber}</p>}
                         </div>
 
                         <div className="bill-info">
@@ -961,11 +949,11 @@ const AdminBills = () => {
                             </div>
                             <div className="bill-info-row">
                                 <span>Time: {new Date(createdBill.createdAt).toLocaleTimeString()}</span>
-                                <span>Table: {createdBill.order?.tableNumber || createdBill.order?.table?.tableNumber || 'Takeaway'}</span>
+                                <span>Table: {createdBill.tableNumbers?.join(', ') || createdBill.order?.tableNumber || createdBill.order?.table?.tableNumber || 'Takeaway'}</span>
                             </div>
                             <div className="bill-info-row">
-                                <span>Cust: {createdBill.order?.user?.name || 'Walk-in'}</span>
-                                <span>{createdBill.order?.user?.phone || ''}</span>
+                                <span>Cust: {createdBill.customer?.name || createdBill.order?.user?.name || 'Walk-in'}</span>
+                                <span>{createdBill.customer?.phone || createdBill.order?.user?.phone || ''}</span>
                             </div>
                             <div className="bill-info-row" style={{ fontWeight: 'bold', marginTop: '4px' }}>
                                 <span>Biller: {createdBill.billerName}</span>
@@ -981,7 +969,7 @@ const AdminBills = () => {
                         </div>
 
                         <div className="bill-items">
-                            {createdBill.order?.items?.map((item, index) => (
+                            {(createdBill.items?.length ? createdBill.items : createdBill.order?.items || []).map((item, index) => (
                                 <div key={index} style={{ marginBottom: '4px' }}>
                                     <div className="bill-item">
                                         <span>{item.name || item.menuItem?.name || 'Item'}</span>
@@ -1010,10 +998,12 @@ const AdminBills = () => {
                                     <span>- ₹{createdBill.discount.toFixed(2)}</span>
                                 </div>
                             )}
-                            <div className="bill-total-row">
-                                <span>GST (5%)</span>
-                                <span>₹{createdBill.tax.toFixed(2)}</span>
-                            </div>
+                            {(createdBill.taxDetails?.length ? createdBill.taxDetails : [{ name: 'Tax', amount: createdBill.tax }]).map((tax, index) => (
+                                <div className="bill-total-row" key={`${tax.name}-${index}`}>
+                                    <span>{tax.name}{tax.rate !== undefined ? ` (${tax.rate}%)` : ''}</span>
+                                    <span>₹{(tax.amount || 0).toFixed(2)}</span>
+                                </div>
+                            ))}
                             <div className="bill-total-row grand-total">
                                 <span>GRAND TOTAL</span>
                                 <span>₹{createdBill.total.toFixed(2)}</span>
@@ -1021,7 +1011,7 @@ const AdminBills = () => {
                         </div>
 
                         <div className="bill-footer">
-                            <p>Payment: {createdBill.order?.paymentMethod?.toUpperCase() || 'PENDING'}</p>
+                            <p>Payment: {getBillPaymentMethod(createdBill).toUpperCase()}</p>
                             <p>Thank you for visiting!</p>
                             <p>Visit again soon!</p>
                         </div>

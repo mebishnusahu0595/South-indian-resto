@@ -11,12 +11,39 @@ import Loader from '../components/Loader';
 import AdminBills from './AdminBills';
 import './AdminOrders.css';
 
+const getEntityId = value => (value?._id || value)?.toString() || '';
+
+const consolidateOrderItems = (items = []) => {
+    const itemMap = new Map();
+    items.forEach(item => {
+        const id = getEntityId(item.menuItem) || item.name;
+        if (!id) return;
+        const existing = itemMap.get(id);
+        if (existing) {
+            existing.quantity += Number(item.quantity) || 0;
+            existing.total = (Number(existing.price) || 0) * existing.quantity;
+        } else {
+            itemMap.set(id, { ...item, quantity: Number(item.quantity) || 0 });
+        }
+    });
+    return [...itemMap.values()].filter(item => item.quantity > 0);
+};
+
+const getOrderTaxRate = order => {
+    const detailedRate = (order?.taxDetails || []).reduce((sum, tax) => sum + (Number(tax.rate) || 0), 0);
+    if (detailedRate > 0) return detailedRate;
+    if (Number(order?.gstRate) >= 0) return Number(order.gstRate);
+    const taxable = (Number(order?.subtotal) || 0) - (Number(order?.discount) || 0);
+    return taxable > 0 ? ((Number(order?.tax) || 0) / taxable) * 100 : 0;
+};
+
 const AdminOrders = () => {
     const { user, socket } = useAuth();
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [selectedOrdersForBill, setSelectedOrdersForBill] = useState([]);
+    const [selectedBillForPrint, setSelectedBillForPrint] = useState(null);
     const [showBill, setShowBill] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState({});
 
@@ -249,34 +276,32 @@ const AdminOrders = () => {
     };
 
     const getSessionOrders = (targetOrder, allList) => {
-        const getOrderId = (obj) => obj?._id?.toString() || obj?.toString() || '';
-        const orderTime = new Date(targetOrder.createdAt).getTime();
-        const ONE_HOUR = 60 * 60 * 1000;
+        const getTableIds = order => [...new Set([
+            ...(order.tables || []).map(getEntityId),
+            getEntityId(order.table)
+        ].filter(Boolean))];
+        const targetTableIds = getTableIds(targetOrder);
 
-        let sessionOrders = [];
-        if (targetOrder.table) {
-            const currentTableId = getOrderId(targetOrder.table);
-            sessionOrders = allList.filter(o =>
-                getOrderId(o.table) === currentTableId &&
-                o.status !== 'cancelled' &&
-                o.status !== 'paid' &&
-                Math.abs(new Date(o.createdAt).getTime() - orderTime) < ONE_HOUR
-            );
-        } else {
-            const currentUserId = getOrderId(targetOrder.user);
-            sessionOrders = allList.filter(o =>
-                getOrderId(o.user) === currentUserId &&
-                targetOrder.user &&
-                o.status !== 'cancelled' &&
-                o.status !== 'paid' &&
-                Math.abs(new Date(o.createdAt).getTime() - orderTime) < ONE_HOUR
-            );
+        // Takeaway/no-table orders are independent guests and must never auto-group.
+        if (targetTableIds.length === 0) return [targetOrder];
+
+        const activeOrders = allList.filter(order => order.status !== 'cancelled' && order.status !== 'paid');
+        const sessionIds = new Set([targetOrder._id]);
+        const connectedTables = new Set(targetTableIds);
+        let changed = true;
+        while (changed) {
+            changed = false;
+            activeOrders.forEach(order => {
+                if (sessionIds.has(order._id)) return;
+                const orderTableIds = getTableIds(order);
+                if (orderTableIds.some(id => connectedTables.has(id))) {
+                    sessionIds.add(order._id);
+                    orderTableIds.forEach(id => connectedTables.add(id));
+                    changed = true;
+                }
+            });
         }
-        // Ensure at least current is included
-        if (!sessionOrders.find(o => o._id === targetOrder._id)) {
-            sessionOrders.push(targetOrder);
-        }
-        return sessionOrders;
+        return activeOrders.filter(order => sessionIds.has(order._id));
     };
 
     const handleStatusChange = async (orderId, status) => {
@@ -317,13 +342,10 @@ const AdminOrders = () => {
         const order = prepareOrders.find(o => o._id === orderId);
         if (!order) return;
 
-        const updatedItems = order.items.map(item => {
-            const isMatch = (item.menuItem?._id || item.menuItem) === menuItemId;
-            if (isMatch) {
-                const newQty = item.quantity + delta;
-                return { ...item, quantity: newQty };
-            }
-            return item;
+        const consolidatedItems = consolidateOrderItems(order.items);
+        const updatedItems = consolidatedItems.map(item => {
+            const isMatch = getEntityId(item.menuItem) === menuItemId;
+            return isMatch ? { ...item, quantity: item.quantity + delta } : item;
         }).filter(item => item.quantity > 0);
 
         try {
@@ -343,7 +365,8 @@ const AdminOrders = () => {
         const order = prepareOrders.find(o => o._id === orderId);
         if (!order) return;
 
-        const updatedItems = order.items.filter(item => (item.menuItem?._id || item.menuItem) !== menuItemId);
+        const updatedItems = consolidateOrderItems(order.items)
+            .filter(item => getEntityId(item.menuItem) !== menuItemId);
 
         try {
             const res = await updateOrderItems(orderId, updatedItems.map(i => ({
@@ -361,20 +384,13 @@ const AdminOrders = () => {
         const order = prepareOrders.find(o => o._id === orderId);
         if (!order) return;
 
-        const existing = order.items.find(i => (i.menuItem?._id || i.menuItem) === menuItem._id);
-        let updatedItems = [];
-        if (existing) {
-            updatedItems = order.items.map(i => 
-                (i.menuItem?._id || i.menuItem) === menuItem._id 
-                    ? { ...i, quantity: i.quantity + 1 }
-                    : i
-            );
-        } else {
-            updatedItems = [...order.items, {
-                menuItem: menuItem._id,
-                quantity: 1
-            }];
-        }
+        const currentItems = consolidateOrderItems(order.items);
+        const existing = currentItems.find(item => getEntityId(item.menuItem) === menuItem._id);
+        const updatedItems = existing
+            ? currentItems.map(item => getEntityId(item.menuItem) === menuItem._id
+                ? { ...item, quantity: item.quantity + 1 }
+                : item)
+            : [...currentItems, { menuItem: menuItem._id, quantity: 1 }];
 
         try {
             const res = await updateOrderItems(orderId, updatedItems.map(i => ({
@@ -445,7 +461,8 @@ const AdminOrders = () => {
             localStorage.setItem('lastBillerName', prepareBillerName);
             setShowPrepareModal(false);
             
-            setSelectedOrdersForBill([res.data.order]); 
+            setSelectedBillForPrint(res.data);
+            setSelectedOrdersForBill(res.data.orders?.length ? res.data.orders : [res.data.order].filter(Boolean));
             setShowBill(true);
             fetchOrders();
         } catch (err) {
@@ -457,7 +474,9 @@ const AdminOrders = () => {
 
     const handleOpenPaymentBiller = (orderId, method, amount) => {
         const order = orders.find(o => o._id === orderId);
-        const orderTotal = order ? (order.total || order.items.reduce((s, i) => s + (i.price * i.quantity), 0) * 1.05) : amount;
+        const orderTotal = order
+            ? (order.total || ((order.subtotal || order.items.reduce((sum, item) => sum + item.price * item.quantity, 0)) + (order.tax || 0) - (order.discount || 0)))
+            : amount;
         let payAmount = amount;
         let shortageDiscount = 0;
 
@@ -470,7 +489,7 @@ const AdminOrders = () => {
         setPaymentBillerAmount(payAmount);
         setPaymentBillerName(order?.billerName || localStorage.getItem('lastBillerName') || 'Counter');
         setPaymentDiscountInput(shortageDiscount > 0 ? String(shortageDiscount) : (order?.discount ? String(order.discount) : ''));
-        setPaymentDiscountType(shortageDiscount > 0 ? '₹' : '%');
+        setPaymentDiscountType('₹');
         setPaymentDiscountName(shortageDiscount > 0 ? 'Change Shortage Discount' : (order?.discountName || ''));
         setShowPaymentBillerModal(true);
     };
@@ -529,30 +548,24 @@ const AdminOrders = () => {
                 return;
             }
 
-            // 1. Generate/Save the Bill document in DB first to persist billerName, discount and create invoice
+            // Generate and settle in one backend operation. The returned Bill total is authoritative.
             const billRes = await generateBill({
                 orderIds: orderIds.length > 0 ? orderIds : [paymentBillerOrderId],
                 billerName: paymentBillerName,
                 discount: discountVal,
-                discountName: paymentDiscountName
+                discountName: paymentDiscountName,
+                paymentMethod: paymentBillerMethod
             });
 
-            // 2. Complete payment - pass finalPayable as both amountPaid AND finalTotal to sync order.total
-            const finalPayable = Math.max(0, ((baseSubtotal - discountVal) * 1.05));
-            const finalAmount = finalPayable > 0 ? finalPayable : paymentBillerAmount;
-            const res = await updatePayment(paymentBillerOrderId, paymentBillerMethod, finalAmount, finalAmount);
             localStorage.setItem('lastBillerName', paymentBillerName);
             setShowPaymentBillerModal(false);
             fetchOrders();
-            setSelectedOrder(res.data);
-
-            if (sessionOrders.length > 0) {
-                const updatedSessionOrders = sessionOrders.map(o => 
-                    o._id === paymentBillerOrderId ? { ...o, status: 'paid', paymentMethod: paymentBillerMethod, billerName: paymentBillerName, discount: discountVal, discountName: paymentDiscountName, total: finalPayable } : { ...o, billerName: paymentBillerName, discount: discountVal }
-                );
-                setSelectedOrdersForBill(updatedSessionOrders);
-                setShowBill(true);
-            }
+            setSelectedOrder(billRes.data.order);
+            setSelectedBillForPrint(billRes.data);
+            setSelectedOrdersForBill(billRes.data.orders?.length
+                ? billRes.data.orders
+                : [billRes.data.order].filter(Boolean));
+            setShowBill(true);
         } catch (error) {
             alert(error.response?.data?.message || 'Failed to process payment and bill generation');
         }
@@ -564,7 +577,7 @@ const AdminOrders = () => {
         setPaymentBillerAmount(amount);
         setPaymentBillerName(order?.billerName || localStorage.getItem('lastBillerName') || '');
         setPaymentDiscountInput(order?.discount ? String(order.discount) : '');
-        setPaymentDiscountType('%');
+        setPaymentDiscountType('₹');
         setPaymentDiscountName(order?.discountName || '');
         setSplitCash('');
         setSplitUpi('');
@@ -597,9 +610,7 @@ const AdminOrders = () => {
             const baseSubtotal = sessionOrders.reduce((sum, o) => sum + (o.subtotal || o.total), 0);
             const discountVal = parseDiscount(paymentDiscountInput, baseSubtotal, paymentDiscountType);
 
-            const finalSplitPayable = Math.max(0, ((baseSubtotal - discountVal) * 1.05));
-
-            await generateBill({
+            const billRes = await generateBill({
                 orderIds: orderIds.length > 0 ? orderIds : [paymentBillerOrderId],
                 billerName: paymentBillerName,
                 discount: discountVal,
@@ -612,20 +623,14 @@ const AdminOrders = () => {
                 }
             });
 
-            // Also update the order's payment info and sync total
-            await updatePayment(paymentBillerOrderId, 'split', finalSplitPayable, finalSplitPayable);
-
             localStorage.setItem('lastBillerName', paymentBillerName);
             setShowSplitModal(false);
             fetchOrders();
-
-            if (sessionOrders.length > 0) {
-                const updatedSessionOrders = sessionOrders.map(o => 
-                    o._id === paymentBillerOrderId ? { ...o, status: 'paid', paymentMethod: 'split', splitPaymentDetails: { cash: cashVal, upi: upiVal, card: cardVal }, billerName: paymentBillerName, discount: discountVal, discountName: paymentDiscountName } : { ...o, billerName: paymentBillerName, discount: discountVal }
-                );
-                setSelectedOrdersForBill(updatedSessionOrders);
-                setShowBill(true);
-            }
+            setSelectedBillForPrint(billRes.data);
+            setSelectedOrdersForBill(billRes.data.orders?.length
+                ? billRes.data.orders
+                : [billRes.data.order].filter(Boolean));
+            setShowBill(true);
         } catch (error) {
             alert(error.response?.data?.message || 'Failed to process split payment');
         }
@@ -744,6 +749,7 @@ const AdminOrders = () => {
             return;
         }
         const sessionOrders = getSessionOrders(order, orders);
+        setSelectedBillForPrint(null);
         setSelectedOrdersForBill(sessionOrders);
         setShowBill(true);
     };
@@ -1364,8 +1370,10 @@ const AdminOrders = () => {
                                 const discVal = parseDiscount(prepareDiscountInput, subtotal, prepareDiscountType);
                                 const discPct = subtotal > 0 ? (discVal / subtotal) * 100 : 0;
                                 const isExceeding = user?.role !== 'superadmin' && discPct > maxDiscountPercent + 0.01;
-                                const taxVal = (subtotal - discVal) * 0.05;
-                                const grandTotal = (subtotal - discVal) + taxVal;
+                                const selectedOrders = prepareOrders.filter(order => prepareSelectedOrderIds.includes(order._id));
+                                const taxRate = getOrderTaxRate(selectedOrders[0]);
+                                const taxVal = Math.max(0, subtotal - discVal) * taxRate / 100;
+                                const grandTotal = Math.max(0, subtotal - discVal) + taxVal;
 
                                 return (
                                     <>
@@ -1385,7 +1393,7 @@ const AdminOrders = () => {
                                                 <span>- ₹{discVal.toFixed(2)}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '8px', color: '#111111' }}>
-                                                <span>GST (5%):</span>
+                                                <span>Tax ({taxRate.toFixed(2)}%):</span>
                                                 <span>₹{taxVal.toFixed(2)}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.05rem', borderTop: '1px dashed #D1D5DB', paddingTop: '6px', color: '#7C3AED' }}>
@@ -1528,12 +1536,13 @@ const AdminOrders = () => {
                             {/* Live Summary Box & Max Discount Violation Check */}
                             {(() => {
                                 const currentOrd = orders.find(o => o._id === paymentBillerOrderId);
-                                const baseSub = currentOrd?.subtotal || (paymentBillerAmount / 1.05);
+                                const taxRate = getOrderTaxRate(currentOrd);
+                                const baseSub = currentOrd?.subtotal || (paymentBillerAmount / (1 + taxRate / 100));
                                 const discVal = parseDiscount(paymentDiscountInput, baseSub, paymentDiscountType);
                                 const discPct = baseSub > 0 ? (discVal / baseSub) * 100 : 0;
                                 const isExceeding = user?.role !== 'superadmin' && discPct > maxDiscountPercent + 0.01;
-                                const taxVal = (baseSub - discVal) * 0.05;
-                                const finalTot = (baseSub - discVal) + taxVal;
+                                const taxVal = Math.max(0, baseSub - discVal) * taxRate / 100;
+                                const finalTot = Math.max(0, baseSub - discVal) + taxVal;
 
                                 return (
                                     <>
@@ -1553,7 +1562,7 @@ const AdminOrders = () => {
                                                 <span>- ₹{discVal.toFixed(2)}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                                                <span>GST (5%):</span>
+                                                <span>Tax ({taxRate.toFixed(2)}%):</span>
                                                 <span>₹{taxVal.toFixed(2)}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.95rem', borderTop: '1px dashed #D1D5DB', paddingTop: '4px', color: '#7C3AED' }}>
@@ -1819,7 +1828,8 @@ const AdminOrders = () => {
                                 });
 
                                 const calculatedSubtotal = modifyItemsList.reduce((acc, i) => acc + (i.price * i.quantity), 0);
-                                const calculatedGst = Math.round(calculatedSubtotal * 0.05 * 100) / 100;
+                                const calculatedTaxRate = getOrderTaxRate(editingOrder);
+                                const calculatedGst = Math.round(calculatedSubtotal * calculatedTaxRate) / 100;
                                 const calculatedTotal = Math.round((calculatedSubtotal + calculatedGst) * 100) / 100;
 
                                 return (
@@ -1886,7 +1896,7 @@ const AdminOrders = () => {
                                         <div style={{ background: '#ECFDF5', border: '1.5px solid #A7F3D0', padding: '10px 12px', borderRadius: '6px', fontSize: '0.86rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ color: '#065F46', fontWeight: '600' }}>Updated Bill Estimation:</span>
                                             <span style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#047857' }}>
-                                                Subtotal: ₹{calculatedSubtotal.toFixed(2)} | GST (5%): ₹{calculatedGst.toFixed(2)} = <strong>₹{calculatedTotal.toFixed(2)}</strong>
+                                                Subtotal: ₹{calculatedSubtotal.toFixed(2)} | Tax ({calculatedTaxRate.toFixed(2)}%): ₹{calculatedGst.toFixed(2)} = <strong>₹{calculatedTotal.toFixed(2)}</strong>
                                             </span>
                                         </div>
                                     </>
@@ -2124,9 +2134,11 @@ const AdminOrders = () => {
 
             {showBill && selectedOrdersForBill.length > 0 && (
                 <OrderBill
+                    bill={selectedBillForPrint}
                     orders={selectedOrdersForBill}
                     onCancel={() => {
                         setShowBill(false);
+                        setSelectedBillForPrint(null);
                         setSelectedOrdersForBill([]);
                         fetchOrders(); // Refresh to remove paid ones
                     }}

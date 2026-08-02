@@ -82,7 +82,7 @@ export const getDashboardStats = () => axios.get(`${API_URL}/analytics/dashboard
 export const getRevenueData = (period, params = {}) => axios.get(`${API_URL}/analytics/revenue`, { params: { period, ...params } });
 export const getCategorySales = (period, params = {}) => axios.get(`${API_URL}/analytics/category-sales`, { params: { period, ...params } });
 export const getTopItems = (params = {}) => axios.get(`${API_URL}/analytics/top-items`, { params });
-export const getUserAnalytics = (period) => axios.get(`${API_URL}/analytics/users`, { params: { period } });
+export const getUserAnalytics = (period, params = {}) => axios.get(`${API_URL}/analytics/users`, { params: { period, ...params } });
 export const getDayEndReport = (date) => axios.get(`${API_URL}/reports/day-end`, { params: { date } });
 export const getSectionWiseReport = (date) => axios.get(`${API_URL}/reports/section-wise`, { params: { date } });
 
