@@ -302,7 +302,23 @@ const successfulCopies = loadSuccessfulCopies();
 const queuedEvents = new Set();
 let eventQueue = Promise.resolve();
 
-async function printTarget(order, eventId, target) {
+const endpointQueues = new Map();
+function runOnEndpointQueue(endpointKey, fn) {
+  const currentQueue = endpointQueues.get(endpointKey) || Promise.resolve();
+  const nextQueue = currentQueue
+    .then(async () => {
+      const res = await fn();
+      await wait(300); // 300ms cooldown between physical printer connection jobs
+      return res;
+    })
+    .catch(err => {
+      console.error(`Queue execution failed on ${endpointKey}:`, err.message);
+    });
+  endpointQueues.set(endpointKey, nextQueue);
+  return nextQueue;
+}
+
+async function printTarget(job, eventId, target) {
   const results = [];
   for (let copy = 1; copy <= target.copies; copy += 1) {
     const successKey = `${eventId}::${target.endpointKey}::copy-${copy}`;
@@ -317,10 +333,16 @@ async function printTarget(order, eventId, target) {
     const label = `${target.name} ${copy}/${target.copies}`;
 
     try {
-      await runWithRetry(label, () => printKOTToInterface(order, printerInterface, label));
+      await runOnEndpointQueue(target.endpointKey, () =>
+        runWithRetry(label, () =>
+          job.jobType === 'bill'
+            ? printBillToInterface(job, printerInterface, label)
+            : printKOTToInterface(job, printerInterface, label)
+        )
+      );
       successfulCopies.set(successKey, Date.now());
       saveSuccessfulCopies();
-      console.log(`Printed ${order.kotTicket || order.orderNumber} on ${label}`);
+      console.log(`Printed ${job.jobType === 'bill' ? 'Bill' : 'KOT'} ${job.billNumber || job.kotTicket || job.orderNumber} on ${label}`);
       results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'printed' });
     } catch (error) {
       results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'failed', error: error.message });
@@ -339,24 +361,29 @@ async function reportJob(eventId, succeeded, results, errorMessage = '') {
       error: errorMessage
     });
   } catch (error) {
-    console.error(`Could not report KOT ${eventId} ${endpoint}: ${error.message}`);
+    console.error(`Could not report print job ${eventId} ${endpoint}: ${error.message}`);
   }
 }
 
-async function processKOT(order) {
-  const eventId = getEventId(order);
-  const ticketLabel = order.kotTicket || order.orderNumber || eventId;
-  if (order.printerConfig?.version) livePrinterConfig = order.printerConfig;
+async function processJob(job) {
+  const eventId = getEventId(job);
+  const ticketLabel = job.billNumber || job.kotTicket || job.orderNumber || eventId;
+  if (job.printerConfig?.version) livePrinterConfig = job.printerConfig;
 
   if (AUTO_DISCOVER_PRINTERS && discoveredPrinters.length === 0) {
     await refreshDiscoveredPrinters();
   }
 
-  const targets = buildTargets(order);
-  if ((livePrinterConfig || order.printerConfig)?.enabled === false) {
+  let targets = buildTargets(job);
+  if (job.jobType === 'bill') {
+    const billTargets = targets.filter(t => !t.role || t.role === 'reception' || t.role === 'all' || t.type === 'usb');
+    if (billTargets.length > 0) targets = billTargets;
+  }
+
+  if ((livePrinterConfig || job.printerConfig)?.enabled === false) {
     const results = [{ target: 'all', status: 'skipped', reason: 'Central auto-print is disabled' }];
     await reportJob(eventId, true, results);
-    console.log(`Skipped disabled KOT ${ticketLabel}`);
+    console.log(`Skipped disabled print job ${ticketLabel}`);
     return;
   }
   if (targets.length === 0) {
@@ -365,9 +392,7 @@ async function processKOT(order) {
     throw new Error(message);
   }
 
-  // Printer targets run independently. A failed USB printer never blocks LAN,
-  // and a failed Kitchen printer never blocks Bar/Reception.
-  const nestedResults = await Promise.all(targets.map(target => printTarget(order, eventId, target)));
+  const nestedResults = await Promise.all(targets.map(target => printTarget(job, eventId, target)));
   const results = nestedResults.flat();
   const failed = results.filter(result => result.status === 'failed');
 
@@ -378,18 +403,18 @@ async function processKOT(order) {
   }
 
   await reportJob(eventId, true, results);
-  console.log(`Completed KOT ${ticketLabel} on ${targets.length} physical printer(s)`);
+  console.log(`Completed ${job.jobType === 'bill' ? 'Bill' : 'KOT'} ${ticketLabel} on ${targets.length} physical printer(s)`);
 }
 
-function enqueueKOT(order, source = 'socket') {
-  const eventId = getEventId(order);
+function enqueueJob(job, source = 'socket') {
+  const eventId = getEventId(job);
   if (queuedEvents.has(eventId)) return;
   queuedEvents.add(eventId);
-  console.log(`Queued KOT ${order.kotTicket || order.orderNumber || eventId} from ${source}`);
+  console.log(`Queued ${job.jobType === 'bill' ? 'Bill' : 'KOT'} ${job.billNumber || job.kotTicket || job.orderNumber || eventId} from ${source}`);
 
   eventQueue = eventQueue
-    .then(() => processKOT(order))
-    .catch(error => console.error(`KOT ${eventId} remains pending: ${error.message}`))
+    .then(() => processJob(job))
+    .catch(error => console.error(`Print Job ${eventId} remains pending: ${error.message}`))
     .finally(() => queuedEvents.delete(eventId));
 }
 
@@ -400,17 +425,17 @@ async function pollPendingJobs() {
   try {
     const response = await requestJson('GET', `${API_URL}/orders/print-jobs/pending`);
     for (const job of response.jobs || []) {
-      if (job?.payload) enqueueKOT({ ...job.payload, eventId: job.eventId }, 'backend-outbox');
+      if (job?.payload) enqueueJob({ ...job.payload, eventId: job.eventId, jobType: job.jobType || job.payload.jobType || 'kot' }, 'backend-outbox');
     }
   } catch (error) {
-    console.error(`Could not poll pending KOT jobs: ${error.message}`);
+    console.error(`Could not poll pending print jobs: ${error.message}`);
   } finally {
     polling = false;
   }
 }
 
 console.log('====================================================');
-console.log('  Kea By The Pool - Reliable Multi-Printer KOT Agent');
+console.log('  Kea By The Pool - Reliable Multi-Printer Print Agent');
 console.log('====================================================');
 console.log(`Server: ${SERVER_URL}`);
 console.log(`Agent ID: ${AGENT_ID}`);
@@ -427,12 +452,14 @@ const socket = io(SERVER_URL, {
 });
 
 socket.on('connect', () => {
-  console.log('Connected to backend. Waiting for KOT events.');
+  console.log('Connected to backend. Waiting for KOT and Bill print events.');
   pollPendingJobs();
 });
 socket.on('disconnect', reason => console.warn(`Disconnected (${reason}). Reconnecting automatically.`));
 socket.on('connect_error', error => console.error(`Backend connection failed: ${error.message}`));
-socket.on('new-order', order => enqueueKOT(order, 'socket'));
+socket.on('new-order', order => enqueueJob({ ...order, jobType: 'kot' }, 'socket'));
+socket.on('new-print-job', job => enqueueJob(job, 'socket'));
+socket.on('new-bill-print', billJob => enqueueJob({ ...billJob, jobType: 'bill' }, 'socket'));
 socket.on('printer-settings-updated', config => {
   if (config?.version) {
     livePrinterConfig = config;
@@ -443,6 +470,101 @@ socket.on('printer-settings-updated', config => {
 refreshDiscoveredPrinters().catch(error => console.error(`Initial LAN discovery failed: ${error.message}`));
 setInterval(() => refreshDiscoveredPrinters().catch(error => console.error(`LAN discovery failed: ${error.message}`)), DISCOVERY_INTERVAL_MS).unref();
 setInterval(pollPendingJobs, PRINT_JOB_POLL_MS).unref();
+
+async function printBillToInterface(bill, printerInterface, printerLabel) {
+  const printer = new ThermalPrinter({
+    type: PrinterTypes.EPSON,
+    interface: printerInterface,
+    characterSet: CharacterSet.SLOVENIA,
+    breakLine: BreakLine.WORD,
+    width: 42
+  });
+
+  const billNumber = bill.billNumber || `BILL-${bill.billId || '001'}`;
+  const orderNumber = bill.orderNumber || (bill.orderNumbers && bill.orderNumbers.length > 0 ? bill.orderNumbers.join(', ') : '');
+  const tableName = bill.tableName || bill.tableNumber || 'Takeaway';
+  const customerName = bill.customer?.name || 'Walk-in';
+  const billerName = bill.billerName || 'Cashier';
+  const timestamp = new Date(bill.createdAt || Date.now());
+  const date = timestamp.toLocaleDateString('en-IN');
+  const time = timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  printer.alignCenter();
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println('KEA BY THE POOL');
+  printer.bold(false);
+  printer.setTextSize(0, 0);
+  printer.println('Dhanora, Risali, Bhilai');
+  printer.println('OFFICIAL RECEIPT');
+  printer.bold(true);
+  printer.println(billNumber);
+  printer.bold(false);
+  printer.drawLine();
+
+  printer.alignLeft();
+  if (orderNumber) printer.println(`ORDER#: #${orderNumber}`);
+  printer.println(`TABLE : ${tableName}`);
+  printer.println(`GUEST : ${customerName}`);
+  printer.println(`STAFF : ${billerName}`);
+  printer.println(`TIME  : ${date} ${time}`);
+  printer.drawLine();
+
+  printer.bold(true);
+  printer.tableCustom([
+    { text: 'ITEM', align: 'LEFT', width: 0.50 },
+    { text: 'QTY x PRICE', align: 'CENTER', width: 0.25 },
+    { text: 'AMT', align: 'RIGHT', width: 0.25 }
+  ]);
+  printer.bold(false);
+  printer.drawLine();
+
+  for (const item of bill.items || []) {
+    const itemName = (item.menuItem?.name || item.name || 'Item').substring(0, 20);
+    const qtyPrice = `${item.quantity} x ${item.price}`;
+    const amount = (item.quantity * item.price).toFixed(2);
+    printer.tableCustom([
+      { text: itemName, align: 'LEFT', width: 0.50 },
+      { text: qtyPrice, align: 'CENTER', width: 0.25 },
+      { text: amount, align: 'RIGHT', width: 0.25 }
+    ]);
+  }
+
+  printer.drawLine();
+  printer.println(`Subtotal:                    Rs.${Number(bill.subtotal || 0).toFixed(2)}`);
+  if (bill.discount > 0) {
+    const discountLabel = bill.discountName ? `Discount (${bill.discountName})` : 'Discount';
+    printer.println(`${discountLabel.padEnd(28)} -Rs.${Number(bill.discount).toFixed(2)}`);
+  }
+  if (Array.isArray(bill.taxDetails) && bill.taxDetails.length > 0) {
+    for (const taxItem of bill.taxDetails) {
+      printer.println(`${taxItem.name.padEnd(28)}  Rs.${Number(taxItem.amount || 0).toFixed(2)}`);
+    }
+  } else if (bill.tax > 0) {
+    printer.println(`Taxes:                       Rs.${Number(bill.tax).toFixed(2)}`);
+  }
+
+  printer.drawLine();
+  printer.bold(true);
+  printer.println(`TOTAL AMOUNT:                Rs.${Number(bill.total || 0).toFixed(2)}`);
+  printer.bold(false);
+  if (bill.paymentMethod) {
+    printer.println(`Payment Mode: ${String(bill.paymentMethod).toUpperCase()}`);
+  }
+
+  printer.drawLine();
+  printer.alignCenter();
+  printer.bold(true);
+  printer.println('THANK YOU FOR VISITING!');
+  printer.bold(false);
+  printer.println('Please Come Again');
+  printer.println(`*** ${printerLabel} ***`);
+  printer.newLine();
+  printer.newLine();
+  printer.cut();
+
+  await printer.execute();
+}
 
 async function printKOTToInterface(order, printerInterface, printerLabel) {
   const printer = new ThermalPrinter({

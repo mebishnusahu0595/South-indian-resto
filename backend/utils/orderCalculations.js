@@ -40,6 +40,47 @@ const normalizeItems = (items = []) => {
     return Array.from(itemMap.values());
 };
 
+const buildItemQuantityMap = (items = []) => {
+    const quantities = new Map();
+
+    for (const item of normalizeItems(items)) {
+        const menuItemId = getMenuItemId(item);
+        if (menuItemId) quantities.set(menuItemId, item.quantity);
+    }
+
+    return quantities;
+};
+
+const isStalePartialAdditionPayload = (currentItems = [], submittedItems = [], kotHistory = []) => {
+    const history = Array.from(kotHistory || []);
+    const latestKot = history[history.length - 1];
+    if (!latestKot || !Array.isArray(latestKot.items) || latestKot.items.length === 0) return false;
+
+    const kotNumber = String(latestKot.kotNumber || '');
+    const notes = String(latestKot.notes || '');
+    const isAdditionKot = /^\[ADDITION\]/i.test(notes)
+        || (history.length > 1 && /^KOT-/i.test(kotNumber) && !/^CANCEL-/i.test(kotNumber));
+    if (!isAdditionKot) return false;
+
+    const currentMap = buildItemQuantityMap(currentItems);
+    const submittedMap = buildItemQuantityMap(submittedItems);
+    const latestAdditionMap = buildItemQuantityMap(latestKot.items);
+    if (currentMap.size === 0 || submittedMap.size === 0 || latestAdditionMap.size === 0) return false;
+
+    const submittedContainsOnlyLatestAddition = Array.from(submittedMap.keys())
+        .every(menuItemId => latestAdditionMap.has(menuItemId));
+    if (!submittedContainsOnlyLatestAddition) return false;
+
+    const omitsExistingItems = Array.from(currentMap.keys())
+        .some(menuItemId => !submittedMap.has(menuItemId));
+    const usesAdditionDeltaInsteadOfCurrentQuantity = Array.from(submittedMap.entries())
+        .every(([menuItemId, quantity]) => quantity <= (latestAdditionMap.get(menuItemId) || 0))
+        && Array.from(submittedMap.entries())
+            .some(([menuItemId, quantity]) => (currentMap.get(menuItemId) || 0) > quantity);
+
+    return omitsExistingItems || usesAdditionDeltaInsteadOfCurrentQuantity;
+};
+
 const sanitizeTaxConfig = (taxConfig, fallbackRate = 5) => {
     const parsedFallbackRate = Number(fallbackRate);
     const safeFallbackRate = Number.isFinite(parsedFallbackRate) && parsedFallbackRate >= 0 ? parsedFallbackRate : 5;
@@ -141,6 +182,7 @@ module.exports = {
     roundMoney,
     getMenuItemId,
     normalizeItems,
+    isStalePartialAdditionPayload,
     sanitizeTaxConfig,
     getConfiguredTax,
     calculateTotals,

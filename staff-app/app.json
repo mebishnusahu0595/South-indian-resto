@@ -2,8 +2,8 @@
   "expo": {
     "name": "Kea Staff",
     "slug": "kea-staff-app",
-    "owner": "mebishnusahu0595",
-    "version": "1.2.0",
+    "owner": "bishnusahu",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -34,7 +34,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "9fa28dd5-9e4e-4997-80e9-d77e8c6e0aee"
+        "projectId": "bdf03971-f200-46c1-94f6-a70b337ad3c4"
       }
     }
   }

@@ -330,8 +330,8 @@ const AdminLayout = () => {
                     <div className="bill-container print-bill-overlay" onClick={e => e.stopPropagation()} style={{ maxWidth: '380px' }}>
                         <div className="bill-header">
                             <h2>KEA BY THE POOL</h2>
-                            <p style={{ fontWeight: 'bold', fontSize: '15px', color: '#7C3AED', margin: '4px 0' }}>KITCHEN ORDER TICKET</p>
-                            <p style={{ fontWeight: 'bold', fontSize: '17px', margin: 0 }}>{layoutKOT.kotNumber}</p>
+                            <p style={{ fontWeight: 'bold', fontSize: '17px', color: '#7C3AED', margin: '4px 0' }}>KITCHEN ORDER TICKET</p>
+                            <p style={{ fontWeight: 'bold', fontSize: '19px', margin: 0 }}>{layoutKOT.kotNumber}</p>
                         </div>
 
                         <div className="bill-info">
@@ -355,19 +355,19 @@ const AdminLayout = () => {
 
                         <div className="bill-divider"></div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '15px', borderBottom: '2px solid #000', paddingBottom: '4px', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '17px', borderBottom: '2px solid #000', paddingBottom: '4px', marginBottom: '8px' }}>
                             <span>ITEM NAME</span>
                             <span>QTY</span>
                         </div>
 
                         {layoutKOT.items.map((item, idx) => (
                             <div key={idx} style={{ marginBottom: '6px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '600' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '17px', fontWeight: '600' }}>
                                     <span>{item.name}</span>
                                     <strong>x{item.quantity}</strong>
                                 </div>
                                 {item.notes && (
-                                    <div style={{ fontSize: '12px', color: '#DC2626', marginLeft: '10px', fontStyle: 'italic', fontWeight: 'bold' }}>
+                                    <div style={{ fontSize: '14px', color: '#DC2626', marginLeft: '10px', fontStyle: 'italic', fontWeight: 'bold' }}>
                                         ↳ Note: {item.notes}
                                     </div>
                                 )}
@@ -377,7 +377,7 @@ const AdminLayout = () => {
                         {layoutKOT.notes && (
                             <>
                                 <div className="bill-divider"></div>
-                                <div style={{ background: '#FEF3C7', padding: '6px 8px', borderRadius: '4px', border: '1px solid #F59E0B', fontSize: '13px' }}>
+                                <div style={{ background: '#FEF3C7', padding: '6px 8px', borderRadius: '4px', border: '1px solid #F59E0B', fontSize: '15px' }}>
                                     <strong>NOTE:</strong> {layoutKOT.notes}
                                 </div>
                             </>
@@ -386,7 +386,7 @@ const AdminLayout = () => {
                         <div className="bill-divider"></div>
 
                         <div className="bill-footer">
-                            <p style={{ fontSize: '13px', color: '#000', fontWeight: 'bold' }}>*** KITCHEN COPY (80mm Thermal) ***</p>
+                            <p style={{ fontSize: '15px', color: '#000', fontWeight: 'bold' }}>*** KITCHEN COPY (80mm Thermal) ***</p>
                         </div>
 
                         <div className="bill-actions">

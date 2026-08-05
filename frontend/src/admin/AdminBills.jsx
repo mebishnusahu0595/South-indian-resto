@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FiChevronLeft, FiChevronRight, FiCalendar, FiTrash2, FiPrinter, FiX, FiPlus, FiMinus, FiSearch, FiDownload } from 'react-icons/fi';
-import { getBills, getBillerSuggestions, generateBill, deleteBill, bulkDeleteBills, getAllMenuItems, updateOrderItems, getCoupons, getMaxDiscount } from '../utils/api';
+import { getBills, getBillerSuggestions, generateBill, deleteBill, printBill, bulkDeleteBills, getAllMenuItems, updateOrderItems, getCoupons, getMaxDiscount } from '../utils/api';
 import { downloadCSV } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
@@ -1017,7 +1017,16 @@ const AdminBills = () => {
                         </div>
 
                         <div className="bill-actions">
-                            <button className="btn-print" onClick={() => window.print()}>Print Bill</button>
+                            <button className="btn-print" onClick={() => {
+                                if (createdBill?._id) {
+                                    printBill(createdBill._id)
+                                        .then(() => toast.success('Bill print queued to Thermal Printer!'))
+                                        .catch(() => window.print());
+                                } else {
+                                    window.print();
+                                }
+                            }}>Thermal Print</button>
+                            <button className="btn-print" style={{ background: '#4B5563' }} onClick={() => window.print()}>Browser Print</button>
                             <button className="btn-close" onClick={() => {
                                 setShowEditModal(false);
                                 setCreatedBill(null);

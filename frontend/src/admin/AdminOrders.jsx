@@ -3,7 +3,7 @@ import { FiCheck, FiX, FiFileText, FiAlertTriangle, FiTrash2, FiPlus, FiMinus, F
 import { 
     getActiveOrders, updateOrderStatus, updatePayment, deleteOrder, 
     getAllMenuItems, getCategories, getBillerSuggestions, generateBill, updateOrderItems, modifyOrderItems,
-    getCoupons, getMaxDiscount, getKOTs, getTables, moveOrderTable
+    getCoupons, getMaxDiscount, getKOTs, getTables, moveOrderTable, moveOrderItem
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import OrderBill from '../components/OrderBill';
@@ -60,6 +60,12 @@ const AdminOrders = () => {
     const [allMenuItems, setAllMenuItems] = useState([]);
     const [searchQueryByOrder, setSearchQueryByOrder] = useState({});
     const [isSavingBill, setIsSavingBill] = useState(false);
+
+    // Move-item-to-another-table state
+    const [moveItemCtx, setMoveItemCtx] = useState(null); // { orderId, orderNumber, item }
+    const [moveTables, setMoveTables] = useState([]);
+    const [moveItemQty, setMoveItemQty] = useState(1);
+    const [movingItem, setMovingItem] = useState(false);
     const [coupons, setCoupons] = useState([]);
     // Payment Biller Modal state
     const [showPaymentBillerModal, setShowPaymentBillerModal] = useState(false);
@@ -222,9 +228,18 @@ const AdminOrders = () => {
         };
         const handleOrderUpdated = (order) => {
             console.log('Order updated:', order.orderNumber, 'Status:', order.status);
-            setOrders(prev => prev.map(o =>
-                o._id.toString() === order._id.toString() ? order : o
-            ));
+            setOrders(prev => {
+                const orderIdStr = order._id?.toString() || order.id?.toString();
+                const exists = prev.some(o => (o._id?.toString() || o.id?.toString()) === orderIdStr);
+                if (exists) {
+                    return prev.map(o => (o._id?.toString() || o.id?.toString()) === orderIdStr ? order : o);
+                }
+                // If the order is active and not yet in the list, add it (e.g. placed from another tab/device)
+                if (order.status !== 'paid' && order.status !== 'cancelled') {
+                    return [order, ...prev];
+                }
+                return prev;
+            });
         };
         const handleBillRequested = (order) => {
             console.log('Bill requested for:', order.orderNumber, 'Status:', order.status);
@@ -402,6 +417,49 @@ const AdminOrders = () => {
             setSearchQueryByOrder(prev => ({ ...prev, [orderId]: '' }));
         } catch (err) {
             alert('Failed to add item');
+        }
+    };
+
+    const openMoveItem = async (order, item) => {
+        setMoveItemCtx({ orderId: order._id, orderNumber: order.orderNumber, item });
+        setMoveItemQty(1);
+        try {
+            const res = await getTables();
+            setMoveTables(res.data || []);
+        } catch (err) {
+            setMoveTables([]);
+        }
+    };
+
+    const confirmMoveItem = async (destinationTableId) => {
+        if (!moveItemCtx) return;
+        const menuItemId = getEntityId(moveItemCtx.item.menuItem) || moveItemCtx.item.menuItem;
+        const maxQty = Number(moveItemCtx.item.quantity) || 1;
+        const qty = Math.min(Math.max(1, Number(moveItemQty) || 1), maxQty);
+        setMovingItem(true);
+        try {
+            const res = await moveOrderItem(moveItemCtx.orderId, {
+                menuItemId,
+                quantity: qty,
+                destinationTableId
+            });
+            const { sourceOrder, destinationOrder } = res.data;
+            // Reflect both updated orders in local state.
+            setPrepareOrders(prev => prev.map(o => {
+                if (o._id === sourceOrder._id) return sourceOrder;
+                if (o._id === destinationOrder._id) return destinationOrder;
+                return o;
+            }));
+            setOrders(prev => prev.map(o => {
+                if (o._id === sourceOrder._id) return sourceOrder;
+                if (o._id === destinationOrder._id) return destinationOrder;
+                return o;
+            }));
+            setMoveItemCtx(null);
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to move item');
+        } finally {
+            setMovingItem(false);
         }
     };
 
@@ -1213,6 +1271,14 @@ const AdminOrders = () => {
                                                                 style={{ padding: '2px 8px', border: 'none', background: 'transparent', cursor: 'pointer' }}
                                                             >+</button>
                                                         </div>
+                                                        <button
+                                                            type="button"
+                                                            title="Move this item to another table"
+                                                            onClick={() => openMoveItem(order, item)}
+                                                            style={{ border: '1px solid #3B82F6', background: '#DBEAFE', color: '#1D4ED8', cursor: 'pointer', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold', padding: '2px 6px' }}
+                                                        >
+                                                            ➡ Move
+                                                        </button>
                                                         <button 
                                                             type="button" 
                                                             onClick={() => handleRemoveItem(order._id, item.menuItem?._id || item.menuItem)}
@@ -2145,6 +2211,75 @@ const AdminOrders = () => {
                 />
             )}
 
+            {/* Move Item To Another Table Modal */}
+            {moveItemCtx && (
+                <div className="modal-overlay" onClick={() => !movingItem && setMoveItemCtx(null)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '460px', width: '94%' }}>
+                        <div className="modal-header">
+                            <h2 style={{ fontSize: '1.1rem' }}>Move Item To Another Table</h2>
+                            <button className="modal-close" onClick={() => setMoveItemCtx(null)}>×</button>
+                        </div>
+                        <div style={{ padding: '6px 2px 2px' }}>
+                            <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '10px', marginBottom: '12px', fontSize: '0.9rem' }}>
+                                <div><strong>{moveItemCtx.item.name}</strong> (₹{moveItemCtx.item.price})</div>
+                                <div style={{ color: '#6B7280' }}>From Order #{moveItemCtx.orderNumber} · Available: {moveItemCtx.item.quantity}</div>
+                            </div>
+
+                            <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '4px' }}>Quantity to move</label>
+                            <input
+                                type="number"
+                                min={1}
+                                max={moveItemCtx.item.quantity}
+                                value={moveItemQty}
+                                onChange={(e) => setMoveItemQty(e.target.value)}
+                                style={{ width: '100%', padding: '8px', fontSize: '1rem', border: '2px solid #111', borderRadius: '6px', marginBottom: '14px' }}
+                            />
+
+                            <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '6px' }}>
+                                Select destination table
+                            </label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
+                                {moveTables
+                                    .filter(t => {
+                                        // Hide the source order's own table(s).
+                                        const src = prepareOrders.find(o => o._id === moveItemCtx.orderId);
+                                        const srcTableNums = String(src?.tableNumber || '').split(',').map(s => s.trim());
+                                        return !srcTableNums.includes(String(t.tableNumber));
+                                    })
+                                    .map(t => {
+                                        const isOccupied = t.isOccupied || t.status === 'occupied';
+                                        return (
+                                            <button
+                                                key={t._id}
+                                                type="button"
+                                                disabled={movingItem}
+                                                onClick={() => confirmMoveItem(t._id)}
+                                                title={isOccupied ? 'Occupied — item will be added to its running order' : 'Free — a new order will be created'}
+                                                style={{
+                                                    minWidth: '78px',
+                                                    padding: '8px 10px',
+                                                    borderRadius: '6px',
+                                                    border: `1.5px solid ${isOccupied ? '#D97706' : '#10B981'}`,
+                                                    background: isOccupied ? '#FEF3C7' : '#ECFDF5',
+                                                    color: isOccupied ? '#92400E' : '#047857',
+                                                    cursor: movingItem ? 'wait' : 'pointer',
+                                                    fontWeight: 'bold',
+                                                    fontSize: '0.85rem',
+                                                    textAlign: 'center'
+                                                }}
+                                            >
+                                                <div>T-{t.tableNumber}</div>
+                                                <div style={{ fontSize: '0.65rem', fontWeight: 600 }}>{isOccupied ? 'Occupied' : 'Free'}</div>
+                                            </button>
+                                        );
+                                    })}
+                            </div>
+                            {movingItem && <p style={{ marginTop: '12px', fontSize: '0.85rem', color: '#6B7280' }}>Moving item…</p>}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* KOT Print Preview Modal */}
             {selectedKOTForPrint && (
                 <div className="modal-overlay" onClick={() => setSelectedKOTForPrint(null)}>
@@ -2153,21 +2288,21 @@ const AdminOrders = () => {
                             <h2>KOT Ticket Preview</h2>
                             <button className="modal-close" onClick={() => setSelectedKOTForPrint(null)}>×</button>
                         </div>
-                        <div id="kot-printable-slip" style={{ background: '#FFF', padding: '16px', fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.4', border: '1px solid #CCC', borderRadius: '6px' }}>
+                        <div id="kot-printable-slip" style={{ background: '#FFF', padding: '16px', fontFamily: 'monospace', fontSize: '15px', lineHeight: '1.45', border: '1px solid #CCC', borderRadius: '6px' }}>
                             <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
-                                <h2 style={{ margin: '0 0 2px', fontSize: '18px', textTransform: 'uppercase' }}>KEA BY THE POOL</h2>
-                                <h3 style={{ margin: 0, fontSize: '14px', color: '#555' }}>KITCHEN ORDER TICKET</h3>
-                                <div style={{ fontSize: '16px', fontWeight: 'bold', marginTop: '4px', color: '#7C3AED' }}>{selectedKOTForPrint.kotNumber}</div>
+                                <h2 style={{ margin: '0 0 2px', fontSize: '20px', textTransform: 'uppercase' }}>KEA BY THE POOL</h2>
+                                <h3 style={{ margin: 0, fontSize: '16px', color: '#555' }}>KITCHEN ORDER TICKET</h3>
+                                <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '4px', color: '#7C3AED' }}>{selectedKOTForPrint.kotNumber}</div>
                             </div>
 
-                            <div style={{ marginBottom: '8px', fontSize: '12px' }}>
+                            <div style={{ marginBottom: '8px', fontSize: '14px' }}>
                                 <div><strong>TABLE:</strong> {selectedKOTForPrint.tableNumber}</div>
                                 <div><strong>STAFF:</strong> {selectedKOTForPrint.staffName}</div>
                                 <div><strong>DATE/TIME:</strong> {new Date(selectedKOTForPrint.timestamp).toLocaleDateString('en-IN')} {new Date(selectedKOTForPrint.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                             </div>
 
                             <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '6px 0', marginBottom: '8px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '4px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '4px', fontSize: '15px' }}>
                                     <span>ITEM NAME</span>
                                     <span>QTY</span>
                                 </div>
@@ -2175,12 +2310,12 @@ const AdminOrders = () => {
                                     const itemNote = item.notes || item.instruction || item.specialInstructions || item.note;
                                     return (
                                         <div key={i} style={{ margin: '4px 0' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px' }}>
                                                 <span>{item.name || item.menuItem?.name || 'Item'}</span>
                                                 <strong>{item.quantity}</strong>
                                             </div>
                                             {itemNote ? (
-                                                <div style={{ fontSize: '11px', color: '#D97706', paddingLeft: '8px', fontStyle: 'italic', fontWeight: 'bold' }}>
+                                                <div style={{ fontSize: '13px', color: '#D97706', paddingLeft: '8px', fontStyle: 'italic', fontWeight: 'bold' }}>
                                                     ↳ Note: {itemNote}
                                                 </div>
                                             ) : null}
@@ -2190,12 +2325,12 @@ const AdminOrders = () => {
                             </div>
 
                             {selectedKOTForPrint.notes && (
-                                <div style={{ marginBottom: '8px', fontSize: '12px', background: '#FEF3C7', padding: '4px 6px', borderRadius: '4px' }}>
+                                <div style={{ marginBottom: '8px', fontSize: '14px', background: '#FEF3C7', padding: '4px 6px', borderRadius: '4px' }}>
                                     <strong>SPECIAL NOTE:</strong> {selectedKOTForPrint.notes}
                                 </div>
                             )}
 
-                            <div style={{ textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '6px', fontSize: '11px', color: '#666' }}>
+                            <div style={{ textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '6px', fontSize: '13px', color: '#666' }}>
                                 --- KITCHEN / RECEPTION COPY ---
                             </div>
                         </div>

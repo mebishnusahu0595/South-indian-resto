@@ -17,6 +17,8 @@ const { protect, admin, superadmin } = require('../middleware/auth');
 const { generateOrderNumber } = require('../utils/helpers');
 const {
     normalizeItems,
+    getMenuItemId,
+    isStalePartialAdditionPayload,
     getConfiguredTax,
     calculateTotals,
     allocateBillTotals,
@@ -88,7 +90,10 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
     }
 
     const io = req.app.get('io');
-    if (io) io.emit('new-order', eventPayload);
+    if (io) {
+        io.emit('new-order', eventPayload);
+        io.emit('new-print-job', eventPayload);
+    }
     return eventPayload;
 };
 
@@ -605,12 +610,13 @@ router.post('/', protect, async (req, res) => {
             activeOrder.tax = activeOrder.taxDetails.reduce((sum, t) => sum + t.amount, 0);
             activeOrder.total = taxableAmount + activeOrder.tax;
 
-            // Add KOT history
+            // Add KOT history. Mark append KOTs so stale partial mobile payloads can be recognized safely.
+            const additionInstructions = `[ADDITION] ${orderInstructions || 'New items added'}`;
             activeOrder.kotHistory.push({
                 kotNumber: kotNum,
                 timestamp: kotTimestamp,
                 items: orderItems,
-                notes: orderInstructions
+                notes: additionInstructions
             });
 
             activeOrder.status = 'confirmed';
@@ -634,8 +640,11 @@ router.post('/', protect, async (req, res) => {
                 kotCreatedAt: kotTimestamp,
                 tableName: tn,
                 items: orderItems,
-                specialInstructions: orderInstructions
+                specialInstructions: additionInstructions
             }, 'ADD');
+            // Old APKs treat every new-order event as an editable order. Re-send the complete
+            // order after the incremental KOT event so the partial duplicate is replaced.
+            if (io) io.emit('order-updated', populatedOrder);
 
             return res.status(200).json(populatedOrder);
         }
@@ -702,6 +711,10 @@ router.post('/', protect, async (req, res) => {
             items: orderItems,
             specialInstructions: orderInstructions
         }, 'CREATE');
+        // Emit canonical populated order after dispatchKOT so admin panels that receive
+        // the incremental new-order event immediately get the full populated state too.
+        const io2 = req.app.get('io');
+        if (io2) io2.emit('order-updated', populatedOrder);
 
         res.status(201).json(populatedOrder);
     } catch (error) {
@@ -729,8 +742,46 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             return res.status(400).json({ message: `Cannot modify a ${order.status} order` });
         }
 
-        order.items = normalizeItems(order.items);
-        const consolidatedUpdatedItems = normalizeItems(updatedItems || []);
+        if (!Array.isArray(updatedItems)) {
+            return res.status(400).json({ message: 'updatedItems must be an array' });
+        }
+
+        const invalidSubmittedItem = updatedItems.find(item => {
+            const menuItemId = getMenuItemId(item);
+            const quantity = Number(item?.quantity);
+            return !menuItemId
+                || !mongoose.isValidObjectId(menuItemId)
+                || !Number.isFinite(quantity)
+                || quantity < 0;
+        });
+        if (invalidSubmittedItem) {
+            return res.status(400).json({
+                message: 'One or more submitted order items have an invalid menu item or quantity. No items were changed.'
+            });
+        }
+
+        const currentItems = normalizeItems(order.items);
+        const consolidatedUpdatedItems = normalizeItems(updatedItems);
+
+        // Older APKs can cache the incremental ADD-KOT socket payload as if it were the
+        // complete order. Never interpret that stale subset as an explicit mass removal.
+        if (isStalePartialAdditionPayload(currentItems, consolidatedUpdatedItems, order.kotHistory)) {
+            return res.status(409).json({
+                message: 'Order view was stale after an ADD KOT. Reopen the order; no items were changed.'
+            });
+        }
+
+        const requestedMenuItemIds = [...new Set(consolidatedUpdatedItems.map(getMenuItemId))];
+        const requestedMenuItems = await MenuItem.find({ _id: { $in: requestedMenuItemIds } });
+        const menuItemsById = new Map(requestedMenuItems.map(menuItem => [menuItem._id.toString(), menuItem]));
+        const missingMenuItemIds = requestedMenuItemIds.filter(menuItemId => !menuItemsById.has(menuItemId));
+        if (missingMenuItemIds.length > 0) {
+            return res.status(400).json({
+                message: `Menu item not found: ${missingMenuItemIds.join(', ')}. No items were changed.`
+            });
+        }
+
+        order.items = currentItems;
 
         const addedItems = [];
         const cancelledItems = [];
@@ -747,9 +798,8 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         for (const item of consolidatedUpdatedItems) {
             if (item.quantity <= 0) continue;
 
-            const mIdToFind = item.menuItem?._id || item.menuItem || item.menuItemId;
-            const menuItem = await MenuItem.findById(mIdToFind);
-            if (!menuItem) continue;
+            const mIdToFind = getMenuItemId(item);
+            const menuItem = menuItemsById.get(mIdToFind);
 
             const mId = menuItem._id.toString();
             const itemTotal = menuItem.price * item.quantity;
@@ -891,6 +941,9 @@ router.put('/:id/modify-items', protect, async (req, res) => {
                 specialInstructions: cancelledKotObj.notes
             }, 'CANCEL');
         }
+        // dispatchKOT intentionally keeps the printer-compatible incremental new-order event.
+        // Follow it with canonical state so old APK history cannot retain a partial editable row.
+        if ((addedKotObj || cancelledKotObj) && io) io.emit('order-updated', populatedOrder);
 
         res.json({
             message: 'Order items modified successfully',
@@ -1110,6 +1163,273 @@ router.put('/:id/move-table', protect, async (req, res) => {
         res.json(populatedOrder);
     } catch (error) {
         console.error('Error moving table:', error);
+        res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
+    }
+});
+
+// Recompute a pending Bill from its currently linked source orders and re-allocate totals back to each order.
+// Settled bills are never touched here (callers block that separately).
+const resyncPendingBill = async (bill, taxConfig, session) => {
+    if (!bill) return;
+    if (bill.paymentMethod && bill.paymentMethod !== 'pending') return;
+    const linkedIds = [...new Set([...(bill.orders || []), bill.order].filter(Boolean).map(id => id.toString()))];
+    let query = Order.find({ _id: { $in: linkedIds } });
+    if (session) query = query.session(session);
+    const linkedOrders = (await query).filter(order => (order.items || []).length > 0);
+    if (linkedOrders.length === 0) return;
+
+    const combinedItems = normalizeItems(linkedOrders.flatMap(order => order.items || []));
+    const totals = calculateTotals(combinedItems, bill.discount || 0, taxConfig);
+    const allocations = allocateBillTotals(linkedOrders, totals);
+    const now = new Date();
+
+    await Order.bulkWrite(allocations.map(allocation => ({
+        updateOne: {
+            filter: { _id: allocation.order._id },
+            update: { $set: {
+                items: allocation.items,
+                subtotal: allocation.subtotal,
+                discount: allocation.discount,
+                tax: allocation.tax,
+                taxDetails: allocation.taxDetails,
+                gstRate: taxConfig.reduce((sum, tax) => sum + tax.rate, 0),
+                total: allocation.total,
+                updatedAt: now
+            } }
+        }
+    })), sessionOptions(session));
+
+    bill.items = totals.items;
+    bill.taxDetails = totals.taxDetails;
+    bill.subtotal = totals.subtotal;
+    bill.discount = totals.discount;
+    bill.tax = totals.tax;
+    bill.total = totals.total;
+    bill.orderNumbers = linkedOrders.map(order => order.orderNumber).filter(Boolean);
+    bill.tableNumbers = [...new Set(linkedOrders.flatMap(order =>
+        String(order.tableNumber || '').split(',').map(value => value.trim()).filter(Boolean)
+    ))];
+    await bill.save(sessionOptions(session));
+};
+
+// @route   PUT /api/orders/:id/move-item
+// @desc    Move an item (or partial qty) from this order to another table's order.
+//          The item leaves the source order/bill and is auto-added to the destination order/bill.
+//          If the destination table has no active order, one is created automatically.
+// @access  Private (Admin / Employee)
+router.put('/:id/move-item', protect, async (req, res) => {
+    try {
+        const { menuItemId, quantity, destinationTableId, destinationOrderId } = req.body;
+        const moveQty = Math.floor(Number(quantity));
+
+        if (!menuItemId || !mongoose.isValidObjectId(menuItemId)) {
+            return res.status(400).json({ message: 'A valid item to move is required.' });
+        }
+        if (!Number.isFinite(moveQty) || moveQty <= 0) {
+            return res.status(400).json({ message: 'Move quantity must be a positive whole number.' });
+        }
+        if (!destinationOrderId && !destinationTableId) {
+            return res.status(400).json({ message: 'Select a destination table to move the item to.' });
+        }
+
+        const isSuperadmin = req.user.role === 'superadmin';
+
+        const sourceOrder = await Order.findById(req.params.id).populate('items.menuItem');
+        if (!sourceOrder) return res.status(404).json({ message: 'Source order not found' });
+        if (sourceOrder.status === 'paid' || sourceOrder.status === 'cancelled') {
+            return res.status(400).json({ message: `Cannot move items from a ${sourceOrder.status} order` });
+        }
+
+        const sourceBill = await Bill.findOne({ $or: [{ order: sourceOrder._id }, { orders: sourceOrder._id }] });
+        if (sourceBill?.paymentMethod && sourceBill.paymentMethod !== 'pending' && !isSuperadmin) {
+            return res.status(403).json({ message: 'Source bill is settled. Only superadmin can move its items.' });
+        }
+
+        // Locate the item on the source order.
+        sourceOrder.items = normalizeItems(sourceOrder.items);
+        const sourceLine = sourceOrder.items.find(item => getMenuItemId(item) === menuItemId.toString());
+        if (!sourceLine) {
+            return res.status(400).json({ message: 'That item is not on the source order.' });
+        }
+        if (sourceLine.quantity < moveQty) {
+            return res.status(400).json({ message: `Only ${sourceLine.quantity} of "${sourceLine.name}" is available to move.` });
+        }
+        if (sourceOrder.items.length === 1 && sourceLine.quantity === moveQty) {
+            return res.status(400).json({ message: 'This is the only item on the order. Use "Change Table" to move the whole order instead of emptying it.' });
+        }
+
+        // Resolve the destination order (an existing active order on the table, or a brand-new one).
+        let destinationOrder = null;
+        let destinationTable = null;
+        let createdNewDestination = false;
+
+        if (destinationOrderId) {
+            if (!mongoose.isValidObjectId(destinationOrderId)) {
+                return res.status(400).json({ message: 'Invalid destination order.' });
+            }
+            destinationOrder = await Order.findById(destinationOrderId).populate('items.menuItem');
+            if (!destinationOrder) return res.status(404).json({ message: 'Destination order not found' });
+        } else {
+            if (!mongoose.isValidObjectId(destinationTableId)) {
+                return res.status(400).json({ message: 'Invalid destination table.' });
+            }
+            destinationTable = await Table.findById(destinationTableId);
+            if (!destinationTable) return res.status(404).json({ message: 'Destination table not found' });
+            destinationOrder = await Order.findOne({
+                tables: destinationTable._id,
+                status: { $nin: ['paid', 'cancelled'] }
+            }).populate('items.menuItem');
+        }
+
+        if (destinationOrder && destinationOrder._id.toString() === sourceOrder._id.toString()) {
+            return res.status(400).json({ message: 'Source and destination are the same order.' });
+        }
+        if (destinationOrder && (destinationOrder.status === 'paid' || destinationOrder.status === 'cancelled')) {
+            return res.status(400).json({ message: `Cannot move items into a ${destinationOrder.status} order` });
+        }
+
+        let destinationBill = null;
+        if (destinationOrder) {
+            destinationBill = await Bill.findOne({ $or: [{ order: destinationOrder._id }, { orders: destinationOrder._id }] });
+            if (destinationBill?.paymentMethod && destinationBill.paymentMethod !== 'pending' && !isSuperadmin) {
+                return res.status(403).json({ message: 'Destination bill is settled. Only superadmin can add items to it.' });
+            }
+        }
+
+        const menuItem = await MenuItem.findById(menuItemId);
+        if (!menuItem) return res.status(400).json({ message: 'That menu item no longer exists.' });
+
+        const taxConfig = await getConfiguredTax(Settings);
+        const movedNotes = sourceLine.notes || '';
+        const now = new Date();
+        const cleanSourceNo = String(sourceOrder.orderNumber).replace(/^CD-/, '');
+        const sourceLabel = sourceOrder.tableNumber ? `Table ${sourceOrder.tableNumber}` : 'Takeaway';
+
+        // Apply the source decrement in memory and recompute its standalone totals.
+        sourceOrder.items = sourceOrder.items
+            .map(item => getMenuItemId(item) === menuItemId.toString()
+                ? { ...item, quantity: item.quantity - moveQty }
+                : item)
+            .filter(item => item.quantity > 0);
+        const sourceTotals = calculateTotals(sourceOrder.items, sourceOrder.discount || 0, taxConfig);
+
+        // Build/prepare the destination order in memory.
+        if (!destinationOrder) {
+            destinationOrder = new Order({
+                orderNumber: await generateOrderNumber(),
+                user: sourceOrder.user,
+                items: [],
+                subtotal: 0,
+                tax: 0,
+                total: 0,
+                restaurantInfo: sourceOrder.restaurantInfo,
+                status: 'confirmed',
+                table: destinationTable._id,
+                tables: [destinationTable._id],
+                tableNumber: String(destinationTable.tableNumber || ''),
+                kotHistory: [],
+                placedBy: (req.user && req.user.isEmployee) ? req.user._id : null
+            });
+            createdNewDestination = true;
+        }
+        const destinationLabel = createdNewDestination
+            ? (destinationTable.name || `Table ${destinationTable.tableNumber}`)
+            : (destinationOrder.tableNumber ? `Table ${destinationOrder.tableNumber}` : 'Takeaway');
+
+        destinationOrder.items = normalizeItems([
+            ...normalizeItems(destinationOrder.items),
+            { menuItem: menuItem._id, name: menuItem.name, price: menuItem.price, quantity: moveQty, notes: movedNotes }
+        ]);
+        const destinationTotals = calculateTotals(destinationOrder.items, destinationOrder.discount || 0, taxConfig);
+        const gstRateSum = taxConfig.reduce((sum, tax) => sum + tax.rate, 0);
+
+        await runAtomic(async session => {
+            // ---- Source order ----
+            sourceOrder.items = sourceTotals.items;
+            sourceOrder.subtotal = sourceTotals.subtotal;
+            sourceOrder.discount = sourceTotals.discount;
+            sourceOrder.tax = sourceTotals.tax;
+            sourceOrder.taxDetails = sourceTotals.taxDetails;
+            sourceOrder.gstRate = gstRateSum;
+            sourceOrder.total = sourceTotals.total;
+            sourceOrder.kotHistory.push({
+                kotNumber: `MOVE-OUT-${cleanSourceNo}-${Date.now().toString().slice(-3)}`,
+                timestamp: now,
+                items: [{ menuItem: menuItem._id, name: menuItem.name, quantity: moveQty, price: menuItem.price }],
+                notes: `[MOVED OUT] ${menuItem.name} x${moveQty} moved to ${destinationLabel}`
+            });
+            await sourceOrder.save(sessionOptions(session));
+
+            // ---- Destination order ----
+            destinationOrder.items = destinationTotals.items;
+            destinationOrder.subtotal = destinationTotals.subtotal;
+            destinationOrder.discount = destinationTotals.discount;
+            destinationOrder.tax = destinationTotals.tax;
+            destinationOrder.taxDetails = destinationTotals.taxDetails;
+            destinationOrder.gstRate = gstRateSum;
+            destinationOrder.total = destinationTotals.total;
+            const cleanDestNo = String(destinationOrder.orderNumber).replace(/^CD-/, '');
+            destinationOrder.kotHistory.push({
+                kotNumber: `MOVE-IN-${cleanDestNo}-${Date.now().toString().slice(-3)}`,
+                timestamp: now,
+                items: [{ menuItem: menuItem._id, name: menuItem.name, quantity: moveQty, price: menuItem.price }],
+                notes: `[MOVED IN] ${menuItem.name} x${moveQty} moved from ${sourceLabel}`
+            });
+            await destinationOrder.save(sessionOptions(session));
+
+            // Occupy the destination table when a brand-new order was created for it.
+            if (createdNewDestination) {
+                await Table.updateOne(
+                    { _id: destinationTable._id },
+                    { status: 'occupied', isOccupied: true, currentOrder: destinationOrder._id },
+                    sessionOptions(session)
+                );
+            }
+
+            // Re-sync any pending bills so both bills reflect the moved item.
+            await resyncPendingBill(sourceBill, taxConfig, session);
+            if (destinationBill && (!sourceBill || destinationBill._id.toString() !== sourceBill._id.toString())) {
+                await resyncPendingBill(destinationBill, taxConfig, session);
+            }
+        });
+
+        const populate = orderId => Order.findById(orderId)
+            .populate('user', 'phone name')
+            .populate('placedBy', 'name')
+            .populate('tables', 'tableNumber name section')
+            .populate('table', 'tableNumber name section')
+            .populate('items.menuItem', 'name image');
+
+        const populatedSource = await populate(sourceOrder._id);
+        const populatedDestination = await populate(destinationOrder._id);
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('order-updated', populatedSource);
+            io.emit('order-updated', populatedDestination);
+            if (createdNewDestination) {
+                const occupiedTable = await Table.findById(destinationTable._id);
+                if (occupiedTable) {
+                    io.emit('table-occupied', occupiedTable);
+                    io.emit('table-updated', occupiedTable);
+                }
+            }
+            for (const affectedBill of [sourceBill, destinationBill]) {
+                if (!affectedBill) continue;
+                const populatedBill = await Bill.findById(affectedBill._id)
+                    .populate({ path: 'order', populate: { path: 'user', select: 'name phone' } })
+                    .populate({ path: 'orders', populate: { path: 'user', select: 'name phone' } });
+                if (populatedBill) io.emit('bill-generated', populatedBill);
+            }
+        }
+
+        res.json({
+            message: `Moved ${moveQty} × ${menuItem.name} from ${sourceLabel} to ${destinationLabel}.`,
+            sourceOrder: populatedSource,
+            destinationOrder: populatedDestination
+        });
+    } catch (error) {
+        console.error('Error moving item:', error);
         res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
     }
 });

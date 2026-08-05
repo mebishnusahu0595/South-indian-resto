@@ -5,6 +5,7 @@ const Bill = require('../models/Bill');
 const Order = require('../models/Order');
 const Table = require('../models/Table');
 const Settings = require('../models/Settings');
+const KOTPrintJob = require('../models/KOTPrintJob');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const {
     normalizeItems,
@@ -352,6 +353,54 @@ router.delete('/:id', protect, superadmin, async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(error.statusCode || 500).json({ message: error.message || 'Server error' });
+    }
+});
+
+router.post('/:id/print', protect, admin, async (req, res) => {
+    try {
+        const bill = await populateBill(req.params.id);
+        if (!bill) return res.status(404).json({ message: 'Bill not found' });
+
+        const eventId = `BILL-${bill._id}-${Date.now()}`;
+        const jobPayload = {
+            jobType: 'bill',
+            eventId,
+            billId: bill._id.toString(),
+            billNumber: bill.billNumber,
+            orderNumber: (bill.orderNumbers && bill.orderNumbers.length > 0) ? bill.orderNumbers.join(', ') : (bill.order?.orderNumber || ''),
+            tableNumber: (bill.tableNumbers && bill.tableNumbers.length > 0) ? bill.tableNumbers.join(', ') : 'Takeaway',
+            tableName: (bill.tableNumbers && bill.tableNumbers.length > 0) ? bill.tableNumbers.join(', ') : 'Takeaway',
+            customer: bill.customer || {},
+            billerName: bill.billerName || '',
+            items: bill.items || [],
+            subtotal: bill.subtotal || 0,
+            discount: bill.discount || 0,
+            discountName: bill.discountName || '',
+            tax: bill.tax || 0,
+            taxDetails: bill.taxDetails || [],
+            total: bill.total || 0,
+            paymentMethod: bill.paymentMethod || 'pending',
+            createdAt: bill.createdAt || new Date()
+        };
+
+        const printJob = new KOTPrintJob({
+            eventId,
+            jobType: 'bill',
+            status: 'pending',
+            payload: jobPayload
+        });
+        await printJob.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('new-print-job', jobPayload);
+            io.emit('new-bill-print', jobPayload);
+        }
+
+        res.json({ message: 'Bill print job queued successfully', eventId });
+    } catch (error) {
+        console.error('Bill print route error:', error);
+        res.status(500).json({ message: error.message || 'Server error' });
     }
 });
 

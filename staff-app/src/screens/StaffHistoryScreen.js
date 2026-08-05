@@ -88,6 +88,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
   const [selectedMoveSection, setSelectedMoveSection] = useState('All');
   const [selectedMoveTableId, setSelectedMoveTableId] = useState('');
   const [movingTable, setMovingTable] = useState(false);
+  const [movingItemId, setMovingItemId] = useState(null);
 
   const fetchTables = async () => {
     try {
@@ -166,15 +167,41 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
     }
   };
 
-  const handleCancelEntireOrder = async (order) => {
-    if (!order) return;
+  // Order cancellation is intentionally NOT available in the staff app.
+  // Cancellations are handled from the Admin / Superadmin panel only.
+
+  // Move a single item (or unit) from this order to another table's order.
+  const handleMoveItem = async (item) => {
+    if (!editingOrder || !selectedMoveTableId) {
+      alert('Select a destination table first (in the Change Table section).');
+      return;
+    }
+    setMovingItemId(item.menuItemId);
     try {
-      await api.put(`/orders/${order._id || order.id}/status`, { status: 'cancelled' });
-      alert(`Order #${order.orderNumber} CANCELLED! Cancel KOT emitted.`);
-      setShowModifyModal(false);
+      const res = await api.put(`/orders/${editingOrder._id || editingOrder.id}/move-item`, {
+        menuItemId: item.menuItemId,
+        quantity: 1,
+        destinationTableId: selectedMoveTableId
+      });
+      alert(`Moved 1 × ${item.name} to the selected table.`);
+      // Refresh the editing order from the returned source order so the modal stays accurate.
+      if (res.data?.sourceOrder) {
+        setEditingOrder(res.data.sourceOrder);
+        const refreshed = (res.data.sourceOrder.items || []).map(i => ({
+          menuItemId: i.menuItem?._id || i.menuItem || i._id,
+          name: i.name || i.menuItem?.name || 'Item',
+          price: i.price || i.menuItem?.price || 0,
+          quantity: i.quantity,
+          notes: i.notes || ''
+        }));
+        setModifyItems(refreshed);
+      }
       fetchTodayOrders();
+      fetchTables();
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to cancel order');
+      alert(error.response?.data?.message || 'Failed to move item');
+    } finally {
+      setMovingItemId(null);
     }
   };
 
@@ -280,14 +307,25 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
 
       {/* Staff Modify Order Modal */}
       {showModifyModal && editingOrder && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 16, zIndex: 100 }}>
-          <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, width: '100%', maxHeight: '85%', borderWidth: 2, borderColor: '#111' }}>
-            <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 4, color: '#111' }}>Edit Order #{editingOrder.orderNumber}</Text>
-            <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 12 }}>Add items, adjust quantities or remove items</Text>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 12, zIndex: 100 }}>
+          <View style={{ backgroundColor: '#FFF', borderRadius: 12, width: '100%', maxHeight: '94%', borderWidth: 2, borderColor: '#111', overflow: 'hidden' }}>
+            {/* Fixed header */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10, borderBottomWidth: 1, borderColor: '#E5E7EB' }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#111' }}>Edit Order #{editingOrder.orderNumber}</Text>
+              <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>Add items, adjust quantities, move items or change table</Text>
+            </View>
 
-            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 180, marginBottom: 12, borderBottomWidth: 1, borderColor: '#E5E7EB' }}>
+            {/* Scrollable body — everything gets room and scrolls on small screens */}
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+              style={{ flexGrow: 0 }}
+            >
+            <Text style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: '#374151' }}>Current Items</Text>
+            <View style={{ marginBottom: 16, borderBottomWidth: 1, borderColor: '#E5E7EB', paddingBottom: 8 }}>
               {modifyItems.map((item, idx) => (
-                <View key={idx} style={{ paddingVertical: 8, borderBottomWidth: 1, borderColor: '#F3F4F6' }}>
+                <View key={idx} style={{ paddingVertical: 10, borderBottomWidth: 1, borderColor: '#F3F4F6' }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontWeight: 'bold', fontSize: 14, color: '#111' }}>{item.name}</Text>
@@ -318,23 +356,42 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                         onPress={() => {
                           setModifyItems(prev => prev.filter((_, i) => i !== idx));
                         }}
-                        style={{ paddingHorizontal: 6, paddingVertical: 4, backgroundColor: '#FEE2E2', borderRadius: 4 }}
+                        style={{ paddingHorizontal: 8, paddingVertical: 6, backgroundColor: '#FEE2E2', borderRadius: 6 }}
                       >
-                        <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 11 }}>Remove</Text>
+                        <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 12 }}>Remove</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
                   {/* Per-item note input */}
                   <TextInput
-                    style={{ marginTop: 4, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, fontSize: 11, color: '#374151', backgroundColor: '#FFFBEB' }}
+                    style={{ marginTop: 6, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, color: '#374151', backgroundColor: '#FFFBEB' }}
                     placeholder={`Note for ${item.name} (optional)`}
                     placeholderTextColor="#9CA3AF"
                     value={item.notes || ''}
                     onChangeText={(txt) => setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, notes: txt } : it))}
                   />
+                  {/* Move this item to the table selected in the Change Table section below */}
+                  <TouchableOpacity
+                    disabled={!selectedMoveTableId || movingItemId === item.menuItemId}
+                    onPress={() => handleMoveItem(item)}
+                    style={{
+                      marginTop: 6,
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 6,
+                      backgroundColor: selectedMoveTableId ? '#DBEAFE' : '#F3F4F6',
+                      borderWidth: 1,
+                      borderColor: selectedMoveTableId ? '#3B82F6' : '#D1D5DB'
+                    }}
+                  >
+                    <Text style={{ color: selectedMoveTableId ? '#1D4ED8' : '#9CA3AF', fontWeight: 'bold', fontSize: 11 }}>
+                      {movingItemId === item.menuItemId ? 'Moving…' : '➡ Move 1 to selected table'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               ))}
-            </ScrollView>
+            </View>
 
             {/* Add New Menu Item Section */}
             <Text style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 4, color: '#374151' }}>Add Item from Menu ({menuItems.length} items available):</Text>
@@ -375,7 +432,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
               onChangeText={setSearchQuery}
             />
 
-            <ScrollView style={{ maxHeight: 180, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, padding: 4 }}>
+            <ScrollView nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" style={{ maxHeight: 240, marginBottom: 14, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, padding: 4 }}>
               {menuItems
                 .filter(mi => {
                   const catName = typeof mi.category === 'object' ? mi.category?.name : mi.category;
@@ -412,7 +469,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
             {/* Change Table / Move Seat Section */}
             <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1.5, borderColor: '#F59E0B', borderRadius: 8, padding: 10, marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#92400E' }}>🪑 Change Table / Move Seat</Text>
+                <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#92400E' }}>🪑 Destination Table (move whole order or single items)</Text>
                 <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#B45309' }}>
                   Current: {editingOrder.tableNumber ? `Table ${editingOrder.tableNumber}` : 'Takeaway'}
                 </Text>
@@ -500,42 +557,28 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
             </View>
 
             <TextInput
-              style={{ borderWidth: 1.5, borderColor: '#111', borderRadius: 6, padding: 8, fontSize: 13, marginBottom: 12, backgroundColor: '#FFF' }}
+              style={{ borderWidth: 1.5, borderColor: '#111', borderRadius: 6, padding: 10, fontSize: 14, marginBottom: 4, backgroundColor: '#FFF' }}
               placeholder="Modification Reason / KOT Note (Optional)"
               value={modifyNote}
               onChangeText={setModifyNote}
             />
+            </ScrollView>
 
-            <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+            {/* Fixed footer — cancellation is handled from the Admin panel only, no cancel button here. */}
+            <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end', padding: 14, borderTopWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FAFAFA' }}>
               <TouchableOpacity
-                style={{ backgroundColor: '#FEE2E2', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: '#EF4444' }}
-                onPress={() => {
-                  Alert.alert(
-                    'Cancel Order',
-                    'Are you sure you want to cancel this entire order?',
-                    [
-                      { text: 'No', style: 'cancel' },
-                      { text: 'Yes, Cancel', style: 'destructive', onPress: () => handleCancelEntireOrder(editingOrder) }
-                    ]
-                  );
-                }}
-              >
-                <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 12 }}>Cancel Order</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={{ backgroundColor: '#F3F4F6', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: '#111' }}
+                style={{ backgroundColor: '#F3F4F6', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
                 onPress={() => setShowModifyModal(false)}
               >
-                <Text style={{ fontWeight: 'bold', fontSize: 12 }}>Close</Text>
+                <Text style={{ fontWeight: 'bold', fontSize: 13 }}>Close</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={{ backgroundColor: '#7C3AED', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 6, borderWidth: 1, borderColor: '#111' }}
+                style={{ backgroundColor: '#7C3AED', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
                 onPress={handleSaveModify}
                 disabled={submittingModify || modifyItems.length === 0}
               >
-                <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 12 }}>
+                <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>
                   {submittingModify ? 'Saving...' : 'Save & Send KOT'}
                 </Text>
               </TouchableOpacity>

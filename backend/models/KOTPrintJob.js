@@ -7,6 +7,12 @@ const kotPrintJobSchema = new mongoose.Schema({
         unique: true,
         index: true
     },
+    jobType: {
+        type: String,
+        enum: ['kot', 'bill'],
+        default: 'kot',
+        index: true
+    },
     status: {
         type: String,
         enum: ['pending', 'printed'],

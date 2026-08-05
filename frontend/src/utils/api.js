@@ -47,6 +47,7 @@ export const deleteOrder = (id) => axios.delete(`${API_URL}/orders/${id}`);
 export const updateOrderItems = (id, items) => axios.put(`${API_URL}/orders/${id}/items`, { items });
 export const modifyOrderItems = (id, payload) => axios.put(`${API_URL}/orders/${id}/modify-items`, payload);
 export const moveOrderTable = (id, newTableIds) => axios.put(`${API_URL}/orders/${id}/move-table`, { newTableIds });
+export const moveOrderItem = (id, payload) => axios.put(`${API_URL}/orders/${id}/move-item`, payload);
 export const getKOTs = (date) => axios.get(`${API_URL}/orders/kots`, { params: { date } });
 
 // Coupons
@@ -145,6 +146,7 @@ export const getBills = (date) => axios.get(`${API_URL}/bills`, { params: { date
 export const getBillerSuggestions = () => axios.get(`${API_URL}/bills/billers/suggestions`);
 export const generateBill = (data) => axios.post(`${API_URL}/bills/generate`, data);
 export const deleteBill = (id) => axios.delete(`${API_URL}/bills/${id}`);
+export const printBill = (id) => axios.post(`${API_URL}/bills/${id}/print`);
 export const bulkDeleteBills = (billIds) => axios.post(`${API_URL}/bills/bulk-delete`, { billIds });
 
 // Employee performance

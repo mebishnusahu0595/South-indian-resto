@@ -1,25 +1,48 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import './OrderBill.css';
-import { FiCheck, FiX, FiFileText } from 'react-icons/fi';
+import { FiCheck, FiX, FiFileText, FiPrinter } from 'react-icons/fi';
+import { printBill } from '../utils/api';
 
 const OrderBill = ({ order, orders, bill, onCancel }) => {
+    const [silentQueued, setSilentQueued] = useState(false);
     // Prefer the backend Bill snapshot so consolidated totals/items are rendered exactly once.
     const ordersList = bill?.orders?.length
         ? bill.orders
         : (orders || (bill?.order ? [bill.order] : (order ? [order] : [])));
 
     useEffect(() => {
-        if (ordersList.length > 0) {
+        if (bill?._id) {
+            printBill(bill._id)
+                .then(() => setSilentQueued(true))
+                .catch(err => {
+                    console.warn('Silent bill print queue failed, opening browser print fallback:', err.message);
+                    window.print();
+                });
+        } else if (ordersList.length > 0) {
             const timer = setTimeout(() => {
                 window.print();
             }, 350);
             return () => clearTimeout(timer);
         }
-    }, [ordersList]);
+    }, [bill, ordersList]);
 
     if (ordersList.length === 0) return null;
 
-    const handlePrint = () => {
+    const handlePrint = async () => {
+        if (bill?._id) {
+            try {
+                await printBill(bill._id);
+                setSilentQueued(true);
+            } catch (err) {
+                console.error('Silent print failed, fallback to browser print dialog:', err);
+                window.print();
+            }
+        } else {
+            window.print();
+        }
+    };
+
+    const handleBrowserPrint = () => {
         window.print();
     };
 
@@ -175,7 +198,12 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
                 </div>
 
                 <div className="bill-actions">
-                    <button className="btn-print" onClick={handlePrint}>Print Bill</button>
+                    <button className="btn-print" onClick={handlePrint} style={{ background: silentQueued ? '#10B981' : '#2563EB' }}>
+                        <FiPrinter /> {silentQueued ? '✓ Thermal Printed' : 'Thermal Print'}
+                    </button>
+                    <button className="btn-print" onClick={handleBrowserPrint} style={{ background: '#4B5563' }}>
+                        Browser Print
+                    </button>
                     <button className="btn-close" onClick={onCancel}>Close</button>
                 </div>
             </div>
