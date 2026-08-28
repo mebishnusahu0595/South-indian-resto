@@ -17,7 +17,14 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
       };
 
       const handleNewOrder = (newOrder) => {
-        setOrders(prev => [newOrder, ...prev]);
+        setOrders(prev => {
+          const id = newOrder._id || newOrder.id;
+          const exists = prev.some(o => (o._id || o.id) === id);
+          if (exists) {
+            return prev.map(o => (o._id || o.id) === id ? { ...o, ...newOrder } : o);
+          }
+          return [newOrder, ...prev];
+        });
       };
 
       socket.on('order-updated', handleOrderUpdate);

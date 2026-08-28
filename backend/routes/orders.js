@@ -91,7 +91,10 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
 
     const io = req.app.get('io');
     if (io) {
-        io.emit('new-order', eventPayload);
+        // Only emit new-order event for completely new orders, never for incremental KOT deltas
+        if (eventType === 'CREATE') {
+            io.emit('new-order', eventPayload);
+        }
         io.emit('new-print-job', eventPayload);
     }
     return eventPayload;
@@ -760,18 +763,20 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             });
         }
 
-        const currentItems = normalizeItems(order.items);
-        const consolidatedUpdatedItems = normalizeItems(updatedItems);
-
-        // Older APKs can cache the incremental ADD-KOT socket payload as if it were the
-        // complete order. Never interpret that stale subset as an explicit mass removal.
-        if (isStalePartialAdditionPayload(currentItems, consolidatedUpdatedItems, order.kotHistory)) {
-            return res.status(409).json({
-                message: 'Order view was stale after an ADD KOT. Reopen the order; no items were changed.'
-            });
+        // Safety merge: if the submitted items omit existing items from the database order,
+        // protect the existing items from being accidentally wiped out by stale mobile app state.
+        const submittedIdSet = new Set(consolidatedUpdatedItems.map(getMenuItemId));
+        const missingFromSubmission = currentItems.filter(item => !submittedIdSet.has(getMenuItemId(item)));
+        
+        let effectiveUpdatedItems = [...consolidatedUpdatedItems];
+        if (missingFromSubmission.length > 0 && req.user.role !== 'superadmin') {
+            // Staff modify is meant for adding new items. Retain any existing items that were not explicitly in payload.
+            for (const missingItem of missingFromSubmission) {
+                effectiveUpdatedItems.push(missingItem);
+            }
         }
 
-        const requestedMenuItemIds = [...new Set(consolidatedUpdatedItems.map(getMenuItemId))];
+        const requestedMenuItemIds = [...new Set(effectiveUpdatedItems.map(getMenuItemId))];
         const requestedMenuItems = await MenuItem.find({ _id: { $in: requestedMenuItemIds } });
         const menuItemsById = new Map(requestedMenuItems.map(menuItem => [menuItem._id.toString(), menuItem]));
         const missingMenuItemIds = requestedMenuItemIds.filter(menuItemId => !menuItemsById.has(menuItemId));
@@ -795,7 +800,7 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         });
 
         const newMap = new Map();
-        for (const item of consolidatedUpdatedItems) {
+        for (const item of effectiveUpdatedItems) {
             if (item.quantity <= 0) continue;
 
             const mIdToFind = getMenuItemId(item);
