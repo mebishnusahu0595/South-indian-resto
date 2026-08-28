@@ -763,6 +763,9 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             });
         }
 
+        const currentItems = normalizeItems(order.items);
+        const consolidatedUpdatedItems = normalizeItems(updatedItems);
+
         // Safety merge: if the submitted items omit existing items from the database order,
         // protect the existing items from being accidentally wiped out by stale mobile app state.
         const submittedIdSet = new Set(consolidatedUpdatedItems.map(getMenuItemId));
