@@ -393,7 +393,6 @@ router.post('/:id/print', protect, admin, async (req, res) => {
 
         const io = req.app.get('io');
         if (io) {
-            io.emit('new-print-job', jobPayload);
             io.emit('new-bill-print', jobPayload);
         }
 

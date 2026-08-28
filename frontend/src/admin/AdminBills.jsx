@@ -7,13 +7,18 @@ import Loader from '../components/Loader';
 import '../components/OrderBill.css';
 import './AdminBills.css';
 
+const BUSINESS_DAY_CUTOFF_HOURS = 3;
+const BUSINESS_DAY_CUTOFF_MS = BUSINESS_DAY_CUTOFF_HOURS * 60 * 60 * 1000;
+
 const getLocalDateString = (date = new Date()) => {
+    const rawDate = date instanceof Date ? date : new Date(date);
+    const adjustedDate = new Date(rawDate.getTime() - BUSINESS_DAY_CUTOFF_MS);
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Kolkata',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
-    }).formatToParts(date);
+    }).formatToParts(adjustedDate);
     const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
     return `${values.year}-${values.month}-${values.day}`;
 };
@@ -100,6 +105,18 @@ const AdminBills = () => {
         fetchBills();
         fetchMaxDiscountLimit();
     }, [selectedDate]);
+
+    useEffect(() => {
+        if (createdBill) {
+            if (createdBill._id) {
+                printBill(createdBill._id).catch(() => {});
+            }
+            const timer = setTimeout(() => {
+                window.print();
+            }, 350);
+            return () => clearTimeout(timer);
+        }
+    }, [createdBill]);
 
     const fetchMaxDiscountLimit = async () => {
         try {
@@ -1017,7 +1034,10 @@ const AdminBills = () => {
                         </div>
 
                         <div className="bill-actions">
-                            <button className="btn-print" onClick={() => {
+                            <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => window.print()}>
+                                🖨️ Print Bill
+                            </button>
+                            <button className="btn-print" style={{ background: '#2563EB' }} onClick={() => {
                                 if (createdBill?._id) {
                                     printBill(createdBill._id)
                                         .then(() => toast.success('Bill print queued to Thermal Printer!'))
@@ -1026,7 +1046,6 @@ const AdminBills = () => {
                                     window.print();
                                 }
                             }}>Thermal Print</button>
-                            <button className="btn-print" style={{ background: '#4B5563' }} onClick={() => window.print()}>Browser Print</button>
                             <button className="btn-close" onClick={() => {
                                 setShowEditModal(false);
                                 setCreatedBill(null);

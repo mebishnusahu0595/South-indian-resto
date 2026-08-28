@@ -1542,15 +1542,20 @@ const AdminOrders = () => {
                             <div className="input-group" style={{ marginBottom: 0 }}>
                                 <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Apply Coupon (Optional)</label>
                                 <select
-                                    value={paymentDiscountInput}
+                                    value=""
                                     onChange={(e) => {
                                         const val = e.target.value;
-                                        setPaymentDiscountInput(val);
-                                        const matchedCoupon = coupons.find(c => (c.discountType === 'percentage' ? `${c.discountValue}%` : `${c.discountValue}`) === val);
+                                        if (!val) return;
+                                        const matchedCoupon = coupons.find(c => c._id === val);
                                         if (matchedCoupon) {
+                                            if (matchedCoupon.discountType === 'percentage') {
+                                                setPaymentDiscountType('%');
+                                                setPaymentDiscountInput(String(matchedCoupon.discountValue));
+                                            } else {
+                                                setPaymentDiscountType('₹');
+                                                setPaymentDiscountInput(String(matchedCoupon.discountValue));
+                                            }
                                             setPaymentDiscountName(matchedCoupon.code);
-                                        } else {
-                                            setPaymentDiscountName('');
                                         }
                                     }}
                                     className="input"
@@ -1558,29 +1563,43 @@ const AdminOrders = () => {
                                 >
                                     <option value="">-- No Coupon --</option>
                                     {coupons.map(c => (
-                                        <option key={c._id} value={c.discountType === 'percentage' ? `${c.discountValue}%` : `${c.discountValue}`}>
+                                        <option key={c._id} value={c._id}>
                                             {c.code} - {c.discountType === 'percentage' ? `${c.discountValue}%` : `₹${c.discountValue}`} Off (Min: ₹{c.minOrderAmount})
                                         </option>
                                     ))}
                                 </select>
                             </div>
 
-                            {/* Custom Discount Input - Percentage only */}
+                            {/* Custom Discount Input with ₹ / % toggle */}
                             <div className="input-group" style={{ marginBottom: 0 }}>
-                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Discount (%)</label>
+                                <label style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>
+                                    Discount ({paymentDiscountType === '₹' ? 'in ₹ Rupees' : 'in % Percentage'})
+                                </label>
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                     <input
                                         type="number"
                                         min="0"
-                                        max="100"
                                         step="any"
-                                        placeholder="e.g. 10 (for 10%)"
+                                        placeholder={paymentDiscountType === '₹' ? 'e.g. 50 (₹50 off)' : 'e.g. 10 (for 10%)'}
                                         value={paymentDiscountInput}
                                         onChange={(e) => setPaymentDiscountInput(e.target.value)}
                                         className="input"
                                         style={{ flex: 1, padding: '8px 10px', border: '2px solid #111111', borderRadius: '6px', fontSize: '0.9rem' }}
                                     />
-                                    <span style={{ padding: '6px 12px', background: '#7C3AED', color: '#FFF', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.95rem' }}>%</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setPaymentDiscountType(t => t === '₹' ? '%' : '₹');
+                                            setPaymentDiscountInput('');
+                                        }}
+                                        style={{ padding: '8px 14px', background: paymentDiscountType === '₹' ? '#059669' : '#7C3AED', color: '#FFF', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', border: 'none', cursor: 'pointer', minWidth: '44px' }}
+                                        title="Toggle between ₹ Rupees and % Percentage discount"
+                                    >
+                                        {paymentDiscountType === '₹' ? '₹' : '%'}
+                                    </button>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#6B7280', marginTop: '3px' }}>
+                                    Tap <strong>{paymentDiscountType === '₹' ? '₹' : '%'}</strong> button to switch to {paymentDiscountType === '₹' ? 'Percentage (%)' : 'Rupees (₹)'} mode
                                 </div>
                             </div>
 

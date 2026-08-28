@@ -10,16 +10,25 @@ import './AdminDashboard.css';
 const AdminDashboard = () => {
     const { user, socket } = useAuth();
 
+    const BUSINESS_DAY_CUTOFF_HOURS = 3;
+    const BUSINESS_DAY_CUTOFF_MS = BUSINESS_DAY_CUTOFF_HOURS * 60 * 60 * 1000;
+
     const getLocalDateString = (d = new Date()) => {
-        const offset = d.getTimezoneOffset();
-        const localDate = new Date(d.getTime() - (offset * 60 * 1000));
-        return localDate.toISOString().split('T')[0];
+        const rawDate = d instanceof Date ? d : new Date(d);
+        const adjustedDate = new Date(rawDate.getTime() - BUSINESS_DAY_CUTOFF_MS);
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(adjustedDate);
+        const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+        return `${values.year}-${values.month}-${values.day}`;
     };
 
     const getFirstOfMonthDateString = () => {
-        const d = new Date();
-        const first = new Date(d.getFullYear(), d.getMonth(), 1);
-        return getLocalDateString(first);
+        const todayStr = getLocalDateString();
+        return `${todayStr.slice(0, 7)}-01`;
     };
 
     const [startDate, setStartDate] = useState(getLocalDateString());

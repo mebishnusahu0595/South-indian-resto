@@ -9,13 +9,18 @@ import './AdminAnalytics.css';
 
 const COLORS = ['#C87316', '#E08A2E', '#22C55E', '#3B82F6', '#9333EA', '#EC4899'];
 
+const BUSINESS_DAY_CUTOFF_HOURS = 3;
+const BUSINESS_DAY_CUTOFF_MS = BUSINESS_DAY_CUTOFF_HOURS * 60 * 60 * 1000;
+
 const getLocalDateString = (date = new Date()) => {
+    const rawDate = date instanceof Date ? date : new Date(date);
+    const adjustedDate = new Date(rawDate.getTime() - BUSINESS_DAY_CUTOFF_MS);
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Kolkata',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
-    }).formatToParts(date);
+    }).formatToParts(adjustedDate);
     const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
     return `${values.year}-${values.month}-${values.day}`;
 };
@@ -405,7 +410,7 @@ const AdminAnalytics = () => {
                                 <h1 style={{ margin: '0 0 4px', fontSize: '1.8rem', textTransform: 'uppercase' }}>Kea By The Pool</h1>
                                 <h3 style={{ margin: '0 0 4px', color: '#7C3AED' }}>DAY-END (EOD) SALES REPORT</h3>
                                 <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
-                                    Date: <strong>{formatBusinessDate(dayEndData.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> | Printed: {new Date().toLocaleTimeString()}
+                                    Date: <strong>{formatBusinessDate(dayEndData.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> (Shift: 3:00 AM – 3:00 AM IST) | Printed: {new Date().toLocaleTimeString()}
                                 </p>
                             </div>
 
@@ -614,7 +619,7 @@ const AdminAnalytics = () => {
                                 <h1 style={{ margin: '0 0 4px', fontSize: '1.8rem', textTransform: 'uppercase' }}>Kea By The Pool</h1>
                                 <h3 style={{ margin: '0 0 4px', color: '#7C3AED' }}>SECTION & TABLE-WISE SALES REPORT</h3>
                                 <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
-                                    Date: <strong>{formatBusinessDate(sectionData.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> | Printed: {new Date().toLocaleTimeString()}
+                                    Date: <strong>{formatBusinessDate(sectionData.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> (Shift: 3:00 AM – 3:00 AM IST) | Printed: {new Date().toLocaleTimeString()}
                                 </p>
                             </div>
 

@@ -6,10 +6,20 @@ import { useAuth } from '../context/AuthContext';
 import OrderBill from '../components/OrderBill';
 import './AdminHistory.css';
 
+const BUSINESS_DAY_CUTOFF_HOURS = 3;
+const BUSINESS_DAY_CUTOFF_MS = BUSINESS_DAY_CUTOFF_HOURS * 60 * 60 * 1000;
+
 const getLocalDateString = (date = new Date()) => {
-    const offset = date.getTimezoneOffset();
-    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
-    return localDate.toISOString().split('T')[0];
+    const rawDate = date instanceof Date ? date : new Date(date);
+    const adjustedDate = new Date(rawDate.getTime() - BUSINESS_DAY_CUTOFF_MS);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(adjustedDate);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
 };
 
 const AdminHistory = () => {

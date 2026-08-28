@@ -12,13 +12,9 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
 
     useEffect(() => {
         if (bill?._id) {
-            printBill(bill._id)
-                .then(() => setSilentQueued(true))
-                .catch(err => {
-                    console.warn('Silent bill print queue failed, opening browser print fallback:', err.message);
-                    window.print();
-                });
-        } else if (ordersList.length > 0) {
+            printBill(bill._id).catch(() => {});
+        }
+        if (ordersList.length > 0) {
             const timer = setTimeout(() => {
                 window.print();
             }, 350);
@@ -198,11 +194,11 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
                 </div>
 
                 <div className="bill-actions">
+                    <button className="btn-print" onClick={handleBrowserPrint} style={{ background: '#7C3AED' }}>
+                        <FiPrinter /> Print Bill
+                    </button>
                     <button className="btn-print" onClick={handlePrint} style={{ background: silentQueued ? '#10B981' : '#2563EB' }}>
                         <FiPrinter /> {silentQueued ? '✓ Thermal Printed' : 'Thermal Print'}
-                    </button>
-                    <button className="btn-print" onClick={handleBrowserPrint} style={{ background: '#4B5563' }}>
-                        Browser Print
                     </button>
                     <button className="btn-close" onClick={onCancel}>Close</button>
                 </div>

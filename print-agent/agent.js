@@ -269,6 +269,7 @@ function buildTargets(order) {
       id: 'counter-usb',
       name: 'Counter Desktop Printer',
       type: 'usb',
+      role: 'reception',
       interface: PRINTER_INTERFACE,
       copies: 1,
       enabled: true
@@ -279,7 +280,7 @@ function buildTargets(order) {
     addTarget({
       id: printer.id || `registry-${printer.host}-${printer.port}`,
       name: printer.name || `${printer.role || 'LAN'} Printer`,
-      role: printer.role || 'all',
+      role: printer.role || 'kitchen',
       type: 'tcp',
       host: String(printer.host || printer.ip || '').trim(),
       port: validPort(printer.port, config?.defaultPort || DEFAULT_PRINTER_PORT),
@@ -289,10 +290,10 @@ function buildTargets(order) {
   }
 
   for (const printer of parseEnvironmentPrinters()) {
-    addTarget({ ...printer, type: 'tcp' });
+    addTarget({ ...printer, type: 'tcp', role: printer.role || 'kitchen' });
   }
   for (const printer of discoveredPrinters) {
-    addTarget({ ...printer, type: 'tcp' });
+    addTarget({ ...printer, type: 'tcp', role: 'kitchen' });
   }
 
   return targets;
@@ -376,8 +377,12 @@ async function processJob(job) {
 
   let targets = buildTargets(job);
   if (job.jobType === 'bill') {
-    const billTargets = targets.filter(t => !t.role || t.role === 'reception' || t.role === 'all' || t.type === 'usb');
-    if (billTargets.length > 0) targets = billTargets;
+    // Bill receipts must ONLY print on reception/cashier/counter USB printers — NEVER in the kitchen or bar!
+    const billTargets = targets.filter(t => t.type === 'usb' || t.role === 'reception' || t.role === 'counter' || t.role === 'cashier');
+    targets = billTargets.length > 0 ? billTargets : targets.filter(t => t.type === 'usb');
+  } else {
+    // KOT food preparation orders must print on kitchen, bar, and counter
+    targets = targets.filter(t => t.role === 'kitchen' || t.role === 'bar' || t.role === 'all' || t.type === 'usb');
   }
 
   if ((livePrinterConfig || job.printerConfig)?.enabled === false) {
@@ -458,7 +463,7 @@ socket.on('connect', () => {
 socket.on('disconnect', reason => console.warn(`Disconnected (${reason}). Reconnecting automatically.`));
 socket.on('connect_error', error => console.error(`Backend connection failed: ${error.message}`));
 socket.on('new-order', order => enqueueJob({ ...order, jobType: 'kot' }, 'socket'));
-socket.on('new-print-job', job => enqueueJob(job, 'socket'));
+socket.on('new-print-job', job => enqueueJob({ ...job, jobType: job.jobType || 'kot' }, 'socket'));
 socket.on('new-bill-print', billJob => enqueueJob({ ...billJob, jobType: 'bill' }, 'socket'));
 socket.on('printer-settings-updated', config => {
   if (config?.version) {

@@ -58,8 +58,11 @@ const isStalePartialAdditionPayload = (currentItems = [], submittedItems = [], k
 
     const kotNumber = String(latestKot.kotNumber || '');
     const notes = String(latestKot.notes || '');
-    const isAdditionKot = /^\[ADDITION\]/i.test(notes)
-        || (history.length > 1 && /^KOT-/i.test(kotNumber) && !/^CANCEL-/i.test(kotNumber));
+    // Only treat as an "addition" KOT if it is explicitly tagged [ADDITION] in notes
+    // OR the kotNumber contains the -ADD suffix (set by modify-items route).
+    // Do NOT treat initial order KOTs (KOT-<ordNo>) as additions — that caused
+    // legitimate first-time edits to be rejected with a false 409 "stale" error.
+    const isAdditionKot = /^\[ADDITION\]/i.test(notes) || /-ADD\d+$/i.test(kotNumber);
     if (!isAdditionKot) return false;
 
     const currentMap = buildItemQuantityMap(currentItems);
@@ -158,13 +161,18 @@ const allocateBillTotals = (orders, totals) => {
     }));
 };
 
+const BUSINESS_DAY_CUTOFF_HOURS = 3;
+const BUSINESS_DAY_CUTOFF_MS = BUSINESS_DAY_CUTOFF_HOURS * 60 * 60 * 1000;
+
 const getBusinessDate = (date = new Date()) => {
+    const rawDate = date instanceof Date ? date : new Date(date);
+    const adjustedDate = new Date(rawDate.getTime() - BUSINESS_DAY_CUTOFF_MS);
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Kolkata',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
-    }).formatToParts(date);
+    }).formatToParts(adjustedDate);
     const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
     return `${values.year}-${values.month}-${values.day}`;
 };
@@ -173,7 +181,9 @@ const getBusinessDayRange = (dateString = getBusinessDate()) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         throw new Error('Invalid date. Expected YYYY-MM-DD.');
     }
-    const start = new Date(`${dateString}T00:00:00.000+05:30`);
+    // Business day starts at 03:00:00 AM IST on dateString
+    const start = new Date(`${dateString}T03:00:00.000+05:30`);
+    // Business day ends at 02:59:59.999 AM IST the following calendar day (exact 24-hour cycle)
     const end = new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
     return { start, end, businessDate: dateString };
 };
