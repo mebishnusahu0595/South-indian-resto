@@ -618,12 +618,7 @@ const AdminOrders = () => {
             localStorage.setItem('lastBillerName', paymentBillerName);
             setShowPaymentBillerModal(false);
             fetchOrders();
-            setSelectedOrder(billRes.data.order);
-            setSelectedBillForPrint(billRes.data);
-            setSelectedOrdersForBill(billRes.data.orders?.length
-                ? billRes.data.orders
-                : [billRes.data.order].filter(Boolean));
-            setShowBill(true);
+            // Do not pop open the bill preview on final settlement - bill was already printed beforehand!
         } catch (error) {
             alert(error.response?.data?.message || 'Failed to process payment and bill generation');
         }
@@ -684,11 +679,7 @@ const AdminOrders = () => {
             localStorage.setItem('lastBillerName', paymentBillerName);
             setShowSplitModal(false);
             fetchOrders();
-            setSelectedBillForPrint(billRes.data);
-            setSelectedOrdersForBill(billRes.data.orders?.length
-                ? billRes.data.orders
-                : [billRes.data.order].filter(Boolean));
-            setShowBill(true);
+            // Do not pop open the bill preview on final split settlement - bill was already printed beforehand!
         } catch (error) {
             alert(error.response?.data?.message || 'Failed to process split payment');
         }
