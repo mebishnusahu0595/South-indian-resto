@@ -83,7 +83,7 @@ const AdminLayout = () => {
     }, [layoutKOT, kotQueue]);
 
     useEffect(() => {
-        if (!layoutKOT || localStorage.getItem('kea_auto_print_kot') === 'false') {
+        if (!layoutKOT) {
             return undefined;
         }
 
@@ -95,16 +95,19 @@ const AdminLayout = () => {
         const handleAfterPrint = () => finishPrint();
 
         window.addEventListener('afterprint', handleAfterPrint);
-        const printTimer = setTimeout(() => {
-            window.print();
-            // afterprint is supported by production Chromium. This watchdog
-            // prevents a stalled queue in browsers that fail to emit it.
-            fallbackTimer = setTimeout(finishPrint, 60000);
-        }, 350);
+
+        const isAutoPrint = localStorage.getItem('kea_auto_print_kot') !== 'false';
+        let printTimer;
+        if (isAutoPrint) {
+            printTimer = setTimeout(() => {
+                window.print();
+                fallbackTimer = setTimeout(finishPrint, 3500);
+            }, 350);
+        }
 
         return () => {
-            clearTimeout(printTimer);
-            clearTimeout(fallbackTimer);
+            if (printTimer) clearTimeout(printTimer);
+            if (fallbackTimer) clearTimeout(fallbackTimer);
             window.removeEventListener('afterprint', handleAfterPrint);
         };
     }, [layoutKOT]);
@@ -113,8 +116,9 @@ const AdminLayout = () => {
         if (!socket) return undefined;
 
         const handleOrderChange = () => fetchCounts();
-        const handleNewOrder = (order) => {
-            setNotifications(prev => [...prev, { type: 'order', message: `New order #${order.orderNumber}`, id: order._id }]);
+        const handleNewKOT = (order) => {
+            if (!order) return;
+            setNotifications(prev => [...prev, { type: 'order', message: `New KOT #${order.orderNumber}`, id: order._id }]);
             playNotificationSound();
             fetchCounts();
 
@@ -169,7 +173,8 @@ const AdminLayout = () => {
             fetchCounts();
         };
 
-        socket.on('new-order', handleNewOrder);
+        socket.on('new-order', handleNewKOT);
+        socket.on('new-kot', handleNewKOT);
         socket.on('bill-requested', handleBillRequested);
         socket.on('bill-generated', handleOrderChange);
         socket.on('bill-deleted', handleOrderChange);
@@ -183,7 +188,8 @@ const AdminLayout = () => {
         socket.on('table-updated', handleOrderChange);
 
         return () => {
-            socket.off('new-order', handleNewOrder);
+            socket.off('new-order', handleNewKOT);
+            socket.off('new-kot', handleNewKOT);
             socket.off('bill-requested', handleBillRequested);
             socket.off('bill-generated', handleOrderChange);
             socket.off('bill-deleted', handleOrderChange);

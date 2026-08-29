@@ -95,6 +95,7 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
         if (eventType === 'CREATE') {
             io.emit('new-order', eventPayload);
         }
+        io.emit('new-kot', eventPayload);
         io.emit('new-print-job', eventPayload);
     }
     return eventPayload;
