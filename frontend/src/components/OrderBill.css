@@ -83,9 +83,19 @@
     .btn-print,
     .btn-close,
     .sidebar-close,
+    .modal-header,
+    .modal-header *,
+    .no-print,
     button {
         display: none !important;
         visibility: hidden !important;
+    }
+
+    #kot-printable-slip {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
     }
 
     .bill-header h2 {

@@ -2294,7 +2294,7 @@ const AdminOrders = () => {
             {selectedKOTForPrint && (
                 <div className="modal-overlay" onClick={() => setSelectedKOTForPrint(null)}>
                     <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '360px', width: '92%' }}>
-                        <div className="modal-header">
+                        <div className="modal-header no-print">
                             <h2>KOT Ticket Preview</h2>
                             <button className="modal-close" onClick={() => setSelectedKOTForPrint(null)}>×</button>
                         </div>
@@ -2344,7 +2344,7 @@ const AdminOrders = () => {
                                 --- KITCHEN / RECEPTION COPY ---
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                        <div className="no-print" style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
                             <button
                                 className="btn btn-primary btn-full"
                                 onClick={() => window.print()}
