@@ -2292,65 +2292,75 @@ const AdminOrders = () => {
 
             {/* KOT Print Preview Modal */}
             {selectedKOTForPrint && (
-                <div className="modal-overlay" onClick={() => setSelectedKOTForPrint(null)}>
-                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '360px', width: '92%' }}>
-                        <div className="modal-header no-print">
-                            <h2>KOT Ticket Preview</h2>
-                            <button className="modal-close" onClick={() => setSelectedKOTForPrint(null)}>×</button>
+                <div className="bill-modal-overlay" onClick={() => setSelectedKOTForPrint(null)}>
+                    <div className="bill-container print-bill-overlay" onClick={e => e.stopPropagation()} style={{ maxWidth: '380px' }}>
+                        <div className="bill-header">
+                            <h2>KEA BY THE POOL</h2>
+                            <p style={{ fontWeight: 'bold', fontSize: '17px', color: '#7C3AED', margin: '4px 0' }}>KITCHEN ORDER TICKET</p>
+                            <p style={{ fontWeight: 'bold', fontSize: '19px', margin: 0 }}>{selectedKOTForPrint.kotNumber}</p>
                         </div>
-                        <div id="kot-printable-slip" style={{ background: '#FFF', padding: '16px', fontFamily: 'monospace', fontSize: '15px', lineHeight: '1.45', border: '1px solid #CCC', borderRadius: '6px' }}>
-                            <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
-                                <h2 style={{ margin: '0 0 2px', fontSize: '20px', textTransform: 'uppercase' }}>KEA BY THE POOL</h2>
-                                <h3 style={{ margin: 0, fontSize: '16px', color: '#555' }}>KITCHEN ORDER TICKET</h3>
-                                <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '4px', color: '#7C3AED' }}>{selectedKOTForPrint.kotNumber}</div>
-                            </div>
 
-                            <div style={{ marginBottom: '8px', fontSize: '14px' }}>
-                                <div><strong>TABLE:</strong> {selectedKOTForPrint.tableNumber}</div>
-                                <div><strong>STAFF:</strong> {selectedKOTForPrint.staffName}</div>
-                                <div><strong>DATE/TIME:</strong> {new Date(selectedKOTForPrint.timestamp).toLocaleDateString('en-IN')} {new Date(selectedKOTForPrint.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div className="bill-info">
+                            <div className="bill-info-row">
+                                <span>TABLE:</span>
+                                <strong>{selectedKOTForPrint.tableNumber || selectedKOTForPrint.tableName || 'Takeaway'}</strong>
                             </div>
+                            <div className="bill-info-row">
+                                <span>ORDER #:</span>
+                                <strong>#{selectedKOTForPrint.orderNumber}</strong>
+                            </div>
+                            <div className="bill-info-row">
+                                <span>STAFF:</span>
+                                <strong>{selectedKOTForPrint.staffName || 'Staff'}</strong>
+                            </div>
+                            <div className="bill-info-row">
+                                <span>DATE/TIME:</span>
+                                <span>{new Date(selectedKOTForPrint.timestamp).toLocaleDateString('en-IN')} {new Date(selectedKOTForPrint.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                            </div>
+                        </div>
 
-                            <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '6px 0', marginBottom: '8px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '4px', fontSize: '15px' }}>
-                                    <span>ITEM NAME</span>
-                                    <span>QTY</span>
-                                </div>
-                                {selectedKOTForPrint.items.map((item, i) => {
-                                    const itemNote = item.notes || item.instruction || item.specialInstructions || item.note;
-                                    return (
-                                        <div key={i} style={{ margin: '4px 0' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px' }}>
-                                                <span>{item.name || item.menuItem?.name || 'Item'}</span>
-                                                <strong>{item.quantity}</strong>
-                                            </div>
-                                            {itemNote ? (
-                                                <div style={{ fontSize: '13px', color: '#D97706', paddingLeft: '8px', fontStyle: 'italic', fontWeight: 'bold' }}>
-                                                    ↳ Note: {itemNote}
-                                                </div>
-                                            ) : null}
+                        <div className="bill-divider"></div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '17px', borderBottom: '2px solid #000', paddingBottom: '4px', marginBottom: '8px' }}>
+                            <span>ITEM NAME</span>
+                            <span>QTY</span>
+                        </div>
+
+                        {(selectedKOTForPrint.items || []).map((item, i) => {
+                            const itemNote = item.notes || item.instruction || item.specialInstructions || item.note;
+                            return (
+                                <div key={i} style={{ marginBottom: '6px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '17px', fontWeight: '600' }}>
+                                        <span>{item.name || item.menuItem?.name || 'Item'}</span>
+                                        <strong>x{item.quantity}</strong>
+                                    </div>
+                                    {itemNote ? (
+                                        <div style={{ fontSize: '14px', color: '#DC2626', marginLeft: '10px', fontStyle: 'italic', fontWeight: 'bold' }}>
+                                            ↳ Note: {itemNote}
                                         </div>
-                                    );
-                                })}
-                            </div>
-
-                            {selectedKOTForPrint.notes && (
-                                <div style={{ marginBottom: '8px', fontSize: '14px', background: '#FEF3C7', padding: '4px 6px', borderRadius: '4px' }}>
-                                    <strong>SPECIAL NOTE:</strong> {selectedKOTForPrint.notes}
+                                    ) : null}
                                 </div>
-                            )}
+                            );
+                        })}
 
-                            <div style={{ textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '6px', fontSize: '13px', color: '#666' }}>
-                                --- KITCHEN / RECEPTION COPY ---
-                            </div>
+                        {selectedKOTForPrint.notes && (
+                            <>
+                                <div className="bill-divider"></div>
+                                <div style={{ background: '#FEF3C7', padding: '6px 8px', borderRadius: '4px', border: '1px solid #F59E0B', fontSize: '15px' }}>
+                                    <strong>NOTE:</strong> {selectedKOTForPrint.notes}
+                                </div>
+                            </>
+                        )}
+
+                        <div className="bill-divider"></div>
+
+                        <div className="bill-footer">
+                            <p style={{ fontSize: '15px', color: '#000', fontWeight: 'bold' }}>*** KITCHEN COPY (80mm Thermal) ***</p>
                         </div>
-                        <div className="no-print" style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                            <button
-                                className="btn btn-primary btn-full"
-                                onClick={() => window.print()}
-                            >
-                                <FiPrinter /> Print 80MM KOT
-                            </button>
+
+                        <div className="bill-actions no-print">
+                            <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => window.print()}>🖨️ Print KOT</button>
+                            <button className="btn-close" onClick={() => setSelectedKOTForPrint(null)}>Close</button>
                         </div>
                     </div>
                 </div>
