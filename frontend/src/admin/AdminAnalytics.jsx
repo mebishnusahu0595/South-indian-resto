@@ -384,6 +384,20 @@ const AdminAnalytics = () => {
 
     return (
         <div className="admin-analytics">
+            <style dangerouslySetInnerHTML={{ __html: `
+                @media print {
+                    .report-printable-area,
+                    .report-printable-area * {
+                        display: none !important;
+                        visibility: hidden !important;
+                    }
+                    body.printing-report .report-printable-area,
+                    body.printing-report .report-printable-area * {
+                        display: block !important;
+                        visibility: visible !important;
+                    }
+                }
+            ` }} />
             <div className="page-header">
                 <h1>Analytics & Reports</h1>
                 <div className="header-actions">

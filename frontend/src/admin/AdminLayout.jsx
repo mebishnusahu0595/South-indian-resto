@@ -16,7 +16,7 @@ const MAX_REMEMBERED_KOTS = 200;
 
 const loadHandledKOTKeys = () => {
     try {
-        const stored = JSON.parse(sessionStorage.getItem(KOT_DEDUPE_STORAGE_KEY) || '[]');
+        const stored = JSON.parse(localStorage.getItem(KOT_DEDUPE_STORAGE_KEY) || '[]');
         return new Set(Array.isArray(stored) ? stored : []);
     } catch (_) {
         return new Set();
@@ -122,18 +122,24 @@ const AdminLayout = () => {
             playNotificationSound();
             fetchCounts();
 
+            // Never auto-print KOT tickets from Analytics/Reports tab
+            if (location.pathname.includes('/analytics')) {
+                return;
+            }
+
             const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
             const kotNumber = order.kotTicket || `KOT-${cleanOrdNo}`;
             const orderIdentity = order._id?.toString() || order.id?.toString() || order.orderNumber || 'unknown';
             const printKey = `${orderIdentity}:${kotNumber}`;
 
-            if (handledKOTKeysRef.current.has(printKey)) return;
+            const freshKeys = loadHandledKOTKeys();
+            if (freshKeys.has(printKey) || handledKOTKeysRef.current.has(printKey)) return;
 
+            freshKeys.add(printKey);
             handledKOTKeysRef.current.add(printKey);
             try {
-                const remembered = Array.from(handledKOTKeysRef.current).slice(-MAX_REMEMBERED_KOTS);
-                handledKOTKeysRef.current = new Set(remembered);
-                sessionStorage.setItem(KOT_DEDUPE_STORAGE_KEY, JSON.stringify(remembered));
+                const remembered = Array.from(freshKeys).slice(-MAX_REMEMBERED_KOTS);
+                localStorage.setItem(KOT_DEDUPE_STORAGE_KEY, JSON.stringify(remembered));
             } catch (_) {
                 // Printing must continue even if browser storage is unavailable.
             }
