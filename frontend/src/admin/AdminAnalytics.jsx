@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend, AreaChart, Area } from 'recharts';
-import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport } from '../utils/api';
+import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport, getItemWiseSales } from '../utils/api';
 import { exportToCSV, downloadCSV, revenueExportColumns } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
-import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers, FiCalendar } from 'react-icons/fi';
+import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers, FiCalendar, FiSearch, FiShoppingBag, FiFilter, FiX } from 'react-icons/fi';
 import './AdminAnalytics.css';
 
 const COLORS = ['#C87316', '#E08A2E', '#22C55E', '#3B82F6', '#9333EA', '#EC4899'];
@@ -30,10 +30,20 @@ const getRelativeBusinessDate = days => {
     return getLocalDateString(new Date(today.getTime() + days * 86400000));
 };
 
-const formatBusinessDate = (dateString, options) => new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    ...options
-}).format(new Date(`${dateString}T00:00:00+05:30`));
+const formatBusinessDate = (dateString, options) => {
+    if (!dateString) return '';
+    if (typeof dateString === 'string' && dateString.includes(' to ')) {
+        return dateString;
+    }
+    try {
+        return new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            ...options
+        }).format(new Date(`${dateString}T00:00:00+05:30`));
+    } catch (_) {
+        return dateString;
+    }
+};
 
 const AdminAnalytics = () => {
     const { user, socket } = useAuth();
@@ -50,12 +60,49 @@ const AdminAnalytics = () => {
     const [showMarginInput, setShowMarginInput] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // EOD & Section Report state
-    const [activeTab, setActiveTab] = useState('day-end'); // 'day-end' | 'section-wise' | 'analytics'
+    // Navigation Tabs state
+    const [activeTab, setActiveTab] = useState('day-end'); // 'analytics' | 'item-sales' | 'day-end' | 'section-wise'
+
+    // Day-End Report state
     const [reportDate, setReportDate] = useState(getLocalDateString());
     const [dayEndData, setDayEndData] = useState(null);
+
+    // Section-Wise Report state (supports From-To range for superadmin)
+    const [sectionPeriod, setSectionPeriod] = useState('today');
+    const [sectionStartDate, setSectionStartDate] = useState(getLocalDateString());
+    const [sectionEndDate, setSectionEndDate] = useState(getLocalDateString());
+    const [sectionRange, setSectionRange] = useState(null);
     const [sectionData, setSectionData] = useState(null);
+
+    // Item-Wise Sales state
+    const [itemSalesPeriod, setItemSalesPeriod] = useState('month');
+    const [itemSalesStartDate, setItemSalesStartDate] = useState(getLocalDateString());
+    const [itemSalesEndDate, setItemSalesEndDate] = useState(getLocalDateString());
+    const [itemSalesRange, setItemSalesRange] = useState(null);
+    const [itemSearchQuery, setItemSearchQuery] = useState('');
+    const [itemCategoryFilter, setItemCategoryFilter] = useState('All');
+    const [itemSortBy, setItemSortBy] = useState('revenue');
+    const [itemSortOrder, setItemSortOrder] = useState('desc');
+    const [itemSalesData, setItemSalesData] = useState(null);
+    const [fetchingItemSales, setFetchingItemSales] = useState(false);
+
     const [fetchingReport, setFetchingReport] = useState(false);
+
+    const handlePrintReport = () => {
+        document.body.classList.add('printing-report');
+        window.print();
+    };
+
+    useEffect(() => {
+        const cleanup = () => {
+            document.body.classList.remove('printing-report');
+        };
+        window.addEventListener('afterprint', cleanup);
+        return () => {
+            window.removeEventListener('afterprint', cleanup);
+            cleanup();
+        };
+    }, []);
 
     useEffect(() => {
         if (user && user.role === 'superadmin') {
@@ -83,16 +130,68 @@ const AdminAnalytics = () => {
         }
     };
 
-    const fetchSectionReport = async (dateVal) => {
+    const fetchSectionReport = async (overrideParams = {}) => {
         setFetchingReport(true);
         try {
-            const res = await getSectionWiseReport(dateVal || reportDate);
+            let params = {};
+            if (overrideParams.startDate && overrideParams.endDate) {
+                params = { startDate: overrideParams.startDate, endDate: overrideParams.endDate };
+            } else if (typeof overrideParams === 'string') {
+                params = { date: overrideParams };
+            } else if (sectionPeriod === 'custom' && sectionRange) {
+                params = { startDate: sectionRange.startDate, endDate: sectionRange.endDate };
+            } else if (sectionPeriod === 'today') {
+                params = { date: getLocalDateString() };
+            } else if (sectionPeriod === 'yesterday') {
+                params = { date: getRelativeBusinessDate(-1) };
+            } else if (sectionPeriod === 'week') {
+                params = { startDate: getRelativeBusinessDate(-6), endDate: getLocalDateString() };
+            } else if (sectionPeriod === 'month') {
+                const today = getLocalDateString();
+                params = { startDate: `${today.slice(0, 7)}-01`, endDate: today };
+            } else {
+                params = { date: sectionStartDate };
+            }
+
+            const res = await getSectionWiseReport(params);
             setSectionData(res.data);
         } catch (err) {
             console.error('Failed to fetch Section-wise report:', err);
         } finally {
             setFetchingReport(false);
         }
+    };
+
+    const fetchItemSalesData = async (overrideParams = {}) => {
+        setFetchingItemSales(true);
+        try {
+            const dateParams = itemSalesPeriod === 'custom' && itemSalesRange ? itemSalesRange : {};
+            const res = await getItemWiseSales({
+                period: itemSalesPeriod,
+                ...dateParams,
+                search: itemSearchQuery || undefined,
+                category: itemCategoryFilter !== 'All' ? itemCategoryFilter : undefined,
+                sortBy: itemSortBy,
+                order: itemSortOrder,
+                ...overrideParams
+            });
+            setItemSalesData(res.data);
+        } catch (err) {
+            console.error('Failed to fetch Item-wise sales report:', err);
+        } finally {
+            setFetchingItemSales(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'item-sales') {
+            fetchItemSalesData();
+        }
+    }, [activeTab, itemSalesPeriod, itemSalesRange, itemCategoryFilter, itemSortBy, itemSortOrder]);
+
+    const handleApplyItemSalesSearch = (e) => {
+        if (e) e.preventDefault();
+        fetchItemSalesData();
     };
 
     const handleDownloadDayEndReport = (dayEndData) => {
@@ -146,7 +245,7 @@ const AdminAnalytics = () => {
         const dateStr = sectionData.date || getLocalDateString();
 
         let csv = `KEA BY THE POOL - SECTION & TABLE SETTLEMENT SALES REPORT\n`;
-        csv += `Date,${dateStr}\n\n`;
+        csv += `Date Range / Date,${dateStr}\n\n`;
 
         csv += `SECTION SUMMARY\n`;
         csv += `Section Name,Total Orders,Total Sales (Rs.)\n`;
@@ -173,7 +272,31 @@ const AdminAnalytics = () => {
             });
         });
 
-        downloadCSV(csv, `Table_Section_Settlement_Report_${dateStr}`, { saleReportFolder: true });
+        downloadCSV(csv, `Table_Section_Settlement_Report_${String(dateStr).replace(/[^a-zA-Z0-9]/g, '_')}`, { saleReportFolder: true });
+    };
+
+    const handleDownloadItemSalesReport = (data) => {
+        if (!data || !data.items) return;
+        const periodStr = itemSalesPeriod === 'custom' && itemSalesRange
+            ? `${itemSalesRange.startDate}_to_${itemSalesRange.endDate}`
+            : itemSalesPeriod;
+
+        let csv = `KEA BY THE POOL - ITEM-WISE SALES REPORT\n`;
+        csv += `Period,${periodStr}\n\n`;
+
+        csv += `SUMMARY\n`;
+        csv += `Total Distinct Items,Total Units Sold,Total Orders,Total Revenue (Rs.)\n`;
+        csv += `${data.totalItems || 0},${data.totalQty || 0},${data.totalOrders || 0},${(data.totalAmount || 0).toFixed(2)}\n\n`;
+
+        csv += `ITEM SALES BREAKDOWN\n`;
+        csv += `Rank,Item Name,Category,Avg Unit Price (Rs.),Quantity Sold,Orders Count,Total Revenue (Rs.),Sales Share (%)\n`;
+        const grandTotal = data.totalAmount || 1;
+        (data.items || []).forEach((item, idx) => {
+            const share = ((item.totalRevenue / grandTotal) * 100).toFixed(1);
+            csv += `${idx + 1},"${item.name}","${item.category}",${(item.unitPrice || 0).toFixed(2)},${item.totalQuantity},${item.ordersCount || 0},${(item.totalRevenue || 0).toFixed(2)},${share}%\n`;
+        });
+
+        downloadCSV(csv, `Item_Wise_Sales_Report_${periodStr}`, { saleReportFolder: true });
     };
 
     useEffect(() => {
@@ -325,6 +448,15 @@ const AdminAnalytics = () => {
                     </button>
                 )}
                 <button
+                    className={`btn ${activeTab === 'item-sales' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => {
+                        setActiveTab('item-sales');
+                        fetchItemSalesData();
+                    }}
+                >
+                    <FiShoppingBag /> Item-Wise Sales
+                </button>
+                <button
                     className={`btn ${activeTab === 'day-end' ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => {
                         setActiveTab('day-end');
@@ -343,6 +475,305 @@ const AdminAnalytics = () => {
                     <FiLayers /> Section & Table Sales
                 </button>
             </div>
+
+            {/* ITEM-WISE SALES TAB */}
+            {activeTab === 'item-sales' && (
+                <div className="item-sales-view">
+                    {/* Header & Date / Period Filters */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            {user?.role === 'superadmin' ? (
+                                <div className="analytics-filter-controls" style={{ justifyContent: 'flex-start' }}>
+                                    <div className="period-selector">
+                                        {['today', 'yesterday', 'week', 'month', 'year'].map(p => (
+                                            <button
+                                                key={p}
+                                                className={`period-btn ${itemSalesPeriod === p ? 'active' : ''}`}
+                                                onClick={() => {
+                                                    setItemSalesRange(null);
+                                                    setItemSalesPeriod(p);
+                                                }}
+                                            >
+                                                {p.charAt(0).toUpperCase() + p.slice(1)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className={`custom-date-filter ${itemSalesPeriod === 'custom' ? 'active' : ''}`}>
+                                        <FiCalendar />
+                                        <label>
+                                            From
+                                            <input
+                                                type="date"
+                                                value={itemSalesStartDate}
+                                                max={getLocalDateString()}
+                                                onChange={e => setItemSalesStartDate(e.target.value)}
+                                            />
+                                        </label>
+                                        <label>
+                                            To
+                                            <input
+                                                type="date"
+                                                value={itemSalesEndDate}
+                                                min={itemSalesStartDate}
+                                                max={getLocalDateString()}
+                                                onChange={e => setItemSalesEndDate(e.target.value)}
+                                            />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            className="period-btn custom-apply-btn"
+                                            onClick={() => {
+                                                if (!itemSalesStartDate || !itemSalesEndDate) {
+                                                    alert('Please select both From and To dates.');
+                                                    return;
+                                                }
+                                                if (itemSalesStartDate > itemSalesEndDate) {
+                                                    alert('From date cannot be after To date.');
+                                                    return;
+                                                }
+                                                setItemSalesRange({ startDate: itemSalesStartDate, endDate: itemSalesEndDate });
+                                                setItemSalesPeriod('custom');
+                                            }}
+                                        >
+                                            Apply Range
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <button
+                                        className={`btn ${itemSalesPeriod === 'today' ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => {
+                                            setItemSalesRange(null);
+                                            setItemSalesPeriod('today');
+                                        }}
+                                    >
+                                        Today
+                                    </button>
+                                    <button
+                                        className={`btn ${itemSalesPeriod === 'yesterday' ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => {
+                                            setItemSalesRange(null);
+                                            setItemSalesPeriod('yesterday');
+                                        }}
+                                    >
+                                        Yesterday
+                                    </button>
+                                    <button
+                                        className={`btn ${itemSalesPeriod === 'month' ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => {
+                                            setItemSalesRange(null);
+                                            setItemSalesPeriod('month');
+                                        }}
+                                    >
+                                        This Month
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {itemSalesData && (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="btn btn-secondary" onClick={() => handleDownloadItemSalesReport(itemSalesData)} style={{ fontWeight: 'bold' }}>
+                                    <FiDownload /> Export CSV
+                                </button>
+                                <button className="btn btn-primary" onClick={handlePrintReport}>
+                                    <FiPrinter /> Print PDF
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Search & Category Filter Bar */}
+                    <div style={{ background: '#FFFFFF', padding: '16px 20px', borderRadius: '12px', border: '2px solid #111111', boxShadow: '3px 3px 0px #111111', marginBottom: '24px', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <form onSubmit={handleApplyItemSalesSearch} style={{ display: 'flex', flex: 1, minWidth: '280px', gap: '8px' }}>
+                            <div className="item-sales-search-box">
+                                <FiSearch style={{ color: '#6B7280', fontSize: '1.2rem' }} />
+                                <input
+                                    type="text"
+                                    placeholder="Search dish / item by name (e.g. Paneer, Pizza, Coffee, Biryani...)"
+                                    value={itemSearchQuery}
+                                    onChange={(e) => {
+                                        setItemSearchQuery(e.target.value);
+                                    }}
+                                />
+                                {itemSearchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setItemSearchQuery('');
+                                            fetchItemSalesData({ search: undefined });
+                                        }}
+                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex' }}
+                                    >
+                                        <FiX />
+                                    </button>
+                                )}
+                            </div>
+                            <button type="submit" className="btn btn-primary" style={{ padding: '8px 16px', fontWeight: 'bold' }}>
+                                Search
+                            </button>
+                        </form>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <label style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#374151' }}>Category:</label>
+                            <select
+                                className="item-sales-filter-select"
+                                value={itemCategoryFilter}
+                                onChange={(e) => setItemCategoryFilter(e.target.value)}
+                            >
+                                <option value="All">All Categories ({itemSalesData?.categories?.length || 0})</option>
+                                {(itemSalesData?.categories || []).map((cat, idx) => (
+                                    <option key={idx} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <label style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#374151' }}>Sort By:</label>
+                            <select
+                                className="item-sales-filter-select"
+                                value={itemSortBy}
+                                onChange={(e) => setItemSortBy(e.target.value)}
+                            >
+                                <option value="revenue">Highest Sales (₹)</option>
+                                <option value="quantity">Highest Quantity Sold</option>
+                                <option value="orders">Most Ordered</option>
+                                <option value="name">Item Name (A - Z)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Summary KPI Cards */}
+                    {itemSalesData && (
+                        <div className="summary-grid" style={{ marginBottom: '24px' }}>
+                            <div className="summary-card revenue" style={{ border: '2px solid #111', boxShadow: '3px 3px 0px #111' }}>
+                                <h3>Total Sales Revenue</h3>
+                                <p className="value" style={{ color: '#059669' }}>₹{(itemSalesData.totalAmount || 0).toFixed(2)}</p>
+                                <span className="label">
+                                    {itemSalesPeriod === 'custom' && itemSalesRange
+                                        ? `${itemSalesRange.startDate} to ${itemSalesRange.endDate}`
+                                        : itemSalesPeriod.toUpperCase()}
+                                </span>
+                            </div>
+                            <div className="summary-card orders" style={{ border: '2px solid #111', boxShadow: '3px 3px 0px #111' }}>
+                                <h3>Total Units Sold (Qty)</h3>
+                                <p className="value" style={{ color: '#2563EB' }}>{itemSalesData.totalQty || 0}</p>
+                                <span className="label">Cumulative Quantity Sold</span>
+                            </div>
+                            <div className="summary-card avg" style={{ border: '2px solid #111', boxShadow: '3px 3px 0px #111' }}>
+                                <h3>Distinct Items Sold</h3>
+                                <p className="value" style={{ color: '#7C3AED' }}>{itemSalesData.totalItems || 0}</p>
+                                <span className="label">{itemCategoryFilter !== 'All' ? `In ${itemCategoryFilter}` : 'Across all categories'}</span>
+                            </div>
+                            <div className="summary-card profit" style={{ border: '2px solid #111', boxShadow: '3px 3px 0px #111' }}>
+                                <h3>Avg Revenue / Item</h3>
+                                <p className="value" style={{ color: '#D97706' }}>
+                                    ₹{itemSalesData.totalItems ? ((itemSalesData.totalAmount || 0) / itemSalesData.totalItems).toFixed(2) : '0.00'}
+                                </p>
+                                <span className="label">Per menu item</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Report Table / Printable Area */}
+                    {fetchingItemSales ? (
+                        <Loader message="Calculating item-wise sales metrics..." />
+                    ) : itemSalesData ? (
+                        <div className="report-printable-area" style={{ background: '#FFF', padding: '24px', borderRadius: '12px', border: '2px solid #111', boxShadow: '4px 4px 0px #111' }}>
+                            <div style={{ textAlign: 'center', borderBottom: '2px solid #111', paddingBottom: '16px', marginBottom: '20px' }}>
+                                <h1 style={{ margin: '0 0 4px', fontSize: '1.8rem', textTransform: 'uppercase' }}>Kea By The Pool</h1>
+                                <h3 style={{ margin: '0 0 4px', color: '#C87316' }}>ITEM-WISE SALES & QUANTITY REPORT</h3>
+                                <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
+                                    Period: <strong>{itemSalesPeriod === 'custom' && itemSalesRange ? `${itemSalesRange.startDate} to ${itemSalesRange.endDate}` : itemSalesPeriod.toUpperCase()}</strong> (Shift: 3:00 AM – 3:00 AM IST) | Generated: {new Date().toLocaleTimeString()}
+                                </p>
+                                {itemSearchQuery && (
+                                    <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: '#2563EB', fontWeight: 'bold' }}>
+                                        🔍 Filtered by search: "{itemSearchQuery}" ({itemSalesData.items.length} items matched)
+                                    </p>
+                                )}
+                            </div>
+
+                            {itemSalesData.items.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '50px 20px', color: '#666' }}>
+                                    <FiShoppingBag style={{ fontSize: '3rem', color: '#D1D5DB', marginBottom: '12px' }} />
+                                    <p style={{ fontSize: '1.1rem', margin: 0, fontWeight: 'bold' }}>No items found for this selection.</p>
+                                    <p style={{ fontSize: '0.9rem', color: '#9CA3AF' }}>Try choosing another date range or clearing the search filter.</p>
+                                </div>
+                            ) : (
+                                <div className="table-container">
+                                    <table className="item-sales-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr>
+                                                <th style={{ textAlign: 'center', width: '60px' }}>#</th>
+                                                <th>Item Name</th>
+                                                <th>Category</th>
+                                                <th style={{ textAlign: 'right' }}>Avg Price</th>
+                                                <th style={{ textAlign: 'center' }}>Quantity Sold</th>
+                                                <th style={{ textAlign: 'center' }}>Orders Count</th>
+                                                <th style={{ textAlign: 'right' }}>Total Revenue (₹)</th>
+                                                <th style={{ textAlign: 'right', width: '120px' }}>Sales Share</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {itemSalesData.items.map((item, idx) => {
+                                                const grandTotal = itemSalesData.totalAmount || 1;
+                                                const sharePercent = ((item.totalRevenue / grandTotal) * 100).toFixed(1);
+                                                return (
+                                                    <tr key={idx}>
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            <span className={`item-rank-badge ${idx === 0 ? 'top-1' : idx === 1 ? 'top-2' : idx === 2 ? 'top-3' : ''}`}>
+                                                                {idx + 1}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ fontWeight: '600', color: '#111827', fontSize: '0.95rem' }}>
+                                                            {item.name}
+                                                        </td>
+                                                        <td>
+                                                            <span style={{ background: '#F3F4F6', padding: '3px 8px', borderRadius: '4px', fontSize: '0.8rem', color: '#4B5563', fontWeight: '500' }}>
+                                                                {item.category}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ textAlign: 'right', color: '#4B5563' }}>
+                                                            ₹{(item.unitPrice || 0).toFixed(2)}
+                                                        </td>
+                                                        <td style={{ textAlign: 'center', fontWeight: '700', fontSize: '1rem', color: '#2563EB' }}>
+                                                            {item.totalQuantity}
+                                                        </td>
+                                                        <td style={{ textAlign: 'center', color: '#6B7280' }}>
+                                                            {item.ordersCount}
+                                                        </td>
+                                                        <td style={{ textAlign: 'right', fontWeight: '700', fontSize: '1rem', color: '#059669' }}>
+                                                            ₹{(item.totalRevenue || 0).toFixed(2)}
+                                                        </td>
+                                                        <td style={{ textAlign: 'right' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                                                                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#4B5563' }}>{sharePercent}%</span>
+                                                                <div style={{ width: '40px', height: '6px', background: '#E5E7EB', borderRadius: '3px', overflow: 'hidden' }}>
+                                                                    <div style={{ width: `${Math.min(Number(sharePercent) * 2, 100)}%`, height: '100%', background: '#C87316' }}></div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{ background: '#F9FAFB', fontWeight: 'bold', borderTop: '2px solid #111' }}>
+                                                <td colSpan={4} style={{ padding: '12px', textAlign: 'right', fontSize: '0.95rem' }}>TOTAL:</td>
+                                                <td style={{ padding: '12px', textAlign: 'center', fontSize: '1.05rem', color: '#2563EB' }}>{itemSalesData.totalQty}</td>
+                                                <td style={{ padding: '12px', textAlign: 'center', color: '#6B7280' }}>{itemSalesData.totalOrders}</td>
+                                                <td style={{ padding: '12px', textAlign: 'right', fontSize: '1.1rem', color: '#059669' }}>₹{(itemSalesData.totalAmount || 0).toFixed(2)}</td>
+                                                <td style={{ padding: '12px', textAlign: 'right' }}>100%</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
+                </div>
+            )}
 
             {/* DAY-END REPORT TAB */}
             {activeTab === 'day-end' && (
@@ -395,7 +826,7 @@ const AdminAnalytics = () => {
                                 <button className="btn btn-secondary" onClick={() => handleDownloadDayEndReport(dayEndData)} style={{ fontWeight: 'bold' }}>
                                     <FiDownload /> Download Day-End Report
                                 </button>
-                                <button className="btn btn-primary" onClick={() => window.print()}>
+                                <button className="btn btn-primary" onClick={handlePrintReport}>
                                     <FiPrinter /> Print PDF
                                 </button>
                             </div>
@@ -557,21 +988,71 @@ const AdminAnalytics = () => {
             {activeTab === 'section-wise' && (
                 <div className="section-wise-report-view">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             {user?.role === 'superadmin' ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <label style={{ fontWeight: 'bold' }}>Select Date:</label>
-                                    <input
-                                        type="date"
-                                        value={reportDate}
-                                        onChange={(e) => {
-                                            setReportDate(e.target.value);
-                                            fetchSectionReport(e.target.value);
-                                        }}
-                                        className="input"
-                                        style={{ padding: '8px 12px', borderRadius: '6px', border: '2px solid #111' }}
-                                    />
-                                    <button className="btn btn-secondary" onClick={() => fetchSectionReport()}>Refresh</button>
+                                <div className="analytics-filter-controls" style={{ justifyContent: 'flex-start' }}>
+                                    <div className="period-selector">
+                                        {['today', 'yesterday', 'week', 'month'].map(p => (
+                                            <button
+                                                key={p}
+                                                className={`period-btn ${sectionPeriod === p ? 'active' : ''}`}
+                                                onClick={() => {
+                                                    setSectionRange(null);
+                                                    setSectionPeriod(p);
+                                                    if (p === 'today') fetchSectionReport({ date: getLocalDateString() });
+                                                    else if (p === 'yesterday') fetchSectionReport({ date: getRelativeBusinessDate(-1) });
+                                                    else if (p === 'week') fetchSectionReport({ startDate: getRelativeBusinessDate(-6), endDate: getLocalDateString() });
+                                                    else if (p === 'month') {
+                                                        const today = getLocalDateString();
+                                                        fetchSectionReport({ startDate: `${today.slice(0, 7)}-01`, endDate: today });
+                                                    }
+                                                }}
+                                            >
+                                                {p === 'week' ? 'This Week' : p === 'month' ? 'This Month' : p.charAt(0).toUpperCase() + p.slice(1)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className={`custom-date-filter ${sectionPeriod === 'custom' ? 'active' : ''}`}>
+                                        <FiCalendar />
+                                        <label>
+                                            From
+                                            <input
+                                                type="date"
+                                                value={sectionStartDate}
+                                                max={getLocalDateString()}
+                                                onChange={event => setSectionStartDate(event.target.value)}
+                                            />
+                                        </label>
+                                        <label>
+                                            To
+                                            <input
+                                                type="date"
+                                                value={sectionEndDate}
+                                                min={sectionStartDate}
+                                                max={getLocalDateString()}
+                                                onChange={event => setSectionEndDate(event.target.value)}
+                                            />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            className="period-btn custom-apply-btn"
+                                            onClick={() => {
+                                                if (!sectionStartDate || !sectionEndDate) {
+                                                    alert('Please select both From and To dates.');
+                                                    return;
+                                                }
+                                                if (sectionStartDate > sectionEndDate) {
+                                                    alert('From date cannot be after To date.');
+                                                    return;
+                                                }
+                                                setSectionRange({ startDate: sectionStartDate, endDate: sectionEndDate });
+                                                setSectionPeriod('custom');
+                                                fetchSectionReport({ startDate: sectionStartDate, endDate: sectionEndDate });
+                                            }}
+                                        >
+                                            Apply Date Range
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -604,7 +1085,7 @@ const AdminAnalytics = () => {
                                 <button className="btn btn-secondary" onClick={() => handleDownloadSectionReport(sectionData)} style={{ fontWeight: 'bold' }}>
                                     <FiDownload /> Download Section Report
                                 </button>
-                                <button className="btn btn-primary" onClick={() => window.print()}>
+                                <button className="btn btn-primary" onClick={handlePrintReport}>
                                     <FiPrinter /> Print PDF
                                 </button>
                             </div>
@@ -624,7 +1105,7 @@ const AdminAnalytics = () => {
                             </div>
 
                             {sectionData.sections.length === 0 ? (
-                                <p style={{ textAlign: 'center', color: '#666', fontStyle: 'italic', padding: '40px' }}>No section sales recorded for this date.</p>
+                                <p style={{ textAlign: 'center', color: '#666', fontStyle: 'italic', padding: '40px' }}>No section sales recorded for this date range.</p>
                             ) : (
                                 sectionData.sections.map((sec, sIdx) => (
                                     <div key={sIdx} style={{ marginBottom: '28px', border: '1.5px solid #111', borderRadius: '8px', padding: '16px', background: '#FAFAFA' }}>

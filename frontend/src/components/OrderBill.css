@@ -52,6 +52,13 @@
         visibility: visible !important;
     }
 
+    /* Never print background analytics or sales reports when printing bills or KOTs */
+    .report-printable-area,
+    .report-printable-area * {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
     .bill-container.print-bill-overlay,
     .print-bill-overlay {
         position: absolute !important;
