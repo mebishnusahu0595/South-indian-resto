@@ -127,6 +127,11 @@ const AdminLayout = () => {
                 return;
             }
 
+            // The restaurant PC print agent is printing this KOT on the Superadmin-selected printers.
+            if (order.printRouting?.kotRouted) {
+                return;
+            }
+
             const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
             const kotNumber = order.kotTicket || `KOT-${cleanOrdNo}`;
             const orderIdentity = order._id?.toString() || order.id?.toString() || order.orderNumber || 'unknown';
@@ -179,8 +184,19 @@ const AdminLayout = () => {
             fetchCounts();
         };
 
+        // The PC print agent could not print a KOT/Bill on a selected printer (sent once per job).
+        const handlePrintFailed = (job) => {
+            setNotifications(prev => [...prev, {
+                type: 'bill',
+                message: `⚠️ ${job?.jobType === 'bill' ? 'Bill' : 'KOT'} ${job?.label || ''} print failed: ${job?.error || 'printer not reachable'}`,
+                id: job?.eventId
+            }]);
+            playNotificationSound();
+        };
+
         socket.on('new-order', handleNewKOT);
         socket.on('new-kot', handleNewKOT);
+        socket.on('print-job-failed', handlePrintFailed);
         socket.on('bill-requested', handleBillRequested);
         socket.on('bill-generated', handleOrderChange);
         socket.on('bill-deleted', handleOrderChange);
@@ -196,6 +212,7 @@ const AdminLayout = () => {
         return () => {
             socket.off('new-order', handleNewKOT);
             socket.off('new-kot', handleNewKOT);
+            socket.off('print-job-failed', handlePrintFailed);
             socket.off('bill-requested', handleBillRequested);
             socket.off('bill-generated', handleOrderChange);
             socket.off('bill-deleted', handleOrderChange);

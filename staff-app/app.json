@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.keabythepool.staff"
+      "bundleIdentifier": "com.keabythepool.staff",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Kea Staff finds and prints to thermal printers on the restaurant WiFi."
+      }
     },
     "android": {
       "adaptiveIcon": {

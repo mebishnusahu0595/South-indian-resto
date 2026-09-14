@@ -86,3 +86,8 @@ temp/
 
 # Local development
 *.local
+*.pdf
+/*.png
+/*.jpg
+staff-app/android/
+staff-app/ios/

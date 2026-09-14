@@ -107,15 +107,24 @@ const AdminBills = () => {
     }, [selectedDate]);
 
     useEffect(() => {
-        if (createdBill) {
-            if (createdBill._id) {
-                printBill(createdBill._id).catch(() => {});
-            }
-            const timer = setTimeout(() => {
-                window.print();
-            }, 350);
-            return () => clearTimeout(timer);
+        if (!createdBill) return undefined;
+        let cancelled = false;
+        let timer;
+        // PC print agent prints on the selected Bill printers when online; otherwise browser popup.
+        const browserPrint = () => {
+            if (!cancelled) timer = setTimeout(() => window.print(), 350);
+        };
+        if (createdBill._id) {
+            printBill(createdBill._id)
+                .then(res => { if (!res.data?.routed) browserPrint(); })
+                .catch(browserPrint);
+        } else {
+            browserPrint();
         }
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
     }, [createdBill]);
 
     const fetchMaxDiscountLimit = async () => {
@@ -1040,7 +1049,10 @@ const AdminBills = () => {
                             <button className="btn-print" style={{ background: '#2563EB' }} onClick={() => {
                                 if (createdBill?._id) {
                                     printBill(createdBill._id)
-                                        .then(() => toast.success('Bill print queued to Thermal Printer!'))
+                                        .then(res => {
+                                            if (res.data?.routed) alert('Bill sent to the selected Bill printer(s)!');
+                                            else window.print();
+                                        })
                                         .catch(() => window.print());
                                 } else {
                                     window.print();

@@ -212,15 +212,35 @@ router.get('/day-end', protect, admin, async (req, res) => {
 // @access  Private/Admin
 router.get('/section-wise', protect, admin, async (req, res) => {
     try {
-        const { date } = req.query;
-        let targetDate = date || getBusinessDate();
+        const { date, startDate, endDate, fromDate, toDate } = req.query;
+        const reqStart = startDate || fromDate;
+        const reqEnd = endDate || toDate;
+
+        let start, end, reportDateLabel;
         const todayStr = getBusinessDate();
         const yesterdayStr = getBusinessDate(new Date(Date.now() - 86400000));
 
-        if (req.user.role !== 'superadmin' && targetDate !== todayStr && targetDate !== yesterdayStr) {
-            targetDate = todayStr;
+        if (reqStart && reqEnd) {
+            start = getBusinessDayRange(reqStart).start;
+            end = getBusinessDayRange(reqEnd).end;
+            reportDateLabel = reqStart === reqEnd ? reqStart : `${reqStart} to ${reqEnd}`;
+        } else {
+            let targetDate = date || reqStart || todayStr;
+            if (req.user.role !== 'superadmin' && targetDate !== todayStr && targetDate !== yesterdayStr) {
+                targetDate = todayStr;
+            }
+            const range = getBusinessDayRange(targetDate);
+            start = range.start;
+            end = range.end;
+            reportDateLabel = targetDate;
         }
-        const { start, end } = getBusinessDayRange(targetDate);
+
+        if (req.user.role === 'admin') {
+            const monthStart = getBusinessDayRange(`${todayStr.slice(0, 7)}-01`).start;
+            const todayEnd = getBusinessDayRange(todayStr).end;
+            if (start < monthStart) start = monthStart;
+            if (end > todayEnd) end = todayEnd;
+        }
 
         const orders = await Order.find({
             status: 'paid',

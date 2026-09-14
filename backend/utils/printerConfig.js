@@ -23,25 +23,48 @@ const makePrinterId = (printer, index) => {
     return cleaned || `printer-${index + 1}`;
 };
 
+const LEGACY_KOT_ROLES = ['kitchen', 'bar', 'all'];
+const LEGACY_BILL_ROLES = ['reception', 'counter', 'cashier'];
+
+// Printers saved before the KOT/Bill checkboxes existed keep their old role behaviour.
+const jobFlag = (value, role, legacyRoles) => (typeof value === 'boolean' ? value : legacyRoles.includes(role));
+
+// One physical printer: LAN printers by IP:port, installed printers by PC + queue name.
+const printerEndpoint = printer => (printer.type === 'system'
+    ? `system:${printer.agentId}:${printer.systemName}`
+    : `${printer.host}:${printer.port}`);
+
 const normalizePrinterRegistry = (printers, defaultPort = DEFAULT_PRINTER_PORT) => {
     if (!Array.isArray(printers)) return [];
 
     const seenEndpoints = new Set();
     return printers.reduce((normalized, printer, index) => {
+        // "tcp" = LAN/WiFi printer on port 9100. "system" = printer installed on one PC
+        // (USB cable, serial or a Windows/CUPS queue), printed only by that PC's agent.
+        const type = printer?.type === 'system' ? 'system' : 'tcp';
         const host = cleanHost(printer?.host || printer?.ip);
-        if (!host) return normalized;
+        const systemName = String(printer?.systemName || '').trim().slice(0, 200);
+        const agentId = String(printer?.agentId || '').trim().slice(0, 100);
+        if (type === 'tcp' ? !host : !(systemName && agentId)) return normalized;
 
         const port = cleanPort(printer?.port, defaultPort);
-        const endpoint = `${host}:${port}`;
+        const endpoint = printerEndpoint({ type, host, port, agentId, systemName });
         if (seenEndpoints.has(endpoint)) return normalized;
         seenEndpoints.add(endpoint);
 
+        const role = String(printer?.role || 'all').trim().toLowerCase().slice(0, 30);
         normalized.push({
             id: makePrinterId(printer || {}, index),
-            name: String(printer?.name || `WiFi Printer ${index + 1}`).trim().slice(0, 80),
-            role: String(printer?.role || 'all').trim().toLowerCase().slice(0, 30),
-            host,
+            name: String(printer?.name || systemName || `WiFi Printer ${index + 1}`).trim().slice(0, 80),
+            type,
+            role,
+            host: type === 'tcp' ? host : '',
             port,
+            systemName: type === 'system' ? systemName : '',
+            agentId: type === 'system' ? agentId : '',
+            connection: String(printer?.connection || (type === 'tcp' ? 'network' : 'usb')).trim().slice(0, 20),
+            kot: jobFlag(printer?.kot, role, LEGACY_KOT_ROLES),
+            bill: jobFlag(printer?.bill, role, LEGACY_BILL_ROLES),
             copies: cleanCopies(printer?.copies),
             enabled: printer?.enabled !== false
         });
@@ -55,17 +78,32 @@ const addLegacyPrinter = (printers, endpointSet, { id, name, role, host, port })
     const endpoint = `${clean}:${port}`;
     if (endpointSet.has(endpoint)) return;
     endpointSet.add(endpoint);
-    printers.push({ id, name, role, host: clean, port, copies: 1, enabled: true });
+    printers.push({
+        id,
+        name,
+        type: 'tcp',
+        role,
+        host: clean,
+        port,
+        systemName: '',
+        agentId: '',
+        connection: 'network',
+        kot: LEGACY_KOT_ROLES.includes(role),
+        bill: LEGACY_BILL_ROLES.includes(role),
+        copies: 1,
+        enabled: true
+    });
 };
 
 const getPrinterConfig = async () => {
-    const [registryValue, kitchenIp, barIp, receptionIp, printerPort, printerEnabled] = await Promise.all([
+    const [registryValue, kitchenIp, barIp, receptionIp, printerPort, printerEnabled, autoSelect] = await Promise.all([
         Settings.getSetting('printer_registry', []),
         Settings.getSetting('printer_kitchen_ip', ''),
         Settings.getSetting('printer_bar_ip', ''),
         Settings.getSetting('printer_reception_ip', ''),
         Settings.getSetting('printer_port', DEFAULT_PRINTER_PORT),
-        Settings.getSetting('printer_enabled', true)
+        Settings.getSetting('printer_enabled', true),
+        Settings.getSetting('printer_auto_select', true)
     ]);
 
     const port = cleanPort(printerPort);
@@ -79,9 +117,52 @@ const getPrinterConfig = async () => {
     return {
         version: 1,
         enabled: printerEnabled !== false,
+        autoSelect: autoSelect !== false,
         defaultPort: port,
         printers
     };
+};
+
+// Default (fresh install / production rollout): every real printer a PC agent or staff phone
+// detects is ticked for KOT and Bill, until Superadmin turns auto-select off. Unticked printers
+// stay in the registry with both flags off, so they are never ticked again. True when saved.
+// ponytail: read-modify-write without a lock; a lost addition is re-added on the next report.
+const addDetectedPrinters = async (detectedPrinters, { agentId = '', deviceName = '' } = {}) => {
+    const [autoSelect, registryValue, printerPort] = await Promise.all([
+        Settings.getSetting('printer_auto_select', true),
+        Settings.getSetting('printer_registry', []),
+        Settings.getSetting('printer_port', DEFAULT_PRINTER_PORT)
+    ]);
+    if (autoSelect === false) return false;
+
+    const port = cleanPort(printerPort);
+    const registry = normalizePrinterRegistry(registryValue, port);
+    const known = new Set(registry.map(printerEndpoint));
+    const detected = (Array.isArray(detectedPrinters) ? detectedPrinters : [])
+        // Unknown queues are often virtual (remote desktop, screen tools); those are ticked by hand.
+        .filter(printer => printer.type !== 'system' || ['usb', 'wired', 'network'].includes(printer.connection))
+        .map((printer, index) => ({
+            id: `auto-${Date.now()}-${index}`,
+            name: printer.type === 'system'
+                ? `${printer.name || printer.systemName}${deviceName ? ` (${deviceName})` : ''}`
+                : `Network printer ${printer.host}`,
+            type: printer.type,
+            host: printer.host,
+            port: printer.port,
+            systemName: printer.systemName,
+            agentId: printer.type === 'system' ? agentId : '',
+            connection: printer.connection,
+            role: 'all',
+            kot: true,
+            bill: true,
+            copies: 1,
+            enabled: true
+        }));
+    const additions = normalizePrinterRegistry(detected, port).filter(printer => !known.has(printerEndpoint(printer)));
+
+    if (additions.length === 0) return false;
+    await Settings.setSetting('printer_registry', [...registry, ...additions], 'All thermal printers and whether each prints KOT and/or Bill');
+    return true;
 };
 
 module.exports = {
@@ -89,5 +170,7 @@ module.exports = {
     cleanHost,
     cleanPort,
     normalizePrinterRegistry,
-    getPrinterConfig
+    printerEndpoint,
+    getPrinterConfig,
+    addDetectedPrinters
 };

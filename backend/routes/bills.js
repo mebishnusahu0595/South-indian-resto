@@ -6,6 +6,7 @@ const Order = require('../models/Order');
 const Table = require('../models/Table');
 const Settings = require('../models/Settings');
 const KOTPrintJob = require('../models/KOTPrintJob');
+const { getPrintRouting } = require('../utils/printAgents');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const {
     normalizeItems,
@@ -361,6 +362,13 @@ router.post('/:id/print', protect, admin, async (req, res) => {
         const bill = await populateBill(req.params.id);
         if (!bill) return res.status(404).json({ message: 'Bill not found' });
 
+        // Queue only when an online PC print agent can reach a Superadmin-selected Bill printer.
+        // Otherwise the admin browser prints it, so no job is left behind to replay later.
+        const routing = await getPrintRouting();
+        if (!routing.billRouted) {
+            return res.json({ routed: false, message: 'No online print agent has a selected Bill printer' });
+        }
+
         const eventId = `BILL-${bill._id}-${Date.now()}`;
         const jobPayload = {
             jobType: 'bill',
@@ -380,7 +388,8 @@ router.post('/:id/print', protect, admin, async (req, res) => {
             taxDetails: bill.taxDetails || [],
             total: bill.total || 0,
             paymentMethod: bill.paymentMethod || 'pending',
-            createdAt: bill.createdAt || new Date()
+            createdAt: bill.createdAt || new Date(),
+            printerConfig: routing.config
         };
 
         const printJob = new KOTPrintJob({
@@ -396,7 +405,7 @@ router.post('/:id/print', protect, admin, async (req, res) => {
             io.emit('new-bill-print', jobPayload);
         }
 
-        res.json({ message: 'Bill print job queued successfully', eventId });
+        res.json({ routed: true, message: 'Bill print job queued successfully', eventId });
     } catch (error) {
         console.error('Bill print route error:', error);
         res.status(500).json({ message: error.message || 'Server error' });

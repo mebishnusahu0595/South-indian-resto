@@ -288,7 +288,7 @@ function MainApp() {
         )}
 
         {activeScreen === 'printer-setup' && (
-          <PrinterSetupScreen onBack={() => setActiveScreen('cart')} />
+          <PrinterSetupScreen api={getApi()} staffName={staffName} onBack={() => setActiveScreen('cart')} />
         )}
 
         {activeScreen === 'history' && (

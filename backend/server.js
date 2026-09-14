@@ -92,6 +92,9 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: "Kea By The Pool API is running" });
 });
 
+const { registerAgent, unregisterSocket } = require('./utils/printAgents');
+const { getPrinterConfig, addDetectedPrinters } = require('./utils/printerConfig');
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
@@ -108,8 +111,35 @@ io.on('connection', (socket) => {
         console.log('Admin joined admin room');
     });
 
+    // Restaurant PC print agent announces itself and every printer it can reach.
+    socket.on('print-agent:register', async (payload) => {
+        const agent = registerAgent(socket, payload);
+        if (!agent) return;
+        io.emit('printer-devices-updated', { at: Date.now() });
+        try {
+            // Default: newly detected printers are ticked for KOT and Bill (auto-select).
+            const added = await addDetectedPrinters(agent.printers, { agentId: agent.id, deviceName: agent.name });
+            const config = await getPrinterConfig();
+            if (added) io.emit('printer-settings-updated', config);
+            else socket.emit('printer-settings-updated', config);
+        } catch (error) {
+            console.error('Could not sync printer registry with print agent:', error.message);
+        }
+    });
+
+    socket.on('print-agent:test-result', (result) => {
+        if (!socket.data.printAgentId) return;
+        io.emit('printer-test-result', {
+            agentId: socket.data.printAgentId,
+            printerName: String(result?.printerName || '').slice(0, 80),
+            ok: result?.ok === true,
+            error: String(result?.error || '').slice(0, 300)
+        });
+    });
+
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
+        if (unregisterSocket(socket)) io.emit('printer-devices-updated', { at: Date.now() });
     });
 });
 

@@ -12,7 +12,8 @@ const User = require('../models/User');
 const LoyaltySettings = require('../models/LoyaltySettings');
 const LoyaltyOffer = require('../models/LoyaltyOffer');
 const KOTPrintJob = require('../models/KOTPrintJob');
-const { getPrinterConfig } = require('../utils/printerConfig');
+const { getPrintRouting } = require('../utils/printAgents');
+const { checkOrderEditCode, isOrderEditCodeSet } = require('../utils/orderEditCode');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const { generateOrderNumber } = require('../utils/helpers');
 const {
@@ -36,9 +37,10 @@ const getKOTEventId = (payload) => {
 const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
     const eventId = getKOTEventId(payload);
     let printerConfig = { version: 1, enabled: true, defaultPort: 9100, printers: [] };
+    let kotRouted = false;
 
     try {
-        printerConfig = await getPrinterConfig();
+        ({ config: printerConfig, kotRouted } = await getPrintRouting());
     } catch (error) {
         console.error('Could not load printer registry for KOT:', error.message);
     }
@@ -47,7 +49,9 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
         ...payload,
         eventId,
         kotEventType: eventType,
-        printerConfig
+        printerConfig,
+        // Admin browsers skip their auto-print popup when the PC print agent owns this KOT.
+        printRouting: { kotRouted }
     }));
     const durablePayload = {
         _id: eventPayload._id,
@@ -71,22 +75,26 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
         printerConfig
     };
 
-    try {
-        await KOTPrintJob.findOneAndUpdate(
-            { eventId },
-            {
-                $setOnInsert: {
-                    eventId,
-                    status: 'pending',
-                    payload: durablePayload,
-                    expiresAt: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000))
-                }
-            },
-            { upsert: true, new: true }
-        );
-    } catch (error) {
-        // Socket delivery must still happen if the durable outbox is temporarily unavailable.
-        console.error(`Could not persist KOT print job ${eventId}:`, error.message);
+    // Persist only when an online print agent owns the KOT. When the browser/staff app prints it as
+    // the fallback, an agent that comes back later must not replay the same ticket to the kitchen.
+    if (kotRouted) {
+        try {
+            await KOTPrintJob.findOneAndUpdate(
+                { eventId },
+                {
+                    $setOnInsert: {
+                        eventId,
+                        status: 'pending',
+                        payload: durablePayload,
+                        expiresAt: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000))
+                    }
+                },
+                { upsert: true, new: true }
+            );
+        } catch (error) {
+            // Socket delivery must still happen if the durable outbox is temporarily unavailable.
+            console.error(`Could not persist KOT print job ${eventId}:`, error.message);
+        }
     }
 
     const io = req.app.get('io');
@@ -277,11 +285,17 @@ router.get('/kot-logs', protect, admin, async (req, res) => {
     }
 });
 
+// Pending tickets older than this are not replayed: a KOT/bill printed hours late only confuses staff.
+const PRINT_JOB_RETRY_WINDOW_MS = (Number.parseInt(process.env.PRINT_JOB_RETRY_WINDOW_MIN, 10) || 30) * 60 * 1000;
+
 // Desktop print agent durable catch-up endpoint. Socket delivery remains the
 // fast path; this endpoint recovers KOTs created while the local agent was off.
 router.get('/print-jobs/pending', requirePrintAgent, async (req, res) => {
     try {
-        const jobs = await KOTPrintJob.find({ status: 'pending' })
+        const jobs = await KOTPrintJob.find({
+            status: 'pending',
+            createdAt: { $gte: new Date(Date.now() - PRINT_JOB_RETRY_WINDOW_MS) }
+        })
             .sort('createdAt')
             .limit(100)
             .lean();
@@ -329,7 +343,37 @@ router.post('/print-jobs/:eventId/failure', requirePrintAgent, async (req, res) 
             { new: true }
         );
         if (!job) return res.status(404).json({ message: 'KOT print job not found' });
+        // Alert admin panels once per job; the agent keeps retrying every few seconds.
+        if (job.attempts === 1) {
+            req.app.get('io')?.emit('print-job-failed', {
+                eventId: job.eventId,
+                jobType: job.jobType,
+                label: job.payload?.billNumber || job.payload?.kotTicket || job.payload?.orderNumber || '',
+                error: job.lastError
+            });
+        }
         res.json({ recorded: true, eventId: job.eventId });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Staff app: checks the Superadmin security code before the edit screen allows reducing items.
+// The modify/cancel routes check it again, so this endpoint only drives the UI.
+router.post('/edit-code/verify', protect, admin, async (req, res) => {
+    try {
+        const codeError = await checkOrderEditCode(req.user, req.body.code);
+        if (codeError) return res.status(codeError.status).json({ message: codeError.message, code: 'ORDER_EDIT_CODE' });
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Staff app: whether reducing items needs the code at all (false until Superadmin sets one).
+router.get('/edit-code/status', protect, admin, async (req, res) => {
+    try {
+        res.json({ required: await isOrderEditCodeSet() });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -769,8 +813,16 @@ router.put('/:id/modify-items', protect, async (req, res) => {
 
         // Safety merge: if the submitted items omit existing items from the database order,
         // protect the existing items from being accidentally wiped out by stale mobile app state.
+        // Rows sent explicitly with quantity 0 are intentional removals, not stale omissions.
         const submittedIdSet = new Set(consolidatedUpdatedItems.map(getMenuItemId));
-        const missingFromSubmission = currentItems.filter(item => !submittedIdSet.has(getMenuItemId(item)));
+        const explicitlyRemovedIds = new Set(updatedItems
+            .filter(item => Number(item?.quantity) === 0)
+            .map(getMenuItemId)
+            .filter(menuItemId => !submittedIdSet.has(menuItemId)));
+        const missingFromSubmission = currentItems.filter(item => {
+            const menuItemId = getMenuItemId(item);
+            return !submittedIdSet.has(menuItemId) && !explicitlyRemovedIds.has(menuItemId);
+        });
         
         let effectiveUpdatedItems = [...consolidatedUpdatedItems];
         if (missingFromSubmission.length > 0 && req.user.role !== 'superadmin') {
@@ -870,6 +922,12 @@ router.put('/:id/modify-items', protect, async (req, res) => {
 
         if (newOrderItems.length === 0) {
             return res.status(400).json({ message: 'Order cannot be left with 0 items. Use Cancel Order instead.' });
+        }
+
+        // Staff (employee logins) need the Superadmin security code to reduce or remove items.
+        if (cancelledItems.length > 0 && req.user.isEmployee) {
+            const codeError = await checkOrderEditCode(req.user, req.body.securityCode);
+            if (codeError) return res.status(codeError.status).json({ message: codeError.message, code: 'ORDER_EDIT_CODE' });
         }
 
         order.items = normalizeItems(newOrderItems);
@@ -1034,6 +1092,11 @@ router.put('/:id/status', protect, async (req, res) => {
         }
 
         if (status === 'cancelled') {
+            // Cancelling a whole order is the biggest reduction: staff logins need the security code too.
+            if (req.user.isEmployee) {
+                const codeError = await checkOrderEditCode(req.user, req.body.securityCode);
+                if (codeError) return res.status(codeError.status).json({ message: codeError.message, code: 'ORDER_EDIT_CODE' });
+            }
             order.cancelledBy = req.user._id;
             order.cancelledByName = req.user.name;
 
@@ -1777,6 +1840,17 @@ router.put('/:id/items', protect, async (req, res) => {
         const requestedItems = normalizeItems(req.body.items || []);
         if (requestedItems.length === 0) {
             return res.status(400).json({ message: 'Order cannot be left with 0 items. Delete the order instead.' });
+        }
+
+        // Staff logins need the security code for any quantity going down through this route too.
+        if (req.user.isEmployee) {
+            const requestedQuantities = new Map(requestedItems.map(item => [getMenuItemId(item), item.quantity]));
+            const reducesItems = normalizeItems(order.items)
+                .some(item => (requestedQuantities.get(getMenuItemId(item)) || 0) < item.quantity);
+            if (reducesItems) {
+                const codeError = await checkOrderEditCode(req.user, req.body.securityCode);
+                if (codeError) return res.status(codeError.status).json({ message: codeError.message, code: 'ORDER_EDIT_CODE' });
+            }
         }
         const menuItems = await MenuItem.find({ _id: { $in: requestedItems.map(item => item.menuItem) } });
         if (menuItems.length !== requestedItems.length) {

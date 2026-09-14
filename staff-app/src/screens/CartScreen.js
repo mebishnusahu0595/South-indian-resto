@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
-import { getSavedPrinters, formatKOT, printToIp } from '../utils/ThermalPrinter';
+import { printKOTFromApp, describeKOTPrint } from '../utils/ThermalPrinter';
 
 export default function CartScreen({ api, cart, selectedTable, customerPhone, customerName, instructions, onUpdateInstructions, onUpdateCart, onBack, onSubmitSuccess, staffName, onOpenPrinterSetup }) {
   const [submitting, setSubmitting] = useState(false);
-  const [printers, setPrinters] = useState({ kitchenIp: '', receptionIp: '', kitchenName: '', receptionName: '' });
+  // Superadmin's central KOT/Bill printer selection + whether the restaurant PC print agent is online
+  const [printerInfo, setPrinterInfo] = useState(null);
 
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const gst = subtotal * 0.05;
   const total = subtotal + gst;
+  const kotPrinters = (printerInfo?.printers || []).filter(p => p.enabled !== false && p.kot);
 
   useEffect(() => {
-    // Load saved printer IPs from AsyncStorage (set once in Printer Setup)
-    getSavedPrinters().then(p => setPrinters(p)).catch(() => {});
+    api.get('/settings/printers').then(res => setPrinterInfo(res.data)).catch(() => {});
   }, []);
 
   const updateQuantity = (itemId, newQty) => {
@@ -20,30 +21,6 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
       onUpdateCart(cart.filter(i => i._id !== itemId));
     } else {
       onUpdateCart(cart.map(i => i._id === itemId ? { ...i, quantity: newQty } : i));
-    }
-  };
-
-  // Auto-print KOT to a single printer — returns { ok, ip, name, error }
-  const printKOT = async (ip, name, orderData) => {
-    if (!ip) return { ok: false, ip, name, error: 'Not configured' };
-    try {
-      const tableName = Array.isArray(orderData.selectedTable)
-        ? orderData.selectedTable.map(t => t.name || `T${t.tableNumber}`).join(', ')
-        : (orderData.selectedTable ? (orderData.selectedTable.name || `T${orderData.selectedTable.tableNumber}`) : 'Takeaway');
-
-      const kotData = formatKOT({
-        orderNumber: orderData.orderNumber,
-        tableNumber: orderData.selectedTable?.tableNumber,
-        tableName,
-        items: orderData.items,
-        instructions: orderData.instructions,
-        staffName: orderData.staffName,
-        timestamp: new Date(),
-      });
-      await printToIp(ip, kotData);
-      return { ok: true, ip, name };
-    } catch (err) {
-      return { ok: false, ip, name, error: err.message };
     }
   };
 
@@ -76,39 +53,29 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
       const res = await api.post('/orders', orderPayload);
       const order = res.data;
 
-      // ── Auto-print KOT to both printers via WiFi ──────────────
-      const orderData = {
+      // ── KOT: restaurant PC print agent, or this phone over WiFi as the fallback ──
+      const tableName = isMulti
+        ? selectedTable.map(t => t.name || `T${t.tableNumber}`).join(', ')
+        : (selectedTable ? (selectedTable.name || `T${selectedTable.tableNumber}`) : 'Takeaway');
+      const kotHistory = order.kotHistory || [];
+      const printResult = await printKOTFromApp(api, {
+        kotNumber: kotHistory[kotHistory.length - 1]?.kotNumber,
         orderNumber: order.orderNumber,
-        selectedTable,
-        items: order.items || cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, notes: i.notes })),
+        tableName,
+        // Only what was just ordered: a running table's order also holds its earlier items.
+        items: cart.map(i => ({ name: i.name, quantity: i.quantity, notes: i.notes })),
         instructions,
         staffName: staffName || '',
-      };
+        timestamp: new Date(),
+      });
 
-      // Fire both prints simultaneously (don't block success flow)
-      const [kitchenResult, receptionResult] = await Promise.all([
-        printKOT(printers.kitchenIp, printers.kitchenName || 'Kitchen', orderData),
-        printKOT(printers.receptionIp, printers.receptionName || 'Reception', orderData),
-      ]);
-
-      // Build print status message
-      const kitchenLabel = printers.kitchenName ? `${printers.kitchenName} (${printers.kitchenIp})` : (printers.kitchenIp || 'Kitchen — Not Setup');
-      const receptionLabel = printers.receptionName ? `${printers.receptionName} (${printers.receptionIp})` : (printers.receptionIp || 'Reception — Not Setup');
-      const kitchenStatus = kitchenResult.ok ? `✓ ${kitchenLabel}` : `✗ ${kitchenLabel}: ${kitchenResult.error}`;
-      const receptionStatus = receptionResult.ok ? `✓ ${receptionLabel}` : `✗ ${receptionLabel}: ${receptionResult.error}`;
-
-      const allPrinted = kitchenResult.ok && receptionResult.ok;
-      const noneConfigured = !printers.kitchenIp && !printers.receptionIp;
-
-      let alertTitle = allPrinted ? 'Order Placed & KOT Printed!' : 'Order Placed';
-      let alertMsg = `Order #${order.orderNumber} confirmed!\n\n`;
-      if (noneConfigured) {
-        alertMsg += 'No printers configured. Go to Printer Setup to add printers.';
-      } else {
-        alertMsg += `KOT Print Status:\n${kitchenStatus}\n${receptionStatus}`;
-      }
-
-      Alert.alert(alertTitle, alertMsg, [{ text: 'OK', onPress: () => onSubmitSuccess() }]);
+      const kotSent = printResult.handledByAgent
+        || (printResult.results.length > 0 && printResult.results.every(r => r.ok));
+      Alert.alert(
+        kotSent ? 'Order Placed & KOT Sent!' : 'Order Placed',
+        `Order #${order.orderNumber} confirmed!\n\nKOT Print Status:\n${describeKOTPrint(printResult)}`,
+        [{ text: 'OK', onPress: () => onSubmitSuccess() }]
+      );
 
     } catch (error) {
       console.log('Order placement error:', error);
@@ -120,8 +87,8 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
 
 
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1 }} 
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.container}>
@@ -135,10 +102,10 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* Active Thermal Printers Status */}
+          {/* KOT printers selected by Superadmin */}
           <View style={[styles.infoCard, { backgroundColor: '#F5F3FF', borderColor: '#7C3AED' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Text style={[styles.infoTitle, { color: '#6D28D9', marginBottom: 0 }]}>Thermal Printers</Text>
+              <Text style={[styles.infoTitle, { color: '#6D28D9', marginBottom: 0 }]}>KOT Printers</Text>
               {onOpenPrinterSetup && (
                 <TouchableOpacity onPress={onOpenPrinterSetup} style={{ backgroundColor: '#7C3AED', borderRadius: 6, paddingVertical: 4, paddingHorizontal: 10 }}>
                   <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>Setup</Text>
@@ -146,46 +113,25 @@ export default function CartScreen({ api, cart, selectedTable, customerPhone, cu
               )}
             </View>
 
-            {/* Kitchen Printer */}
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Kitchen:</Text>
-              <View style={{ flex: 1 }}>
-                {printers.kitchenIp ? (
-                  <>
-                    <Text style={{ color: '#059669', fontWeight: '700', fontSize: 13 }}>
-                      {printers.kitchenName || 'Kitchen Printer'}
-                    </Text>
-                    <Text style={{ color: '#6B7280', fontSize: 11 }}>{printers.kitchenIp} · port 9100</Text>
-                  </>
-                ) : (
-                  <Text style={{ color: '#D97706', fontWeight: '600', fontSize: 13 }}>Not Configured</Text>
+            {!printerInfo ? (
+              <Text style={{ color: '#6B7280', fontSize: 12 }}>Loading printer selection…</Text>
+            ) : (
+              <>
+                <Text style={{ color: printerInfo.kotRouted ? '#059669' : '#D97706', fontWeight: '700', fontSize: 13, marginBottom: 6 }}>
+                  {printerInfo.kotRouted
+                    ? 'PC print agent online — KOT prints automatically'
+                    : 'PC print agent offline — this phone prints the KOT over WiFi'}
+                </Text>
+                {kotPrinters.length > 0 ? kotPrinters.map(p => (
+                  <Text key={p.id || `${p.host}-${p.systemName}`} style={{ color: '#374151', fontSize: 12 }}>
+                    • {p.name} {p.type === 'system' ? '(USB on PC)' : `(${p.host}:${p.port || 9100})`}
+                  </Text>
+                )) : (
+                  <Text style={{ color: '#EF4444', fontSize: 11, fontStyle: 'italic' }}>
+                    No KOT printer selected by Superadmin yet. Tap Setup.
+                  </Text>
                 )}
-              </View>
-            </View>
-
-            <View style={{ height: 8 }} />
-
-            {/* Reception Printer */}
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Reception:</Text>
-              <View style={{ flex: 1 }}>
-                {printers.receptionIp ? (
-                  <>
-                    <Text style={{ color: '#059669', fontWeight: '700', fontSize: 13 }}>
-                      {printers.receptionName || 'Reception Printer'}
-                    </Text>
-                    <Text style={{ color: '#6B7280', fontSize: 11 }}>{printers.receptionIp} · port 9100</Text>
-                  </>
-                ) : (
-                  <Text style={{ color: '#D97706', fontWeight: '600', fontSize: 13 }}>Not Configured</Text>
-                )}
-              </View>
-            </View>
-
-            {!printers.kitchenIp && !printers.receptionIp && (
-              <Text style={{ color: '#EF4444', fontSize: 11, marginTop: 8, fontStyle: 'italic' }}>
-                Tap Setup to configure WiFi printers. KOT will auto-print after this.
-              </Text>
+              </>
             )}
           </View>
 

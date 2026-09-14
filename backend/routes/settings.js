@@ -1,13 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
-const { cleanHost, cleanPort, normalizePrinterRegistry, getPrinterConfig } = require('../utils/printerConfig');
+const { cleanHost, cleanPort, normalizePrinterRegistry, getPrinterConfig, addDetectedPrinters } = require('../utils/printerConfig');
+const { reportAppDevice, listDevices, getPrintRouting } = require('../utils/printAgents');
+const { CODE_KEY, isValidOrderEditCode, setOrderEditCode, isOrderEditCodeSet } = require('../utils/orderEditCode');
 const { protect, admin, superadmin } = require('../middleware/auth');
+
+// Keys owned by dedicated superadmin routes must not be writable through the generic admin route.
+const PROTECTED_SETTING_KEYS = new Set([
+    CODE_KEY,
+    'printer_registry',
+    'printer_enabled',
+    'printer_auto_select',
+    'printer_port',
+    'printer_kitchen_ip',
+    'printer_bar_ip',
+    'printer_reception_ip'
+]);
 
 // Get all settings (public for GST etc.)
 router.get('/', async (req, res) => {
     try {
-        const settings = await Settings.find();
+        const settings = await Settings.find({ key: { $ne: CODE_KEY } });
         const settingsObj = {};
         settings.forEach(s => {
             settingsObj[s.key] = s.value;
@@ -143,10 +157,11 @@ router.get('/app-config', protect, async (req, res) => {
     }
 });
 
-// Get centrally managed printer registry (admin)
+// Get centrally managed printer registry (admin). kotRouted/billRouted tell the browser and
+// staff app whether the restaurant PC print agent is printing that job type right now.
 router.get('/printers', protect, admin, async (req, res) => {
     try {
-        const config = await getPrinterConfig();
+        const { config, agentsOnline, kotRouted, billRouted } = await getPrintRouting();
         const byRole = (role) => config.printers.find(printer => printer.role === role)?.host || '';
         res.json({
             kitchenIp: byRole('kitchen'),
@@ -154,7 +169,11 @@ router.get('/printers', protect, admin, async (req, res) => {
             receptionIp: byRole('reception'),
             printerPort: config.defaultPort,
             printerEnabled: config.enabled,
-            printers: config.printers
+            autoSelectPrinters: config.autoSelect,
+            printers: config.printers,
+            agentsOnline,
+            kotRouted,
+            billRouted
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -167,6 +186,8 @@ router.put('/printers', protect, superadmin, async (req, res) => {
         const currentConfig = await getPrinterConfig();
         const printerPort = cleanPort(req.body.printerPort, currentConfig.defaultPort);
         const printerEnabled = req.body.printerEnabled !== false;
+        // Older clients (current APK) do not send this flag, so keep whatever is saved.
+        const autoSelect = typeof req.body.autoSelectPrinters === 'boolean' ? req.body.autoSelectPrinters : currentConfig.autoSelect;
         let printers;
 
         if (Array.isArray(req.body.printers)) {
@@ -184,15 +205,16 @@ router.put('/printers', protect, superadmin, async (req, res) => {
 
         const roleHost = (role) => cleanHost(printers.find(printer => printer.role === role)?.host || '');
         await Promise.all([
-            Settings.setSetting('printer_registry', printers, 'All LAN thermal printers that receive every KOT'),
+            Settings.setSetting('printer_registry', printers, 'All thermal printers and whether each prints KOT and/or Bill'),
             Settings.setSetting('printer_kitchen_ip', roleHost('kitchen'), 'Legacy kitchen thermal printer IP'),
             Settings.setSetting('printer_bar_ip', roleHost('bar'), 'Legacy bar thermal printer IP'),
             Settings.setSetting('printer_reception_ip', roleHost('reception'), 'Legacy reception thermal printer IP'),
             Settings.setSetting('printer_port', printerPort, 'Default thermal printer TCP port'),
-            Settings.setSetting('printer_enabled', printerEnabled, 'Enable or disable centralized automatic KOT printing')
+            Settings.setSetting('printer_enabled', printerEnabled, 'Enable or disable centralized automatic KOT printing'),
+            Settings.setSetting('printer_auto_select', autoSelect, 'Automatically tick newly detected printers for KOT and Bill')
         ]);
 
-        const config = { version: 1, enabled: printerEnabled, defaultPort: printerPort, printers };
+        const config = { version: 1, enabled: printerEnabled, autoSelect, defaultPort: printerPort, printers };
         const io = req.app.get('io');
         if (io) io.emit('printer-settings-updated', config);
 
@@ -203,6 +225,7 @@ router.put('/printers', protect, superadmin, async (req, res) => {
             receptionIp: roleHost('reception'),
             printerPort,
             printerEnabled,
+            autoSelectPrinters: autoSelect,
             printers
         });
     } catch (error) {
@@ -210,8 +233,69 @@ router.put('/printers', protect, superadmin, async (req, res) => {
     }
 });
 
+// Devices that reported printers: restaurant PC print agents (live over websocket) and staff phones.
+router.get('/printer-devices', protect, admin, (req, res) => {
+    const devices = listDevices();
+    res.json({ devices, agentsOnline: devices.filter(device => device.kind === 'agent' && device.online).length });
+});
+
+// Ask every connected PC print agent to rescan its installed + LAN/WiFi printers.
+router.post('/printer-devices/scan', protect, admin, (req, res) => {
+    const agentsOnline = listDevices().filter(device => device.kind === 'agent' && device.online).length;
+    req.app.get('io')?.to('print-agents').emit('printer-scan-request');
+    res.json({ agentsOnline });
+});
+
+// Staff app reports the TCP/9100 printers its WiFi scan found.
+router.post('/printer-devices/report', protect, admin, async (req, res) => {
+    try {
+        const device = reportAppDevice(req.body.deviceId, req.body.deviceName, req.body.printers);
+        if (!device) return res.status(400).json({ message: 'deviceId is required' });
+
+        const io = req.app.get('io');
+        io?.emit('printer-devices-updated', { at: Date.now() });
+        if (await addDetectedPrinters(device.printers, { deviceName: device.name })) {
+            io?.emit('printer-settings-updated', await getPrinterConfig());
+        }
+        res.json({ reported: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+router.post('/printer-devices/test', protect, admin, (req, res) => {
+    const [printer] = normalizePrinterRegistry([{ ...req.body.printer, kot: true, bill: true }]);
+    if (!printer) return res.status(400).json({ message: 'Invalid printer' });
+    req.app.get('io')?.to('print-agents').emit('printer-test', printer);
+    res.json({ requested: true });
+});
+
+// Security code staff must enter before reducing/removing order items (stored hashed).
+router.get('/order-edit-code', protect, superadmin, async (req, res) => {
+    try {
+        res.json({ isSet: await isOrderEditCodeSet() });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+router.put('/order-edit-code', protect, superadmin, async (req, res) => {
+    try {
+        if (!isValidOrderEditCode(req.body.code)) {
+            return res.status(400).json({ message: 'Security code must be 4 to 8 digits' });
+        }
+        await setOrderEditCode(req.body.code);
+        res.json({ isSet: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 // Admin: Update any setting. Keep this wildcard route after named routes.
 router.put('/:key', protect, admin, async (req, res) => {
+    if (PROTECTED_SETTING_KEYS.has(req.params.key)) {
+        return res.status(403).json({ message: 'This setting can only be changed from its own Settings section' });
+    }
     try {
         const { value, description } = req.body;
         const setting = await Settings.setSetting(req.params.key, value, description);

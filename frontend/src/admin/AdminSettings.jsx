@@ -1,12 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { FiSettings, FiSave, FiPlus, FiTrash2, FiInfo, FiEye, FiEyeOff, FiPercent, FiInstagram, FiFacebook, FiTwitter, FiPhone, FiMail, FiMapPin, FiClock, FiPrinter, FiToggleLeft, FiToggleRight } from 'react-icons/fi';
-import { getAllSettings, updateSetting, changeAdminPassword, getMaxDiscount, updateMaxDiscount, getSiteInfo, updateSiteInfo, getPrinterSettings, updatePrinterSettings } from '../utils/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { FiSettings, FiSave, FiPlus, FiTrash2, FiInfo, FiEye, FiEyeOff, FiPercent, FiInstagram, FiFacebook, FiTwitter, FiPhone, FiMail, FiMapPin, FiClock, FiPrinter, FiToggleLeft, FiToggleRight, FiRefreshCw, FiMonitor, FiSmartphone, FiLock } from 'react-icons/fi';
+import { getAllSettings, updateSetting, changeAdminPassword, getMaxDiscount, updateMaxDiscount, getSiteInfo, updateSiteInfo, getPrinterSettings, updatePrinterSettings, getPrinterDevices, scanPrinterDevices, testPrinter, getOrderEditCodeStatus, updateOrderEditCode } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
 import './AdminSettings.css';
 
+const CONNECTION_LABELS = {
+    usb: 'USB cable (PC)',
+    wired: 'Serial/parallel cable (PC)',
+    network: 'LAN / WiFi',
+    other: 'Installed on PC'
+};
+
+// Same identity the backend uses: LAN printers by IP:port, installed printers by PC + queue name.
+const printerKey = (printer) => (printer.type === 'system'
+    ? `system:${printer.agentId}:${printer.systemName}`
+    : `tcp:${printer.host}:${printer.port || 9100}`);
+
 const AdminSettings = () => {
-    const { user } = useAuth();
+    const { user, socket } = useAuth();
+    const isSuperadmin = user?.role === 'superadmin';
+    const canViewPrinters = isSuperadmin || user?.role === 'admin';
     const [settings, setSettings] = useState({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -42,9 +56,20 @@ const AdminSettings = () => {
         receptionIp: '',
         printerPort: 9100,
         printerEnabled: true,
+        autoSelectPrinters: true,
         printers: []
     });
     const [savingPrinters, setSavingPrinters] = useState(false);
+    // Devices (PC print agents + staff phones) and the printers each one detected
+    const [printerDevices, setPrinterDevices] = useState([]);
+    const [scanningPrinters, setScanningPrinters] = useState(false);
+    // Unsaved local ticks must not be overwritten when the server auto-adds printers meanwhile.
+    const printersDirtyRef = useRef(false);
+
+    // Staff order-edit security code
+    const [editCodeSet, setEditCodeSet] = useState(false);
+    const [newEditCode, setNewEditCode] = useState('');
+    const [savingEditCode, setSavingEditCode] = useState(false);
 
     useEffect(() => {
         fetchSettings();
@@ -52,6 +77,38 @@ const AdminSettings = () => {
         fetchSiteInfo();
         fetchPrinterSettings();
     }, []);
+
+    useEffect(() => {
+        if (!canViewPrinters) return undefined;
+        fetchPrinterDevices();
+        if (isSuperadmin) {
+            getOrderEditCodeStatus()
+                .then(res => setEditCodeSet(Boolean(res.data.isSet)))
+                .catch(err => console.error('Error fetching security code status:', err));
+        }
+        if (!socket) return undefined;
+
+        // Live over the websocket: agents (re)connect or finish a scan, printers get auto-added, test results.
+        const handleDevicesUpdated = () => {
+            setScanningPrinters(false);
+            fetchPrinterDevices();
+        };
+        const handleRegistryUpdated = () => {
+            if (!printersDirtyRef.current) fetchPrinterSettings();
+        };
+        const handleTestResult = (result) => showNotice(
+            result.ok ? 'success' : 'error',
+            result.ok ? `Test slip sent to ${result.printerName}` : `Test print failed on ${result.printerName}: ${result.error}`
+        );
+        socket.on('printer-devices-updated', handleDevicesUpdated);
+        socket.on('printer-settings-updated', handleRegistryUpdated);
+        socket.on('printer-test-result', handleTestResult);
+        return () => {
+            socket.off('printer-devices-updated', handleDevicesUpdated);
+            socket.off('printer-settings-updated', handleRegistryUpdated);
+            socket.off('printer-test-result', handleTestResult);
+        };
+    }, [canViewPrinters, isSuperadmin, socket]);
 
     const fetchMaxDiscount = async () => {
         try {
@@ -74,9 +131,19 @@ const AdminSettings = () => {
     const fetchPrinterSettings = async () => {
         try {
             const res = await getPrinterSettings();
+            printersDirtyRef.current = false;
             setPrinterSettings(prev => ({ ...prev, ...res.data }));
         } catch (err) {
             console.error('Error fetching printer settings:', err);
+        }
+    };
+
+    const fetchPrinterDevices = async () => {
+        try {
+            const res = await getPrinterDevices();
+            setPrinterDevices(res.data.devices || []);
+        } catch (err) {
+            console.error('Error fetching printer devices:', err);
         }
     };
 
@@ -84,11 +151,90 @@ const AdminSettings = () => {
         setSavingPrinters(true);
         try {
             await updatePrinterSettings(printerSettings);
-            showNotice('success', 'Printer registry saved. The restaurant desktop print agent will refresh automatically.');
+            printersDirtyRef.current = false;
+            showNotice('success', 'Printer selection saved. The restaurant PC print agent and staff app refresh automatically.');
         } catch (err) {
             showNotice('error', err.response?.data?.message || 'Failed to save printer settings');
         } finally {
             setSavingPrinters(false);
+        }
+    };
+
+    const handleScanPrinters = async () => {
+        setScanningPrinters(true);
+        try {
+            const res = await scanPrinterDevices();
+            if (!res.data.agentsOnline) {
+                setScanningPrinters(false);
+                showNotice('error', 'No restaurant PC print agent is online. Start the print agent on the counter PC, or scan from Staff App → Printer Setup.');
+                return;
+            }
+            // Results arrive over the websocket; stop the spinner anyway if the agent never answers.
+            setTimeout(() => setScanningPrinters(false), 30000);
+        } catch (err) {
+            setScanningPrinters(false);
+            showNotice('error', err.response?.data?.message || 'Could not start the printer scan');
+        }
+    };
+
+    const handleTestPrinter = async (printer) => {
+        try {
+            await testPrinter(printer);
+            showNotice('success', `Test print requested on ${printer.name || printer.systemName || printer.host}`);
+        } catch (err) {
+            showNotice('error', err.response?.data?.message || 'Could not request a test print');
+        }
+    };
+
+    const editPrinters = (updater) => {
+        printersDirtyRef.current = true;
+        setPrinterSettings(updater);
+    };
+
+    const updatePrinterAt = (index, changes) => editPrinters(current => ({
+        ...current,
+        printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item)
+    }));
+
+    // Tick/untick KOT or Bill on a detected printer.
+    const togglePrinterJob = (device, found, job) => editPrinters(current => {
+        const candidate = found.type === 'system'
+            ? { type: 'system', agentId: device.id, systemName: found.systemName }
+            : { type: 'tcp', host: found.host, port: found.port || 9100 };
+        const key = printerKey(candidate);
+        const printers = current.printers || [];
+        const existing = printers.find(printer => printerKey(printer) === key);
+        if (existing) {
+            // Unticked printers stay saved (both off) so auto-select never ticks them again.
+            return { ...current, printers: printers.map(printer => (printer === existing ? { ...existing, [job]: !existing[job] } : printer)) };
+        }
+        return {
+            ...current,
+            printers: [...printers, {
+                id: `printer-${Date.now()}`,
+                name: found.type === 'system' ? `${found.name || found.systemName} (${device.name})` : `Network printer ${found.host}`,
+                role: 'all',
+                connection: found.connection,
+                copies: 1,
+                enabled: true,
+                kot: job === 'kot',
+                bill: job === 'bill',
+                ...candidate
+            }]
+        };
+    });
+
+    const handleSaveEditCode = async () => {
+        setSavingEditCode(true);
+        try {
+            await updateOrderEditCode(newEditCode);
+            setEditCodeSet(true);
+            setNewEditCode('');
+            showNotice('success', 'Security code saved. Staff must enter it to reduce or remove order items.');
+        } catch (err) {
+            showNotice('error', err.response?.data?.message || 'Failed to save security code');
+        } finally {
+            setSavingEditCode(false);
         }
     };
 
@@ -212,6 +358,9 @@ const AdminSettings = () => {
     };
 
     if (loading) return <Loader message="Fetching your settings..." />;
+
+    const onlineAgents = printerDevices.filter(device => device.kind === 'agent' && device.online).length;
+    const checkboxLabelStyle = { display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, cursor: isSuperadmin ? 'pointer' : 'default', margin: 0 };
 
     return (
         <div className="admin-settings">
@@ -348,11 +497,15 @@ const AdminSettings = () => {
                                 </div>
                             </div>
                         </div>
+                    </>
+                )}
 
-                        {/* Thermal Printer Configuration */}
-                        <div className="settings-card" style={{ borderLeft: '4px solid #7C3AED' }}>
-                            <div className="card-header-flex">
-                                <h2><FiPrinter /> Thermal Printer Config</h2>
+                {/* Printers: detected devices + KOT/Bill selection (Superadmin edits, Admin views, scans and tests) */}
+                {canViewPrinters && (
+                    <div className="settings-card" style={{ borderLeft: '4px solid #7C3AED' }}>
+                        <div className="card-header-flex">
+                            <h2><FiPrinter /> Printers — KOT &amp; Bill</h2>
+                            {isSuperadmin && (
                                 <button
                                     className="btn btn-primary"
                                     onClick={handleSavePrinterSettings}
@@ -361,37 +514,157 @@ const AdminSettings = () => {
                                 >
                                     {savingPrinters ? 'Saving...' : <><FiSave /> Save Printers</>}
                                 </button>
-                            </div>
+                            )}
+                        </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', background: '#F5F3FF', padding: '10px 14px', borderRadius: '8px' }}>
-                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Auto-Print KOT on Order:</span>
-                                <button
-                                    type="button"
-                                    onClick={() => setPrinterSettings(p => ({ ...p, printerEnabled: !p.printerEnabled }))}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: printerSettings.printerEnabled ? '#059669' : '#9CA3AF', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '1rem' }}
-                                >
-                                    {printerSettings.printerEnabled ? <><FiToggleRight size={22} /> Enabled</> : <><FiToggleLeft size={22} /> Disabled</>}
-                                </button>
-                            </div>
+                        <div className="info-box" style={{ marginBottom: '16px' }}>
+                            <FiInfo />
+                            <p>
+                                The Kea print agent on the restaurant PC stays connected to this server over a websocket and reports every printer it can reach:
+                                printers on a USB/serial cable or installed on that PC, and all LAN/WiFi printers. Staff App → Printer Setup also scans the WiFi from the phone.
+                                Every newly detected printer is ticked for <strong>KOT</strong> and <strong>Bill</strong> automatically; untick and Save to change.
+                                While the agent is online, KOTs and Bills print automatically only on the ticked printers (no browser popup). If no agent is online, the browser print popup and the Staff App print as before.
+                                {!isSuperadmin && ' Only Superadmin can change the ticks.'}
+                            </p>
+                        </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                                <div>
-                                    <strong>All KOT Printer Targets</strong>
-                                    <div className="hint">Every enabled printer receives CREATE, ADD and CANCEL KOTs.</div>
+                        {isSuperadmin && (
+                            <div style={{ display: 'grid', gap: '6px', marginBottom: '16px', background: '#F5F3FF', padding: '10px 14px', borderRadius: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Auto-Print KOT &amp; Bill (PC print agent):</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => editPrinters(p => ({ ...p, printerEnabled: !p.printerEnabled }))}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: printerSettings.printerEnabled ? '#059669' : '#9CA3AF', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '1rem' }}
+                                    >
+                                        {printerSettings.printerEnabled ? <><FiToggleRight size={22} /> Enabled</> : <><FiToggleLeft size={22} /> Disabled</>}
+                                    </button>
                                 </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Auto-tick new printers for KOT + Bill:</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => editPrinters(p => ({ ...p, autoSelectPrinters: p.autoSelectPrinters === false }))}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: printerSettings.autoSelectPrinters !== false ? '#059669' : '#9CA3AF', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '1rem' }}
+                                    >
+                                        {printerSettings.autoSelectPrinters !== false ? <><FiToggleRight size={22} /> On</> : <><FiToggleLeft size={22} /> Off</>}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Detected devices and their printers */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                            <div>
+                                <strong>Detected Devices &amp; Printers</strong>
+                                <div className="hint">
+                                    {onlineAgents > 0 ? `🟢 ${onlineAgents} PC print agent(s) online` : '🔴 No PC print agent online'} · USB/cable printers on the PC + LAN/WiFi printers
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={handleScanPrinters}
+                                disabled={scanningPrinters}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                                <FiRefreshCw /> {scanningPrinters ? 'Scanning…' : 'Scan Network'}
+                            </button>
+                        </div>
+
+                        {printerDevices.length === 0 ? (
+                            <div className="info-box" style={{ marginBottom: '16px' }}>
+                                <FiInfo />
+                                <p>No device has reported printers yet. Start the print agent on the restaurant PC (it scans automatically), or open Staff App → Printer Setup on a phone connected to the restaurant WiFi.</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gap: '10px', marginBottom: '20px' }}>
+                                {printerDevices.map(device => (
+                                    <div key={`${device.kind}-${device.id}`} style={{ border: '1.5px solid #D1D5DB', borderRadius: '8px', padding: '12px', background: '#FFFFFF' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                            <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                {device.kind === 'agent' ? <FiMonitor /> : <FiSmartphone />} {device.name}
+                                            </strong>
+                                            <span className="hint">
+                                                {device.kind === 'agent' ? (device.online ? '🟢 Online' : '🔴 Offline') : 'Staff App WiFi scan'}
+                                                {' · '}{new Date(device.lastSeen).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+                                        {(device.printers || []).length === 0 ? (
+                                            <div className="hint">No printers found by this device.</div>
+                                        ) : device.printers.map(found => {
+                                            const identity = found.type === 'system' ? { ...found, agentId: device.id } : found;
+                                            const foundKey = printerKey(identity);
+                                            const selected = (printerSettings.printers || []).find(printer => printerKey(printer) === foundKey);
+                                            return (
+                                                <div key={foundKey} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '8px 0', borderTop: '1px dashed #E5E7EB' }}>
+                                                    <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                                                        <div style={{ fontWeight: 600, wordBreak: 'break-word' }}>{found.name || found.systemName || found.host}</div>
+                                                        <div className="hint">
+                                                            {CONNECTION_LABELS[found.connection] || found.connection}
+                                                            {found.host ? ` · ${found.host}` : ''}
+                                                            {found.status ? ` · ${found.status}` : ''}
+                                                        </div>
+                                                    </div>
+                                                    <label style={checkboxLabelStyle}>
+                                                        <input
+                                                            type="checkbox"
+                                                            style={{ width: 'auto' }}
+                                                            checked={Boolean(selected?.kot)}
+                                                            disabled={!isSuperadmin}
+                                                            onChange={() => togglePrinterJob(device, found, 'kot')}
+                                                        /> KOT
+                                                    </label>
+                                                    <label style={checkboxLabelStyle}>
+                                                        <input
+                                                            type="checkbox"
+                                                            style={{ width: 'auto' }}
+                                                            checked={Boolean(selected?.bill)}
+                                                            disabled={!isSuperadmin}
+                                                            onChange={() => togglePrinterJob(device, found, 'bill')}
+                                                        /> Bill
+                                                    </label>
+                                                    {onlineAgents > 0 && (found.type !== 'system' || device.online) && (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-secondary"
+                                                            onClick={() => handleTestPrinter(identity)}
+                                                            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                                        >
+                                                            Test
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Saved selection */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                            <div>
+                                <strong>Saved Printers</strong>
+                                <div className="hint">KOT = CREATE, ADD and CANCEL kitchen tickets. Bill = customer receipt. Port is detected automatically.</div>
+                            </div>
+                            {isSuperadmin && (
                                 <button
                                     type="button"
                                     className="btn btn-secondary"
-                                    onClick={() => setPrinterSettings(current => ({
+                                    onClick={() => editPrinters(current => ({
                                         ...current,
                                         printers: [
                                             ...(current.printers || []),
                                             {
                                                 id: `printer-${Date.now()}`,
                                                 name: `WiFi Printer ${(current.printers || []).length + 1}`,
+                                                type: 'tcp',
                                                 role: 'all',
                                                 host: '',
-                                                port: current.printerPort || 9100,
+                                                port: 9100,
+                                                kot: true,
+                                                bill: true,
                                                 copies: 1,
                                                 enabled: true
                                             }
@@ -399,72 +672,90 @@ const AdminSettings = () => {
                                     }))}
                                     style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                                 >
-                                    <FiPlus /> Add Printer
+                                    <FiPlus /> Add Printer IP
                                 </button>
-                            </div>
+                            )}
+                        </div>
 
-                            {(printerSettings.printers || []).length === 0 ? (
-                                <div className="info-box" style={{ marginBottom: '16px' }}>
-                                    <FiInfo />
-                                    <p>No fixed IP is registered yet. Add Kitchen and Bar printer IPs, or enable LAN auto-discovery in the desktop print agent.</p>
-                                </div>
-                            ) : (
-                                <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
-                                    {(printerSettings.printers || []).map((printer, index) => (
-                                        <div key={printer.id || index} style={{ border: '1.5px solid #D1D5DB', borderRadius: '8px', padding: '12px', background: printer.enabled === false ? '#F3F4F6' : '#FFFFFF' }}>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '8px', alignItems: 'end' }}>
-                                                <div className="form-group" style={{ margin: 0 }}>
-                                                    <label>Name</label>
-                                                    <input
-                                                        type="text"
-                                                        value={printer.name || ''}
-                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, name: e.target.value } : item) }))}
-                                                        placeholder="Kitchen / Bar"
-                                                    />
+                        {(printerSettings.printers || []).length === 0 ? (
+                            <div className="info-box" style={{ marginBottom: '16px' }}>
+                                <FiInfo />
+                                <p>No printer saved yet. Printers appear here automatically once the PC print agent or the Staff App detects them.</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
+                                {(printerSettings.printers || []).map((printer, index) => (
+                                    <div key={printer.id || index} style={{ border: '1.5px solid #D1D5DB', borderRadius: '8px', padding: '12px', background: printer.enabled === false ? '#F3F4F6' : '#FFFFFF' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', alignItems: 'end' }}>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={printer.name || ''}
+                                                    disabled={!isSuperadmin}
+                                                    onChange={(e) => updatePrinterAt(index, { name: e.target.value })}
+                                                    placeholder="Kitchen / Bar"
+                                                />
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>Prints</label>
+                                                <div style={{ display: 'flex', gap: '14px', padding: '8px 0' }}>
+                                                    <label style={checkboxLabelStyle}>
+                                                        <input
+                                                            type="checkbox"
+                                                            style={{ width: 'auto' }}
+                                                            checked={Boolean(printer.kot)}
+                                                            disabled={!isSuperadmin}
+                                                            onChange={() => updatePrinterAt(index, { kot: !printer.kot })}
+                                                        /> KOT
+                                                    </label>
+                                                    <label style={checkboxLabelStyle}>
+                                                        <input
+                                                            type="checkbox"
+                                                            style={{ width: 'auto' }}
+                                                            checked={Boolean(printer.bill)}
+                                                            disabled={!isSuperadmin}
+                                                            onChange={() => updatePrinterAt(index, { bill: !printer.bill })}
+                                                        /> Bill
+                                                    </label>
                                                 </div>
+                                            </div>
+                                            {printer.type === 'system' ? (
                                                 <div className="form-group" style={{ margin: 0 }}>
-                                                    <label>Role</label>
-                                                    <select
-                                                        value={printer.role || 'all'}
-                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, role: e.target.value } : item) }))}
-                                                    >
-                                                        <option value="kitchen">Kitchen</option>
-                                                        <option value="bar">Bar</option>
-                                                        <option value="reception">Reception</option>
-                                                        <option value="all">Other / All</option>
-                                                    </select>
+                                                    <label>Installed Printer</label>
+                                                    <div style={{ padding: '8px 0', wordBreak: 'break-word' }}>
+                                                        {printer.systemName}
+                                                        <div className="hint">PC: {printer.agentId} · {CONNECTION_LABELS[printer.connection] || 'Installed on PC'}</div>
+                                                    </div>
                                                 </div>
+                                            ) : (
                                                 <div className="form-group" style={{ margin: 0 }}>
-                                                    <label>Printer IP / Host</label>
+                                                    <label>Printer IP (LAN / WiFi)</label>
                                                     <input
                                                         type="text"
                                                         value={printer.host || ''}
-                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, host: e.target.value } : item) }))}
+                                                        disabled={!isSuperadmin}
+                                                        onChange={(e) => updatePrinterAt(index, { host: e.target.value })}
                                                         placeholder="192.168.1.100"
                                                     />
                                                 </div>
-                                                <div className="form-group" style={{ margin: 0 }}>
-                                                    <label>Port</label>
-                                                    <input
-                                                        type="number"
-                                                        value={printer.port || printerSettings.printerPort || 9100}
-                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, port: parseInt(e.target.value) || 9100 } : item) }))}
-                                                    />
-                                                </div>
-                                                <div className="form-group" style={{ margin: 0 }}>
-                                                    <label>Copies</label>
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="5"
-                                                        value={printer.copies || 1}
-                                                        onChange={(e) => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, copies: Math.max(1, Math.min(5, parseInt(e.target.value) || 1)) } : item) }))}
-                                                    />
-                                                </div>
+                                            )}
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>Copies</label>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="5"
+                                                    value={printer.copies || 1}
+                                                    disabled={!isSuperadmin}
+                                                    onChange={(e) => updatePrinterAt(index, { copies: Math.max(1, Math.min(5, parseInt(e.target.value) || 1)) })}
+                                                />
+                                            </div>
+                                            {isSuperadmin && (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '2px' }}>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setPrinterSettings(current => ({ ...current, printers: current.printers.map((item, itemIndex) => itemIndex === index ? { ...item, enabled: item.enabled === false } : item) }))}
+                                                        onClick={() => updatePrinterAt(index, { enabled: printer.enabled === false })}
                                                         title={printer.enabled === false ? 'Enable printer' : 'Disable printer'}
                                                         style={{ border: 'none', background: 'transparent', color: printer.enabled === false ? '#9CA3AF' : '#059669', cursor: 'pointer', padding: '6px' }}
                                                     >
@@ -472,34 +763,60 @@ const AdminSettings = () => {
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setPrinterSettings(current => ({ ...current, printers: current.printers.filter((_, itemIndex) => itemIndex !== index) }))}
-                                                        title="Remove printer"
+                                                        onClick={() => editPrinters(current => ({ ...current, printers: current.printers.filter((_, itemIndex) => itemIndex !== index) }))}
+                                                        title="Remove printer (while auto-tick is On, a printer that is still detected comes back ticked; untick KOT and Bill instead)"
                                                         style={{ border: 'none', background: '#FEE2E2', color: '#DC2626', cursor: 'pointer', borderRadius: '5px', padding: '7px' }}
                                                     >
                                                         <FiTrash2 />
                                                     </button>
                                                 </div>
-                                            </div>
+                                            )}
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            <div className="form-group">
-                                <label>Printer TCP Port</label>
-                                <input
-                                    type="number"
-                                    value={printerSettings.printerPort}
-                                    onChange={(e) => setPrinterSettings(p => ({ ...p, printerPort: parseInt(e.target.value) || 9100 }))}
-                                    placeholder="9100"
-                                    style={{ width: '140px' }}
-                                />
-                                <span className="hint">Default is 9100 for most thermal printers (ESC/POS)</span>
+                                    </div>
+                                ))}
                             </div>
+                        )}
 
+                        <div className="info-box">
+                            <FiInfo />
+                            <p>LAN/WiFi printers must be on the same network as the restaurant PC running the print agent (or the phone using the Staff App). USB/cable printers print only from the PC they are plugged into, so that PC's print agent must be running.</p>
+                        </div>
+                    </div>
+                )}
+
+                {user && user.role === 'superadmin' && (
+                    <>
+                        {/* Staff order-edit security code */}
+                        <div className="settings-card">
+                            <h2><FiLock /> Staff Order Edit Security Code</h2>
+                            <div className="form-group">
+                                <label>{editCodeSet ? 'Change Security Code' : 'Set Security Code'} (4–8 digits)</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                    <input
+                                        type="password"
+                                        inputMode="numeric"
+                                        autoComplete="new-password"
+                                        value={newEditCode}
+                                        onChange={(e) => setNewEditCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                                        placeholder="e.g. 4821"
+                                        style={{ width: '160px' }}
+                                    />
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={handleSaveEditCode}
+                                        disabled={savingEditCode || newEditCode.length < 4}
+                                        style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                                    >
+                                        {savingEditCode ? 'Saving...' : 'Save Code'}
+                                    </button>
+                                </div>
+                                <span className="hint">
+                                    Status: {editCodeSet ? 'Set ✅ — staff must enter it to reduce or remove items' : 'Not set — staff can still reduce items without a code (as before)'}
+                                </span>
+                            </div>
                             <div className="info-box">
                                 <FiInfo />
-                                <p>Printers must be on the same WiFi/LAN as the restaurant desktop running the print agent. The VPS only stores jobs; the local agent sends each CREATE, ADD and CANCEL KOT to every enabled fixed or auto-discovered TCP/9100 printer.</p>
+                                <p>Staff App → Today's History → Edit Order: pressing minus (−) or Remove on an already-ordered item asks for this code. The change then prints a CANCEL KOT like before.</p>
                             </div>
                         </div>
 
@@ -706,8 +1023,8 @@ const AdminSettings = () => {
                             </div>
                         </div>
 
-                        <button 
-                            type="submit" 
+                        <button
+                            type="submit"
                             className="btn btn-primary btn-full sketch-border sketch-shadow"
                             disabled={updatingPassword}
                             style={{ marginTop: '8px', padding: '10px' }}

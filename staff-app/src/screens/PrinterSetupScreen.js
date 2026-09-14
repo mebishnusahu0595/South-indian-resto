@@ -1,123 +1,211 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  TextInput, ActivityIndicator, Alert
+  TextInput, ActivityIndicator, Alert, Platform
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  discoverPrinters, getSavedPrinters, savePrinterIps, testPrint
-} from '../utils/ThermalPrinter';
+import { discoverPrinters, testPrint } from '../utils/ThermalPrinter';
 
-export default function PrinterSetupScreen({ onBack }) {
+const CONNECTION_LABELS = {
+  usb: 'USB cable on PC',
+  wired: 'Serial/parallel cable on PC',
+  network: 'LAN / WiFi',
+  other: 'Installed on PC',
+};
+const printerKey = p => (p.type === 'system' ? `system:${p.agentId}:${p.systemName}` : `tcp:${p.host}:${p.port || 9100}`);
+const isIPv4 = value => /^\d{1,3}(\.\d{1,3}){3}$/.test(value);
+
+async function getDeviceId() {
+  let id = await AsyncStorage.getItem('kea_device_id');
+  if (!id) {
+    id = `app-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    await AsyncStorage.setItem('kea_device_id', id);
+  }
+  return id;
+}
+
+// One central list for the whole restaurant: Superadmin ticks which printers print KOT and Bill.
+// Printers come from this phone's WiFi scan, the restaurant PC print agent and manual IPs.
+export default function PrinterSetupScreen({ api, staffName, onBack }) {
+  const [central, setCentral] = useState(null);
+  const [registry, setRegistry] = useState([]);
+  const [devices, setDevices] = useState([]);
+  const [phoneFound, setPhoneFound] = useState([]);
   const [scanning, setScanning] = useState(false);
-  const [found, setFound] = useState([]);
-  const [kitchenIp, setKitchenIp] = useState('');
-  const [receptionIp, setReceptionIp] = useState('');
-  const [kitchenName, setKitchenName] = useState('Kitchen Printer');
-  const [receptionName, setReceptionName] = useState('Reception Printer');
+  const [scanStatus, setScanStatus] = useState('');
+  const [manualIp, setManualIp] = useState('');
   const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState('');
-  const [subnetPrefix, setSubnetPrefix] = useState('');
-  const [scanProgress, setScanProgress] = useState('');
+  const [testingKey, setTestingKey] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const cancelScanRef = useRef(null);
+  const mountedRef = useRef(false);
 
-  useEffect(() => {
-    loadSaved();
-    getSubnet();
-  }, []);
+  const loadDevices = () => api.get('/settings/printer-devices')
+    .then(res => { if (mountedRef.current) setDevices(res.data.devices || []); })
+    .catch(() => {});
 
-  const getSubnet = async () => {
-    const info = await NetInfo.fetch();
-    const ip = info?.details?.ipAddress;
-    if (ip) {
-      const parts = ip.split('.');
-      if (parts.length === 4) {
-        setSubnetPrefix(`${parts[0]}.${parts[1]}.${parts[2]}`);
-        setScanProgress(`Network: ${ip}`);
-      }
+  const loadServer = async () => {
+    try {
+      const [printersRes, devicesRes] = await Promise.all([
+        api.get('/settings/printers'),
+        api.get('/settings/printer-devices'),
+      ]);
+      if (!mountedRef.current) return;
+      setCentral(printersRes.data);
+      setRegistry(printersRes.data.printers || []);
+      setDevices(devicesRes.data.devices || []);
+      setLoadError('');
+    } catch (error) {
+      if (mountedRef.current) setLoadError(error.response?.data?.message || 'Could not load the printer selection from the server.');
     }
   };
 
-  const loadSaved = async () => {
-    const { kitchenIp: k, receptionIp: r, kitchenName: kn, receptionName: rn } = await getSavedPrinters();
-    setKitchenIp(k);
-    setReceptionIp(r);
-    if (kn) setKitchenName(kn);
-    if (rn) setReceptionName(rn);
+  const reportScan = async (ips) => {
+    try {
+      await api.post('/settings/printer-devices/report', {
+        deviceId: await getDeviceId(),
+        deviceName: `${staffName || 'Staff'} (${Platform.OS} phone)`,
+        printers: ips.map(host => ({ type: 'tcp', host, port: 9100, connection: 'network', name: `Network printer ${host}` })),
+      });
+      // New printers may have been auto-ticked on the server; refresh unless the user is editing.
+      loadDevices();
+    } catch (_) {
+      // Only feeds the central list; this screen already shows the result.
+    }
   };
 
-  const startScan = () => {
-    if (!subnetPrefix) {
-      Alert.alert('WiFi Required', 'Please connect to restaurant WiFi first.');
+  // Scans the /24 of this phone's current WiFi address, read fresh each time (e.g. after joining WiFi).
+  const startScan = async () => {
+    const info = await NetInfo.fetch();
+    if (!mountedRef.current) return;
+    const parts = String(info?.details?.ipAddress || '').split('.');
+    if (!(info?.type === 'wifi' || info?.type === 'ethernet') || parts.length !== 4) {
+      setScanStatus('Connect this phone to the restaurant WiFi, then tap Scan WiFi.');
       return;
     }
-    setFound([]);
-    setScanning(true);
-    setScanProgress(`Scanning ${subnetPrefix}.1 – ${subnetPrefix}.254 for printers...`);
+    const prefix = parts.slice(0, 3).join('.');
 
-    discoverPrinters(
-      subnetPrefix,
-      (ip) => {
-        // onFound callback
-        setFound(prev => [...prev, ip]);
-        setScanProgress(`Found: ${ip} (port 9100)`);
-      },
-      (allFound) => {
-        // onDone callback
+    if (cancelScanRef.current) cancelScanRef.current();
+    setPhoneFound([]);
+    setScanning(true);
+    setScanStatus(`Scanning ${prefix}.1 – ${prefix}.254 for printers…`);
+    cancelScanRef.current = discoverPrinters(
+      prefix,
+      ip => setPhoneFound(prev => (prev.includes(ip) ? prev : [...prev, ip])),
+      (all) => {
+        cancelScanRef.current = null;
         setScanning(false);
-        if (allFound.length === 0) {
-          setScanProgress('No printers found. Make sure printer is ON and on same WiFi.');
-        } else {
-          setScanProgress(`Scan complete. ${allFound.length} printer(s) found.`);
-        }
-      }
+        setScanStatus(all.length
+          ? `Scan complete: ${all.length} printer(s) found on ${prefix}.x`
+          : `No printer answered on port 9100 in ${prefix}.x. Check the printer is ON and on this WiFi/LAN, then scan again.`);
+        reportScan(all);
+      },
+      (checked, total) => setScanStatus(`Scanning ${prefix}.x … ${checked}/${total} checked`)
     );
   };
 
-  const assignPrinter = (ip, role) => {
-    if (role === 'kitchen') {
-      setKitchenIp(ip);
-    } else {
-      setReceptionIp(ip);
+  useEffect(() => {
+    mountedRef.current = true;
+    loadServer();
+    startScan();
+    return () => {
+      mountedRef.current = false;
+      if (cancelScanRef.current) cancelScanRef.current();
+    };
+  }, []);
+
+  const handleScanPC = async () => {
+    try {
+      const res = await api.post('/settings/printer-devices/scan');
+      if (!res.data.agentsOnline) {
+        Alert.alert('PC print agent offline', 'Start the Kea print agent on the restaurant PC to detect its USB and LAN printers.');
+        return;
+      }
+      Alert.alert('Scanning from PC', 'The restaurant PC is scanning. This list refreshes in a few seconds.');
+      setTimeout(loadDevices, 10000);
+    } catch (error) {
+      Alert.alert('Scan failed', error.response?.data?.message || 'Could not reach the server.');
+    }
+  };
+
+  const rows = useMemo(() => {
+    const byKey = new Map();
+    const add = (printer, source) => {
+      const key = printerKey(printer);
+      const row = byKey.get(key) || { ...printer, key, sources: [] };
+      if (!row.sources.includes(source)) row.sources.push(source);
+      byKey.set(key, row);
+    };
+    registry.forEach(printer => add(printer, 'Saved'));
+    devices.forEach(device => (device.printers || []).forEach(printer => add(
+      printer.type === 'system'
+        ? { ...printer, agentId: device.id, name: `${printer.name || printer.systemName} (${device.name})` }
+        : { ...printer, name: printer.name || `Network printer ${printer.host}` },
+      device.kind === 'agent' ? `PC: ${device.name}` : 'Phone scan'
+    )));
+    phoneFound.forEach(host => add({ type: 'tcp', host, port: 9100, connection: 'network', name: `Network printer ${host}` }, 'This phone'));
+    return Array.from(byKey.values());
+  }, [registry, devices, phoneFound]);
+
+  const toggleJob = (row, job) => {
+    setRegistry(prev => {
+      const existing = prev.find(printer => printerKey(printer) === row.key);
+      if (existing) {
+        // Unticked printers stay listed (both off) so auto-select never ticks them again.
+        return prev.map(printer => (printer === existing ? { ...existing, [job]: !existing[job] } : printer));
+      }
+      const { key, sources, status, ...printer } = row;
+      return [...prev, { id: `printer-${Date.now()}`, role: 'all', copies: 1, enabled: true, ...printer, kot: job === 'kot', bill: job === 'bill' }];
+    });
+  };
+
+  const addManualIp = () => {
+    const ip = manualIp.trim();
+    if (!isIPv4(ip)) {
+      Alert.alert('Invalid IP', 'Enter an IP address like 192.168.1.100');
+      return;
+    }
+    setPhoneFound(prev => (prev.includes(ip) ? prev : [...prev, ip]));
+    setManualIp('');
+  };
+
+  const handleTest = async (row) => {
+    setTestingKey(row.key);
+    try {
+      await testPrint(row.host, row.port || 9100);
+      Alert.alert('Printed', `Test slip printed on ${row.name} (${row.host}).`);
+    } catch (error) {
+      Alert.alert('Print Failed', error.message || 'Make sure the printer is ON and on the same WiFi/LAN.');
+    } finally {
+      setTestingKey('');
     }
   };
 
   const handleSave = async () => {
+    if (!central) return;
     setSaving(true);
     try {
-      await savePrinterIps({
-        kitchenIp: kitchenIp.trim(),
-        receptionIp: receptionIp.trim(),
-        kitchenName: kitchenName.trim(),
-        receptionName: receptionName.trim(),
+      await api.put('/settings/printers', {
+        printers: registry,
+        printerPort: central.printerPort || 9100,
+        printerEnabled: central.printerEnabled !== false,
       });
-      Alert.alert('Saved!', 'Printer settings saved. KOTs will now auto-print via WiFi.', [{ text: 'OK', onPress: onBack }]);
-    } catch (e) {
-      Alert.alert('Error', 'Could not save printer settings.');
+      Alert.alert('Saved', 'KOT and Bill printer selection saved for the whole restaurant.');
+      loadServer();
+    } catch (error) {
+      Alert.alert('Not saved', error.response?.status === 403
+        ? 'Only Superadmin can change which printers print KOT and Bill.'
+        : (error.response?.data?.message || 'Could not save the printer selection.'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTest = async (ip, label) => {
-    if (!ip) { Alert.alert('No IP', `Set a ${label} printer IP first.`); return; }
-    setTesting(label);
-    try {
-      await testPrint(ip.trim());
-      await savePrinterIps({
-        kitchenIp: label === 'Kitchen' ? ip.trim() : kitchenIp.trim(),
-        receptionIp: label === 'Reception' ? ip.trim() : receptionIp.trim()
-      });
-      Alert.alert('✅ Connected & Printed!', `Successfully connected and printed test slip on ${label} printer (${ip.trim()}). IP saved!`);
-    } catch (err) {
-      Alert.alert('Print Failed', err.message || 'Make sure printer is ON and connected to same WiFi');
-    } finally {
-      setTesting('');
-    }
-  };
+  const agentsOnline = central?.agentsOnline || 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
@@ -127,123 +215,107 @@ export default function PrinterSetupScreen({ onBack }) {
         <View style={{ width: 60 }} />
       </View>
 
-      {/* Info */}
+      {/* Who prints right now */}
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>
-          Both your phone and thermal printer must be on the same WiFi network.
-          Tap "Scan" to auto-discover printers, then assign Kitchen / Reception roles.
+          {agentsOnline > 0
+            ? `🟢 Restaurant PC print agent online (${agentsOnline}). KOT and Bill print automatically on the printers ticked below.`
+            : '🔴 Restaurant PC print agent offline. This phone prints KOTs itself over WiFi to the LAN printers ticked for KOT.'}
+        </Text>
+        <Text style={[styles.infoText, { marginTop: 6 }]}>
+          New printers are ticked for KOT + Bill automatically. Untick and Save to change (Superadmin only).
         </Text>
       </View>
 
-      {/* Scan Button */}
-      <TouchableOpacity
-        style={[styles.scanBtn, scanning && styles.scanBtnDisabled]}
-        onPress={startScan}
-        disabled={scanning}
-      >
-        {scanning
-          ? <ActivityIndicator color="#FFFFFF" />
-          : <Text style={styles.scanBtnText}>Scan WiFi for Printers</Text>
-        }
-      </TouchableOpacity>
+      {loadError ? <Text style={[styles.scanStatus, { color: '#DC2626' }]}>{loadError}</Text> : null}
 
-      {scanProgress ? (
-        <Text style={styles.scanStatus}>{scanProgress}</Text>
-      ) : null}
+      {/* Scan buttons */}
+      <View style={styles.scanRow}>
+        <TouchableOpacity
+          style={[styles.scanBtn, scanning && styles.scanBtnDisabled]}
+          onPress={() => startScan()}
+          disabled={scanning}
+        >
+          {scanning
+            ? <ActivityIndicator color="#FFFFFF" />
+            : <Text style={styles.scanBtnText}>Scan WiFi (phone)</Text>
+          }
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.scanBtn, { backgroundColor: '#2563EB' }]} onPress={handleScanPC}>
+          <Text style={styles.scanBtnText}>Scan from PC</Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* Discovered Printers */}
-      {found.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Discovered Printers (Port 9100)</Text>
-          {found.map(ip => (
-            <View key={ip} style={styles.printerRow}>
-              <Text style={styles.printerIp}>{ip}</Text>
-              <TouchableOpacity style={styles.assignBtn} onPress={() => assignPrinter(ip, 'kitchen')}>
-                <Text style={styles.assignBtnText}>Kitchen</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.assignBtn, { backgroundColor: '#059669' }]} onPress={() => assignPrinter(ip, 'reception')}>
-                <Text style={styles.assignBtnText}>Reception</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-      )}
+      {scanStatus ? <Text style={styles.scanStatus}>{scanStatus}</Text> : null}
 
-      {/* Kitchen Printer */}
+      {/* All printers */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Kitchen Printer (KOT Slips)</Text>
-        <TextInput
-          style={[styles.ipInput, { marginBottom: 8 }]}
-          value={kitchenName}
-          onChangeText={setKitchenName}
-          placeholder="Printer name (e.g. Kitchen - RTP81)"
-          placeholderTextColor="#9CA3AF"
-        />
+        <Text style={styles.cardTitle}>Printers ({rows.length})</Text>
+        {rows.length === 0 ? (
+          <Text style={styles.hint}>No printers yet. Keep the printer ON and connected to the same WiFi/LAN router, then scan.</Text>
+        ) : rows.map((row) => {
+          const selected = registry.find(printer => printerKey(printer) === row.key);
+          return (
+            <View key={row.key} style={styles.printerRow}>
+              <Text style={styles.printerName}>{row.name}</Text>
+              <Text style={styles.hint}>
+                {CONNECTION_LABELS[row.connection] || 'LAN / WiFi'}
+                {row.host ? ` · ${row.host}` : ''}
+                {` · ${row.sources.join(', ')}`}
+              </Text>
+              <View style={styles.rowActions}>
+                <TouchableOpacity style={[styles.jobBtn, selected?.kot && styles.jobBtnOn]} onPress={() => toggleJob(row, 'kot')}>
+                  <Text style={[styles.jobBtnText, selected?.kot && styles.jobBtnTextOn]}>{selected?.kot ? '✓ KOT' : 'KOT'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.jobBtn, selected?.bill && styles.jobBtnOn]} onPress={() => toggleJob(row, 'bill')}>
+                  <Text style={[styles.jobBtnText, selected?.bill && styles.jobBtnTextOn]}>{selected?.bill ? '✓ Bill' : 'Bill'}</Text>
+                </TouchableOpacity>
+                {row.type !== 'system' && (
+                  <TouchableOpacity
+                    style={[styles.testBtn, !!testingKey && styles.testBtnDisabled]}
+                    onPress={() => handleTest(row)}
+                    disabled={!!testingKey}
+                  >
+                    {testingKey === row.key
+                      ? <ActivityIndicator size="small" color="#7C3AED" />
+                      : <Text style={styles.testBtnText}>Test Print</Text>
+                    }
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Manual IP, only if a printer does not answer the scan */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Printer not listed? Add its IP</Text>
         <View style={styles.ipRow}>
           <TextInput
             style={styles.ipInput}
-            value={kitchenIp}
-            onChangeText={setKitchenIp}
+            value={manualIp}
+            onChangeText={setManualIp}
             placeholder="e.g. 192.168.1.100"
             keyboardType="decimal-pad"
             placeholderTextColor="#9CA3AF"
           />
-          <TouchableOpacity
-            style={[styles.testBtn, testing === 'Kitchen' && styles.testBtnDisabled]}
-            onPress={() => handleTest(kitchenIp, 'Kitchen')}
-            disabled={!!testing}
-          >
-            {testing === 'Kitchen'
-              ? <ActivityIndicator size="small" color="#7C3AED" />
-              : <Text style={styles.testBtnText}>Test Print</Text>
-            }
+          <TouchableOpacity style={styles.testBtn} onPress={addManualIp}>
+            <Text style={styles.testBtnText}>Add</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.hint}>Port 9100 — ESC/POS 80mm thermal</Text>
+        <Text style={styles.hint}>Port is detected automatically (9100). USB printers on the PC appear via "Scan from PC".</Text>
       </View>
 
-      {/* Reception Printer */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Reception Printer (Customer Bill)</Text>
-        <TextInput
-          style={[styles.ipInput, { marginBottom: 8 }]}
-          value={receptionName}
-          onChangeText={setReceptionName}
-          placeholder="Printer name (e.g. Reception - RTP81)"
-          placeholderTextColor="#9CA3AF"
-        />
-        <View style={styles.ipRow}>
-          <TextInput
-            style={styles.ipInput}
-            value={receptionIp}
-            onChangeText={setReceptionIp}
-            placeholder="e.g. 192.168.1.101"
-            keyboardType="decimal-pad"
-            placeholderTextColor="#9CA3AF"
-          />
-          <TouchableOpacity
-            style={[styles.testBtn, testing === 'Reception' && styles.testBtnDisabled]}
-            onPress={() => handleTest(receptionIp, 'Reception')}
-            disabled={!!testing}
-          >
-            {testing === 'Reception'
-              ? <ActivityIndicator size="small" color="#7C3AED" />
-              : <Text style={styles.testBtnText}>Test Print</Text>
-            }
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.hint}>Port 9100 — ESC/POS 80mm thermal</Text>
-      </View>
-
-      {/* Save Button */}
+      {/* Save */}
       <TouchableOpacity
-        style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+        style={[styles.saveBtn, (saving || !central) && styles.saveBtnDisabled]}
         onPress={handleSave}
-        disabled={saving}
+        disabled={saving || !central}
       >
         {saving
           ? <ActivityIndicator color="#FFFFFF" />
-          : <Text style={styles.saveBtnText}>Save Printer Settings</Text>
+          : <Text style={styles.saveBtnText}>Save KOT / Bill Printers</Text>
         }
       </TouchableOpacity>
     </ScrollView>
@@ -283,22 +355,27 @@ const styles = StyleSheet.create({
   },
   infoText: { color: '#5B21B6', fontSize: 13, lineHeight: 20 },
 
-  scanBtn: {
+  scanRow: {
+    flexDirection: 'row',
+    gap: 10,
     marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  scanBtn: {
+    flex: 1,
     backgroundColor: '#7C3AED',
     borderRadius: 10,
     borderWidth: 2,
     borderColor: '#111111',
     padding: 14,
     alignItems: 'center',
-    marginBottom: 8,
   },
   scanBtnDisabled: { backgroundColor: '#9CA3AF' },
-  scanBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
+  scanBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
 
   scanStatus: {
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 8,
     color: '#6B7280',
     fontSize: 12,
     fontStyle: 'italic',
@@ -321,24 +398,33 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   printerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderColor: '#F3F4F6',
   },
-  printerIp: {
-    flex: 1,
-    fontWeight: '600',
+  printerName: {
+    fontWeight: '700',
     fontSize: 14,
     color: '#111111',
   },
-  assignBtn: {
-    backgroundColor: '#7C3AED',
-    borderRadius: 6,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+  rowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
   },
-  assignBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
+  jobBtn: {
+    borderWidth: 2,
+    borderColor: '#7C3AED',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  jobBtnOn: { backgroundColor: '#7C3AED' },
+  jobBtnText: { color: '#7C3AED', fontWeight: '800', fontSize: 13 },
+  jobBtnTextOn: { color: '#FFFFFF' },
 
   ipRow: {
     flexDirection: 'row',
@@ -359,7 +445,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#7C3AED',
     borderRadius: 8,
-    paddingVertical: 10,
+    paddingVertical: 6,
     paddingHorizontal: 12,
     backgroundColor: '#EDE9FE',
   },
@@ -368,9 +454,8 @@ const styles = StyleSheet.create({
 
   hint: {
     fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 6,
-    fontStyle: 'italic',
+    color: '#6B7280',
+    marginTop: 4,
   },
 
   saveBtn: {

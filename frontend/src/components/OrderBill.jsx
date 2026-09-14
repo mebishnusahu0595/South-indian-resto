@@ -10,25 +10,44 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
         ? bill.orders
         : (orders || (bill?.order ? [bill.order] : (order ? [order] : [])));
 
+    const billId = bill?._id;
+    const hasOrders = ordersList.length > 0;
+
+    // Auto print once per bill: the PC print agent prints on the Superadmin-selected Bill
+    // printers when it is online; otherwise the browser print popup is used as before.
     useEffect(() => {
-        if (bill?._id) {
-            printBill(bill._id).catch(() => {});
+        if (!hasOrders) return undefined;
+        let cancelled = false;
+        let timer;
+        const browserPrint = () => {
+            if (!cancelled) timer = setTimeout(() => window.print(), 350);
+        };
+
+        if (billId) {
+            printBill(billId)
+                .then(res => {
+                    if (cancelled) return;
+                    if (res.data?.routed) setSilentQueued(true);
+                    else browserPrint();
+                })
+                .catch(browserPrint);
+        } else {
+            browserPrint();
         }
-        if (ordersList.length > 0) {
-            const timer = setTimeout(() => {
-                window.print();
-            }, 350);
-            return () => clearTimeout(timer);
-        }
-    }, [bill, ordersList]);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [billId, hasOrders]);
 
     if (ordersList.length === 0) return null;
 
     const handlePrint = async () => {
         if (bill?._id) {
             try {
-                await printBill(bill._id);
-                setSilentQueued(true);
+                const res = await printBill(bill._id);
+                if (res.data?.routed) setSilentQueued(true);
+                else window.print();
             } catch (err) {
                 console.error('Silent print failed, fallback to browser print dialog:', err);
                 window.print();

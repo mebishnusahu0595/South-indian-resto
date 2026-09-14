@@ -333,6 +333,117 @@ router.get('/top-items', protect, admin, async (req, res) => {
     }
 });
 
+// @route   GET /api/analytics/item-sales
+// @desc    Get Item-wise Sales Report with search and date range
+// @access  Private/Admin
+router.get('/item-sales', protect, admin, async (req, res) => {
+    try {
+        const { period = 'month', startDate, endDate, fromDate, toDate, search, category, sortBy = 'revenue', order = 'desc' } = req.query;
+        const reqStart = startDate || fromDate;
+        const reqEnd = endDate || toDate;
+        const { start, end } = resolveDateRange(req.user, period, reqStart, reqEnd);
+
+        const matchStage = getPaidOrderDateMatch(start, end);
+
+        const pipeline = [
+            { $match: matchStage },
+            { $unwind: '$items' },
+            {
+                $lookup: {
+                    from: 'menuitems',
+                    localField: 'items.menuItem',
+                    foreignField: '_id',
+                    as: 'menuItemData'
+                }
+            },
+            {
+                $addFields: {
+                    menuItemDoc: { $arrayElemAt: ['$menuItemData', 0] }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'categories',
+                    localField: 'menuItemDoc.category',
+                    foreignField: '_id',
+                    as: 'categoryData'
+                }
+            },
+            {
+                $addFields: {
+                    categoryDoc: { $arrayElemAt: ['$categoryData', 0] }
+                }
+            },
+            {
+                $group: {
+                    _id: { $toLower: { $trim: { input: { $ifNull: ['$items.name', { $ifNull: ['$menuItemDoc.name', 'Item'] }] } } } },
+                    name: { $first: { $ifNull: ['$items.name', { $ifNull: ['$menuItemDoc.name', 'Item'] }] } },
+                    category: { $first: { $ifNull: ['$categoryDoc.name', 'Other'] } },
+                    unitPrice: { $avg: { $ifNull: ['$items.price', { $ifNull: ['$menuItemDoc.price', 0] }] } },
+                    totalQuantity: { $sum: '$items.quantity' },
+                    totalRevenue: {
+                        $sum: {
+                            $ifNull: [
+                                '$items.total',
+                                { $multiply: [{ $ifNull: ['$items.price', { $ifNull: ['$menuItemDoc.price', 0] }] }, '$items.quantity'] }
+                            ]
+                        }
+                    },
+                    ordersCount: { $sum: 1 }
+                }
+            }
+        ];
+
+        let results = await Order.aggregate(pipeline);
+
+        results = results.filter(i => i.name);
+
+        const categoriesList = [...new Set(results.map(i => i.category).filter(Boolean))].sort();
+
+        if (search) {
+            const sLower = search.toLowerCase().trim();
+            results = results.filter(item =>
+                (item.name && item.name.toLowerCase().includes(sLower)) ||
+                (item.category && item.category.toLowerCase().includes(sLower))
+            );
+        }
+
+        if (category && category !== 'all' && category !== 'All') {
+            results = results.filter(item => item.category === category);
+        }
+
+        const sortMultiplier = order === 'asc' ? 1 : -1;
+        if (sortBy === 'quantity' || sortBy === 'totalQuantity') {
+            results.sort((a, b) => (a.totalQuantity - b.totalQuantity) * sortMultiplier);
+        } else if (sortBy === 'name') {
+            results.sort((a, b) => (a.name || '').localeCompare(b.name || '') * sortMultiplier);
+        } else if (sortBy === 'orders') {
+            results.sort((a, b) => (a.ordersCount - b.ordersCount) * sortMultiplier);
+        } else {
+            results.sort((a, b) => (a.totalRevenue - b.totalRevenue) * sortMultiplier);
+        }
+
+        const totalQty = results.reduce((sum, i) => sum + (i.totalQuantity || 0), 0);
+        const totalAmount = results.reduce((sum, i) => sum + (i.totalRevenue || 0), 0);
+        const totalOrders = results.reduce((sum, i) => sum + (i.ordersCount || 0), 0);
+
+        res.json({
+            period,
+            startDate: start,
+            endDate: end,
+            totalItems: results.length,
+            totalQty,
+            totalAmount,
+            totalOrders,
+            categories: categoriesList,
+            items: results
+        });
+    } catch (error) {
+        console.error('Item sales error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Get user analytics
 router.get('/users', protect, admin, async (req, res) => {
     try {

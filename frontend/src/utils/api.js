@@ -83,9 +83,13 @@ export const getDashboardStats = () => axios.get(`${API_URL}/analytics/dashboard
 export const getRevenueData = (period, params = {}) => axios.get(`${API_URL}/analytics/revenue`, { params: { period, ...params } });
 export const getCategorySales = (period, params = {}) => axios.get(`${API_URL}/analytics/category-sales`, { params: { period, ...params } });
 export const getTopItems = (params = {}) => axios.get(`${API_URL}/analytics/top-items`, { params });
+export const getItemWiseSales = (params = {}) => axios.get(`${API_URL}/analytics/item-sales`, { params });
 export const getUserAnalytics = (period, params = {}) => axios.get(`${API_URL}/analytics/users`, { params: { period, ...params } });
 export const getDayEndReport = (date) => axios.get(`${API_URL}/reports/day-end`, { params: { date } });
-export const getSectionWiseReport = (date) => axios.get(`${API_URL}/reports/section-wise`, { params: { date } });
+export const getSectionWiseReport = (params) => {
+    const queryParams = typeof params === 'string' ? { date: params } : (params || {});
+    return axios.get(`${API_URL}/reports/section-wise`, { params: queryParams });
+};
 
 // Tables
 export const getTables = () => axios.get(`${API_URL}/tables`);
@@ -112,6 +116,11 @@ export const updateSiteInfo = (data) => axios.put(`${API_URL}/settings/site-info
 export const updateSetting = (key, value) => axios.put(`${API_URL}/settings/${key}`, { value });
 export const getPrinterSettings = () => axios.get(`${API_URL}/settings/printers`);
 export const updatePrinterSettings = (data) => axios.put(`${API_URL}/settings/printers`, data);
+export const getPrinterDevices = () => axios.get(`${API_URL}/settings/printer-devices`);
+export const scanPrinterDevices = () => axios.post(`${API_URL}/settings/printer-devices/scan`);
+export const testPrinter = (printer) => axios.post(`${API_URL}/settings/printer-devices/test`, { printer });
+export const getOrderEditCodeStatus = () => axios.get(`${API_URL}/settings/order-edit-code`);
+export const updateOrderEditCode = (code) => axios.put(`${API_URL}/settings/order-edit-code`, { code });
 
 // Collections (Custom Homepage Sections)
 export const getCollections = (homepage = false) => axios.get(`${API_URL}/collections`, { params: { homepage: homepage ? 'true' : undefined } });

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, Alert } from 'react-native';
+import { printKOTFromApp, describeKOTPrint } from '../utils/ThermalPrinter';
 
 export default function StaffHistoryScreen({ api, socket, onBack }) {
   const [orders, setOrders] = useState([]);
@@ -91,6 +92,16 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCatFilter, setSelectedCatFilter] = useState('All');
 
+  // Reducing or removing already-ordered items needs the Superadmin security code (asked once per edit).
+  const [editCode, setEditCode] = useState('');
+  const [codePromptVisible, setCodePromptVisible] = useState(false);
+  const [codeInput, setCodeInput] = useState('');
+  const [codeError, setCodeError] = useState('');
+  const [verifyingCode, setVerifyingCode] = useState(false);
+  const pendingReductionRef = useRef(null);
+  // False until Superadmin sets a code in Settings: reductions then work without a prompt, as before.
+  const [codeRequired, setCodeRequired] = useState(false);
+
   const [tablesList, setTablesList] = useState([]);
   const [selectedMoveSection, setSelectedMoveSection] = useState('All');
   const [selectedMoveTableId, setSelectedMoveTableId] = useState('');
@@ -125,22 +136,30 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
     }
   };
 
+  // originalQty = quantity already saved on the order; going below it is a reduction.
+  const toModifyRows = (items = []) => items.map(i => ({
+    menuItemId: i.menuItem?._id || i.menuItem || i._id,
+    name: i.name || i.menuItem?.name || 'Item',
+    price: i.price || i.menuItem?.price || 0,
+    quantity: i.quantity,
+    originalQty: i.quantity,
+    notes: i.notes || i.instruction || i.specialInstructions || i.note || ''
+  }));
+
   const handleOpenModify = async (order) => {
     setEditingOrder(order);
-    const initialList = (order.items || []).map(i => ({
-      menuItemId: i.menuItem?._id || i.menuItem || i._id,
-      name: i.name || i.menuItem?.name || 'Item',
-      price: i.price || i.menuItem?.price || 0,
-      quantity: i.quantity,
-      notes: i.notes || i.instruction || i.specialInstructions || i.note || ''
-    }));
-    setModifyItems(initialList);
+    setModifyItems(toModifyRows(order.items));
     setModifyNote('');
     setSearchQuery('');
     setSelectedMoveTableId('');
     setSelectedMoveSection('All');
+    setEditCode('');
     fetchTables();
     setShowModifyModal(true);
+    // If this check fails, the server still enforces the code on save and the app asks for it then.
+    api.get('/orders/edit-code/status')
+      .then(res => setCodeRequired(Boolean(res.data?.required)))
+      .catch(() => setCodeRequired(false));
 
     try {
       const res = await api.get('/menu/all');
@@ -150,8 +169,58 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
     }
   };
 
-  const handleSaveModify = async () => {
+  const applyQuantity = (idx, quantity) => {
+    setModifyItems(prev => prev
+      .map((it, i) => (i === idx ? { ...it, quantity } : it))
+      // Unsaved additions simply disappear; saved items stay at 0 so the server removes them.
+      .filter(it => it.quantity > 0 || it.originalQty > 0));
+  };
+
+  const openCodePrompt = (afterUnlock, message = '') => {
+    pendingReductionRef.current = afterUnlock;
+    setCodeInput('');
+    setCodeError(message);
+    setCodePromptVisible(true);
+  };
+
+  const requestReduce = (idx, quantity) => {
+    const item = modifyItems[idx];
+    if (!item) return;
+    // Only going below what is already saved on the order needs the code (once one is set).
+    if (!codeRequired || editCode || quantity >= item.originalQty) {
+      applyQuantity(idx, quantity);
+      return;
+    }
+    openCodePrompt(() => applyQuantity(idx, quantity));
+  };
+
+  const closeCodePrompt = () => {
+    pendingReductionRef.current = null;
+    setCodePromptVisible(false);
+  };
+
+  const handleVerifyCode = async () => {
+    if (codeInput.length < 4 || verifyingCode) return;
+    setVerifyingCode(true);
+    setCodeError('');
+    try {
+      await api.post('/orders/edit-code/verify', { code: codeInput });
+      const verifiedCode = codeInput;
+      setEditCode(verifiedCode);
+      setCodePromptVisible(false);
+      const afterUnlock = pendingReductionRef.current;
+      pendingReductionRef.current = null;
+      if (afterUnlock) afterUnlock(verifiedCode);
+    } catch (error) {
+      setCodeError(error.response?.data?.message || 'Could not verify the security code');
+    } finally {
+      setVerifyingCode(false);
+    }
+  };
+
+  const handleSaveModify = async (codeOverride) => {
     if (!editingOrder) return;
+    const securityCode = typeof codeOverride === 'string' ? codeOverride : editCode;
     setSubmittingModify(true);
     try {
       const payload = {
@@ -160,15 +229,43 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
           quantity: i.quantity,
           notes: i.notes || ''
         })),
-        modificationNote: modifyNote
+        modificationNote: modifyNote,
+        ...(securityCode ? { securityCode } : {})
       };
 
       const res = await api.put(`/orders/${editingOrder._id || editingOrder.id}/modify-items`, payload);
-      alert('Order modified successfully! KOT generated.');
       setShowModifyModal(false);
       fetchTodayOrders();
+
+      // Same KOT flow as a new order: PC print agent, or this phone over WiFi as the fallback.
+      const { order: updated, addedKot, cancelledKot } = res.data || {};
+      const tableName = updated?.tables?.length
+        ? updated.tables.map(t => t.name || `Table ${t.tableNumber}`).join(', ')
+        : (updated?.tableNumber ? `Table ${updated.tableNumber}` : 'Takeaway');
+      const printStatus = [];
+      for (const [kot, title] of [[addedKot, 'ADD KOT'], [cancelledKot, 'CANCEL KOT']]) {
+        if (!kot) continue;
+        const result = await printKOTFromApp(api, {
+          title,
+          kotNumber: kot.kotNumber,
+          orderNumber: updated?.orderNumber || editingOrder.orderNumber,
+          tableName,
+          items: kot.items || [],
+          instructions: kot.notes,
+          timestamp: kot.timestamp,
+        });
+        printStatus.push(`${title}:\n${describeKOTPrint(result)}`);
+      }
+      alert(`Order modified successfully!${printStatus.length ? `\n\n${printStatus.join('\n\n')}` : ''}`);
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to modify order');
+      const message = error.response?.data?.message || 'Failed to modify order';
+      if (error.response?.data?.code === 'ORDER_EDIT_CODE') {
+        // Code missing/changed meanwhile: ask again, then retry the save with the new code.
+        setEditCode('');
+        openCodePrompt((verifiedCode) => handleSaveModify(verifiedCode), message);
+      } else {
+        alert(message);
+      }
     } finally {
       setSubmittingModify(false);
     }
@@ -194,14 +291,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
       // Refresh the editing order from the returned source order so the modal stays accurate.
       if (res.data?.sourceOrder) {
         setEditingOrder(res.data.sourceOrder);
-        const refreshed = (res.data.sourceOrder.items || []).map(i => ({
-          menuItemId: i.menuItem?._id || i.menuItem || i._id,
-          name: i.name || i.menuItem?.name || 'Item',
-          price: i.price || i.menuItem?.price || 0,
-          quantity: i.quantity,
-          notes: i.notes || ''
-        }));
-        setModifyItems(refreshed);
+        setModifyItems(toModifyRows(res.data.sourceOrder.items));
       }
       fetchTodayOrders();
       fetchTables();
@@ -337,13 +427,15 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontWeight: 'bold', fontSize: 14, color: '#111' }}>{item.name}</Text>
                       <Text style={{ fontSize: 12, color: '#6B7280' }}>₹{item.price} each</Text>
+                      {item.quantity === 0 ? (
+                        <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: 'bold' }}>Will be removed (CANCEL KOT)</Text>
+                      ) : null}
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <TouchableOpacity
-                        onPress={() => {
-                          setModifyItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(0, it.quantity - 1) } : it).filter(it => it.quantity > 0));
-                        }}
-                        style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}
+                        onPress={() => requestReduce(idx, Math.max(0, item.quantity - 1))}
+                        disabled={item.quantity === 0}
+                        style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', opacity: item.quantity === 0 ? 0.4 : 1 }}
                       >
                         <Text style={{ color: '#DC2626', fontWeight: 'bold', fontSize: 16 }}>-</Text>
                       </TouchableOpacity>
@@ -360,10 +452,9 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                       </TouchableOpacity>
 
                       <TouchableOpacity
-                        onPress={() => {
-                          setModifyItems(prev => prev.filter((_, i) => i !== idx));
-                        }}
-                        style={{ paddingHorizontal: 8, paddingVertical: 6, backgroundColor: '#FEE2E2', borderRadius: 6 }}
+                        onPress={() => requestReduce(idx, 0)}
+                        disabled={item.quantity === 0}
+                        style={{ paddingHorizontal: 8, paddingVertical: 6, backgroundColor: '#FEE2E2', borderRadius: 6, opacity: item.quantity === 0 ? 0.4 : 1 }}
                       >
                         <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 12 }}>Remove</Text>
                       </TouchableOpacity>
@@ -402,7 +493,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
 
             {/* Add New Menu Item Section */}
             <Text style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 4, color: '#374151' }}>Add Item from Menu ({menuItems.length} items available):</Text>
-            
+
             {/* Category Filter Chips */}
             {(() => {
               const categories = ['All', ...new Set(menuItems.map(mi => typeof mi.category === 'object' ? mi.category?.name : mi.category).filter(Boolean))];
@@ -458,7 +549,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
                         if (existsIndex >= 0) {
                           setModifyItems(prev => prev.map((it, i) => i === existsIndex ? { ...it, quantity: it.quantity + 1 } : it));
                         } else {
-                          setModifyItems(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1, notes: '' }]);
+                          setModifyItems(prev => [...prev, { menuItemId: mi._id, name: mi.name, price: mi.price, quantity: 1, originalQty: 0, notes: '' }]);
                         }
                       }}
                     >
@@ -583,7 +674,7 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
               <TouchableOpacity
                 style={{ backgroundColor: '#7C3AED', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
                 onPress={handleSaveModify}
-                disabled={submittingModify || modifyItems.length === 0}
+                disabled={submittingModify || !modifyItems.some(i => i.quantity > 0)}
               >
                 <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>
                   {submittingModify ? 'Saving...' : 'Save & Send KOT'}
@@ -591,6 +682,49 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Security code prompt for reducing/removing already-ordered items */}
+          {codePromptVisible && (
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 24, zIndex: 200, elevation: 20 }}>
+              <View style={{ backgroundColor: '#FFF', borderRadius: 12, width: '100%', padding: 18, borderWidth: 2, borderColor: '#111' }}>
+                <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#111' }}>🔒 Security Code Required</Text>
+                <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4, marginBottom: 12 }}>
+                  Enter the Superadmin security code to reduce or remove items from this order.
+                </Text>
+                <TextInput
+                  value={codeInput}
+                  onChangeText={(text) => setCodeInput(text.replace(/\D/g, '').slice(0, 8))}
+                  secureTextEntry
+                  keyboardType="number-pad"
+                  autoFocus
+                  placeholder="Security code"
+                  placeholderTextColor="#9CA3AF"
+                  onSubmitEditing={handleVerifyCode}
+                  style={{ borderWidth: 1.5, borderColor: '#111', borderRadius: 8, padding: 10, fontSize: 18, letterSpacing: 4, textAlign: 'center', color: '#111' }}
+                />
+                {codeError ? (
+                  <Text style={{ color: '#DC2626', marginTop: 8, fontSize: 12, fontWeight: '600' }}>{codeError}</Text>
+                ) : null}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+                  <TouchableOpacity
+                    onPress={closeCodePrompt}
+                    style={{ backgroundColor: '#F3F4F6', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
+                  >
+                    <Text style={{ fontWeight: 'bold', fontSize: 13 }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleVerifyCode}
+                    disabled={verifyingCode || codeInput.length < 4}
+                    style={{ backgroundColor: codeInput.length < 4 ? '#9CA3AF' : '#DC2626', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>
+                      {verifyingCode ? 'Checking…' : 'Unlock'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
         </View>
       )}
     </View>
