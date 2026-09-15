@@ -920,9 +920,7 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             }
         });
 
-        if (newOrderItems.length === 0) {
-            return res.status(400).json({ message: 'Order cannot be left with 0 items. Use Cancel Order instead.' });
-        }
+        const isAllCancelled = newOrderItems.length === 0;
 
         // Staff (employee logins) need the Superadmin security code to reduce or remove items.
         if (cancelledItems.length > 0 && req.user.isEmployee) {
@@ -930,15 +928,22 @@ router.put('/:id/modify-items', protect, async (req, res) => {
             if (codeError) return res.status(codeError.status).json({ message: codeError.message, code: 'ORDER_EDIT_CODE' });
         }
 
-        order.items = normalizeItems(newOrderItems);
-        const taxConfig = await getConfiguredTax(Settings);
-        const totals = calculateTotals(order.items, order.discount || 0, taxConfig);
-        order.subtotal = totals.subtotal;
-        order.discount = totals.discount;
-        order.taxDetails = totals.taxDetails;
-        order.tax = totals.tax;
-        order.gstRate = taxConfig.reduce((sum, taxItem) => sum + taxItem.rate, 0);
-        order.total = totals.total;
+        if (isAllCancelled) {
+            order.status = 'cancelled';
+            order.cancelledBy = req.user._id;
+            order.cancelledByName = req.user.name || 'Staff';
+            order.cancellationReason = modificationNote || 'All items removed via order edit';
+        } else {
+            order.items = normalizeItems(newOrderItems);
+            const taxConfig = await getConfiguredTax(Settings);
+            const totals = calculateTotals(order.items, order.discount || 0, taxConfig);
+            order.subtotal = totals.subtotal;
+            order.discount = totals.discount;
+            order.taxDetails = totals.taxDetails;
+            order.tax = totals.tax;
+            order.gstRate = taxConfig.reduce((sum, taxItem) => sum + taxItem.rate, 0);
+            order.total = totals.total;
+        }
 
         const cleanOrdNo = String(order.orderNumber).replace(/^CD-/, '');
 
@@ -961,12 +966,26 @@ router.put('/:id/modify-items', protect, async (req, res) => {
                 kotNumber: kotCancelNum,
                 timestamp: new Date(),
                 items: cancelledItems,
-                notes: `[CANCEL KOT] ${modificationNote || 'Items partial cancelled'}`
+                notes: `[CANCEL KOT] ${modificationNote || (isAllCancelled ? 'Order cancelled (all items removed)' : 'Items partial cancelled')}`
             };
             order.kotHistory.push(cancelledKotObj);
         }
 
         await order.save();
+
+        const io = req.app.get('io');
+        if (isAllCancelled) {
+            await freeTablesForOrder(order, io);
+            if (linkedBill && (!linkedBill.paymentMethod || linkedBill.paymentMethod === 'pending')) {
+                if (Array.isArray(linkedBill.orders) && linkedBill.orders.length > 1) {
+                    linkedBill.orders = linkedBill.orders.filter(id => id.toString() !== order._id.toString());
+                    await linkedBill.save();
+                } else {
+                    await Bill.findByIdAndDelete(linkedBill._id);
+                    if (io) io.emit('bill-deleted', linkedBill._id.toString());
+                }
+            }
+        }
 
         const populatedOrder = await Order.findById(order._id)
             .populate('user', 'phone name')
@@ -986,7 +1005,6 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         };
         const emitTableName = getEmitTableName(populatedOrder);
 
-        const io = req.app.get('io');
         if (io) io.emit('order-updated', populatedOrder);
         if (addedKotObj) {
             await dispatchKOT(req, {
@@ -1013,7 +1031,7 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         if ((addedKotObj || cancelledKotObj) && io) io.emit('order-updated', populatedOrder);
 
         res.json({
-            message: 'Order items modified successfully',
+            message: isAllCancelled ? 'All items removed. Order cancelled successfully.' : 'Order items modified successfully',
             order: populatedOrder,
             addedItems,
             cancelledItems,
@@ -1026,7 +1044,7 @@ router.put('/:id/modify-items', protect, async (req, res) => {
     }
 });
 
-const freeTablesForOrder = async (order, io, session = null) => {
+async function freeTablesForOrder(order, io, session = null) {
     try {
         const tableIdsToFree = [...(order.tables || []), order.table].filter(Boolean);
         const orConditions = [];
@@ -1839,7 +1857,25 @@ router.put('/:id/items', protect, async (req, res) => {
 
         const requestedItems = normalizeItems(req.body.items || []);
         if (requestedItems.length === 0) {
-            return res.status(400).json({ message: 'Order cannot be left with 0 items. Delete the order instead.' });
+            if (req.user.isEmployee) {
+                const codeError = await checkOrderEditCode(req.user, req.body.securityCode);
+                if (codeError) return res.status(codeError.status).json({ message: codeError.message, code: 'ORDER_EDIT_CODE' });
+            }
+            order.status = 'cancelled';
+            order.cancelledBy = req.user._id;
+            order.cancelledByName = req.user.name || 'Staff';
+            order.cancellationReason = 'All items removed via order update';
+            await order.save();
+            const io = req.app.get('io');
+            await freeTablesForOrder(order, io);
+            const populatedOrder = await Order.findById(order._id)
+                .populate('user', 'phone name')
+                .populate('placedBy', 'name')
+                .populate('tables', 'tableNumber name section')
+                .populate('table', 'tableNumber name section')
+                .populate('items.menuItem', 'name image');
+            if (io) io.emit('order-updated', populatedOrder);
+            return res.json({ message: 'All items removed. Order cancelled.', order: populatedOrder });
         }
 
         // Staff logins need the security code for any quantity going down through this route too.
