@@ -672,12 +672,24 @@ export default function StaffHistoryScreen({ api, socket, onBack }) {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={{ backgroundColor: '#7C3AED', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
+                style={{
+                  backgroundColor: modifyItems.length > 0 && !modifyItems.some(i => i.quantity > 0) ? '#DC2626' : '#7C3AED',
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: '#111',
+                  opacity: submittingModify || !modifyItems.some(i => i.quantity > 0 || i.originalQty > 0) ? 0.5 : 1
+                }}
                 onPress={handleSaveModify}
-                disabled={submittingModify || !modifyItems.some(i => i.quantity > 0)}
+                disabled={submittingModify || !modifyItems.some(i => i.quantity > 0 || i.originalQty > 0)}
               >
                 <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>
-                  {submittingModify ? 'Saving...' : 'Save & Send KOT'}
+                  {submittingModify
+                    ? 'Saving...'
+                    : modifyItems.length > 0 && !modifyItems.some(i => i.quantity > 0)
+                    ? 'Cancel Order & Send KOT'
+                    : 'Save & Send KOT'}
                 </Text>
               </TouchableOpacity>
             </View>
