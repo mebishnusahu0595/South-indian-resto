@@ -1,4 +1,5 @@
 @echo off
+set "PATH=%PATH%;C:\Program Files\nodejs;C:\Program Files (x86)\nodejs;%LOCALAPPDATA%\Programs\nodejs"
 title Kea By The Pool - Print Agent
 echo ====================================================
 echo   Kea By The Pool - Restaurant Print Agent
