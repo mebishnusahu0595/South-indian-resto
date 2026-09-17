@@ -164,7 +164,7 @@ function runCommand(command, args, env) {
       env: env ? { ...process.env, ...env } : process.env
     }, (error, stdout, stderr) => {
       if (error) {
-        const detail = String(stderr || '').trim();
+        const detail = String(stderr || stdout || '').trim();
         reject(new Error(detail ? `${error.message.split('\n')[0]}: ${detail}` : error.message));
       } else {
         resolve(String(stdout || ''));
@@ -180,12 +180,29 @@ function runPowerShell(script, env) {
 }
 
 const WINDOWS_LIST_PRINTERS = `
-$ErrorActionPreference = 'SilentlyContinue'
-$p = @(Get-CimInstance Win32_Printer 2>$null)
-if (-not $p -or $p.Count -eq 0) {
-  $p = @(Get-WmiObject -Class Win32_Printer 2>$null)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
+$ErrorActionPreference = 'Stop'
+$arr = @()
+try {
+  $arr = @(Get-Printer)
+} catch {
+  try {
+    $arr = @(Get-CimInstance Win32_Printer)
+  } catch {
+    try {
+      $arr = @(Get-WmiObject Win32_Printer)
+    } catch {}
+  }
 }
-$p | Select-Object Name, PortName, WorkOffline | ConvertTo-Json -Compress
+$list = @()
+foreach ($p in $arr) {
+  $list += [PSCustomObject]@{
+    Name = [string]$p.Name
+    PortName = [string]$p.PortName
+    WorkOffline = [bool]($p.WorkOffline)
+  }
+}
+ConvertTo-Json -InputObject $list -Compress
 `;
 
 // Classic winspool RAW printing (Microsoft KB322091): ESC/POS bytes reach any installed
@@ -254,11 +271,46 @@ function classifyPrinterPort(port) {
 
 async function listSystemPrinters() {
   try {
-    let rows;
+    let rows = [];
     if (process.platform === 'win32') {
-      const output = (await runPowerShell(WINDOWS_LIST_PRINTERS)).trim();
-      rows = (output ? [].concat(JSON.parse(output)) : [])
-        .map(row => ({ systemName: row.Name, port: row.PortName, offline: row.WorkOffline === true }));
+      let output = '';
+      try {
+        output = (await runPowerShell(WINDOWS_LIST_PRINTERS)).trim();
+        if (output) {
+          const parsed = JSON.parse(output);
+          rows = (Array.isArray(parsed) ? parsed : [parsed])
+            .map(row => ({ systemName: row.Name, port: row.PortName, offline: row.WorkOffline === true }));
+        }
+      } catch (psErr) {
+        // Fallback 1: WMIC
+        try {
+          const wmicOut = await runCommand('wmic', ['printer', 'get', 'Name,PortName,WorkOffline', '/format:csv']);
+          const lines = wmicOut.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(',');
+            if (parts.length >= 3) {
+              const name = parts[1] ? parts[1].trim() : '';
+              const port = parts[2] ? parts[2].trim() : '';
+              const offline = parts[3] ? parts[3].trim().toUpperCase() === 'TRUE' : false;
+              if (name) rows.push({ systemName: name, port, offline });
+            }
+          }
+        } catch (wmicErr) {
+          // Fallback 2: Windows Registry
+          try {
+            const regOut = await runCommand('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Devices']);
+            const regLines = regOut.split(/\r?\n/).filter(Boolean);
+            for (const line of regLines) {
+              const match = line.match(/^\s+(.+?)\s+REG_SZ\s+.*?,(.*)$/i);
+              if (match) {
+                rows.push({ systemName: match[1].trim(), port: match[2].trim(), offline: false });
+              }
+            }
+          } catch (regErr) {
+            console.warn(`Windows printer discovery methods failed: ${psErr.message}`);
+          }
+        }
+      }
     } else {
       const output = await runCommand('lpstat', ['-v'], { LC_ALL: 'C', LANG: 'C' });
       rows = output.split('\n')
