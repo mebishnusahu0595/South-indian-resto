@@ -1,20 +1,12 @@
 @echo off
-set "PATH=%PATH%;C:\Program Files\nodejs;C:\Program Files (x86)\nodejs;%LOCALAPPDATA%\Programs\nodejs"
 title Kea Print Agent - Auto Start Setup
+cd /d "%~dp0"
+set "PATH=%PATH%;C:\Program Files\nodejs;C:\Program Files (x86)\nodejs;%LOCALAPPDATA%\Programs\nodejs;%APPDATA%\npm"
+
 echo ====================================================
 echo   Setting up Kea Print Agent to run on PC Startup
 echo ====================================================
 echo.
-
-where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [ERROR] Node.js is not installed on this PC!
-    echo Please download and install Node.js from: https://nodejs.org
-    echo (Choose LTS version and finish installation first)
-    echo.
-    pause
-    exit /b 1
-)
 
 set AGENT_DIR=%~dp0
 set VBS_TARGET=%AGENT_DIR%run-hidden.vbs

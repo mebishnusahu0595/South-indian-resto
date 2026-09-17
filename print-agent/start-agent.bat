@@ -1,34 +1,16 @@
 @echo off
-set "PATH=%PATH%;C:\Program Files\nodejs;C:\Program Files (x86)\nodejs;%LOCALAPPDATA%\Programs\nodejs"
 title Kea By The Pool - Print Agent
+cd /d "%~dp0"
+set "PATH=%PATH%;C:\Program Files\nodejs;C:\Program Files (x86)\nodejs;%LOCALAPPDATA%\Programs\nodejs;%APPDATA%\npm"
+set SERVER_URL=https://keabythepool.com
+
 echo ====================================================
 echo   Kea By The Pool - Restaurant Print Agent
 echo ====================================================
 echo.
-
-where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [ERROR] Node.js is not installed on this PC!
-    echo.
-    echo Please install Node.js:
-    echo 1. Download LTS from: https://nodejs.org
-    echo 2. Run the installer (keep default settings)
-    echo 3. Re-run this file (start-agent.bat)
-    echo.
-    pause
-    exit /b 1
-)
-
-set SERVER_URL=https://keabythepool.com
-
-if not exist node_modules (
-    echo Installing dependencies (first time only)...
-    call npm install
-)
-
 echo Starting Print Agent...
 echo Connecting to https://keabythepool.com ...
-echo Keep this window open in background for automatic printing!
 echo.
+
 node agent.js
 pause
