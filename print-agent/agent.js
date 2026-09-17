@@ -179,7 +179,14 @@ function runPowerShell(script, env) {
   return runCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded], env);
 }
 
-const WINDOWS_LIST_PRINTERS = 'Get-WmiObject -Class Win32_Printer | Select-Object Name, PortName, WorkOffline | ConvertTo-Json -Compress';
+const WINDOWS_LIST_PRINTERS = `
+$ErrorActionPreference = 'SilentlyContinue'
+$p = @(Get-CimInstance Win32_Printer 2>$null)
+if (-not $p -or $p.Count -eq 0) {
+  $p = @(Get-WmiObject -Class Win32_Printer 2>$null)
+}
+$p | Select-Object Name, PortName, WorkOffline | ConvertTo-Json -Compress
+`;
 
 // Classic winspool RAW printing (Microsoft KB322091): ESC/POS bytes reach any installed
 // USB/serial/network queue untouched, without native Node printer modules.

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FiSettings, FiSave, FiPlus, FiTrash2, FiInfo, FiEye, FiEyeOff, FiPercent, FiInstagram, FiFacebook, FiTwitter, FiPhone, FiMail, FiMapPin, FiClock, FiPrinter, FiToggleLeft, FiToggleRight, FiRefreshCw, FiMonitor, FiSmartphone, FiLock } from 'react-icons/fi';
+import { FiSettings, FiSave, FiPlus, FiTrash2, FiInfo, FiEye, FiEyeOff, FiPercent, FiInstagram, FiFacebook, FiTwitter, FiPhone, FiMail, FiMapPin, FiClock, FiPrinter, FiToggleLeft, FiToggleRight, FiRefreshCw, FiMonitor, FiSmartphone, FiLock, FiDownload } from 'react-icons/fi';
 import { getAllSettings, updateSetting, changeAdminPassword, getMaxDiscount, updateMaxDiscount, getSiteInfo, updateSiteInfo, getPrinterSettings, updatePrinterSettings, getPrinterDevices, scanPrinterDevices, testPrinter, getOrderEditCodeStatus, updateOrderEditCode } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
@@ -575,7 +575,19 @@ const AdminSettings = () => {
                         {printerDevices.length === 0 ? (
                             <div className="info-box" style={{ marginBottom: '16px' }}>
                                 <FiInfo />
-                                <p>No device has reported printers yet. Start the print agent on the restaurant PC (it scans automatically), or open Staff App → Printer Setup on a phone connected to the restaurant WiFi.</p>
+                                <div>
+                                    <p style={{ margin: 0 }}>No device has reported printers yet. Start the print agent on the restaurant PC (it scans USB and WiFi printers automatically).</p>
+                                    <div style={{ marginTop: '10px' }}>
+                                        <a
+                                            href="/kea-print-agent.zip"
+                                            download="kea-print-agent.zip"
+                                            className="btn btn-primary"
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none', padding: '8px 14px', fontSize: '13px', borderRadius: '6px', background: '#7C3AED', color: '#FFF' }}
+                                        >
+                                            <FiDownload /> Download PC Print Agent (Windows ZIP)
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             <div style={{ display: 'grid', gap: '10px', marginBottom: '20px' }}>
