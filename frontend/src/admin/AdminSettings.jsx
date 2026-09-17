@@ -65,6 +65,8 @@ const AdminSettings = () => {
     const [scanningPrinters, setScanningPrinters] = useState(false);
     // Unsaved local ticks must not be overwritten when the server auto-adds printers meanwhile.
     const printersDirtyRef = useRef(false);
+    const [testingPrinterKey, setTestingPrinterKey] = useState(null);
+    const [testFeedback, setTestFeedback] = useState({});
 
     // Staff order-edit security code
     const [editCodeSet, setEditCodeSet] = useState(false);
@@ -96,10 +98,24 @@ const AdminSettings = () => {
         const handleRegistryUpdated = () => {
             if (!printersDirtyRef.current) fetchPrinterSettings();
         };
-        const handleTestResult = (result) => showNotice(
-            result.ok ? 'success' : 'error',
-            result.ok ? `Test slip sent to ${result.printerName}` : `Test print failed on ${result.printerName}: ${result.error}`
-        );
+        const handleTestResult = (result) => {
+            showNotice(
+                result.ok ? 'success' : 'error',
+                result.ok ? `Test slip sent to ${result.printerName}` : `Test print failed on ${result.printerName}: ${result.error}`
+            );
+            setTestFeedback(prev => {
+                const next = { ...prev };
+                for (const key of Object.keys(next)) {
+                    if (key.includes(result.printerName) || result.printerName.includes(key)) {
+                        next[key] = {
+                            type: result.ok ? 'success' : 'error',
+                            text: result.ok ? 'Printed successfully!' : `Failed: ${result.error}`
+                        };
+                    }
+                }
+                return next;
+            });
+        };
         socket.on('printer-devices-updated', handleDevicesUpdated);
         socket.on('printer-settings-updated', handleRegistryUpdated);
         socket.on('printer-test-result', handleTestResult);
@@ -178,11 +194,26 @@ const AdminSettings = () => {
     };
 
     const handleTestPrinter = async (printer) => {
+        const pKey = printerKey(printer);
+        setTestingPrinterKey(pKey);
+        setTestFeedback(prev => ({ ...prev, [pKey]: { type: 'info', text: 'Sending...' } }));
         try {
             await testPrinter(printer);
+            setTestFeedback(prev => ({ ...prev, [pKey]: { type: 'success', text: 'Sent to printer queue!' } }));
             showNotice('success', `Test print requested on ${printer.name || printer.systemName || printer.host}`);
         } catch (err) {
-            showNotice('error', err.response?.data?.message || 'Could not request a test print');
+            const errorMsg = err.response?.data?.message || 'Could not request a test print';
+            setTestFeedback(prev => ({ ...prev, [pKey]: { type: 'error', text: errorMsg } }));
+            showNotice('error', errorMsg);
+        } finally {
+            setTimeout(() => setTestingPrinterKey(null), 1200);
+            setTimeout(() => {
+                setTestFeedback(prev => {
+                    const next = { ...prev };
+                    delete next[pKey];
+                    return next;
+                });
+            }, 8000);
         }
     };
 
@@ -637,14 +668,26 @@ const AdminSettings = () => {
                                                         /> Bill
                                                     </label>
                                                     {onlineAgents > 0 && (found.type !== 'system' || device.online) && (
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-secondary"
-                                                            onClick={() => handleTestPrinter(identity)}
-                                                            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                                                        >
-                                                            Test
-                                                        </button>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-secondary"
+                                                                disabled={testingPrinterKey === foundKey}
+                                                                onClick={() => handleTestPrinter(identity)}
+                                                                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                                            >
+                                                                {testingPrinterKey === foundKey ? 'Sending...' : 'Test'}
+                                                            </button>
+                                                            {testFeedback[foundKey] && (
+                                                                <span style={{
+                                                                    fontSize: '0.8rem',
+                                                                    fontWeight: 600,
+                                                                    color: testFeedback[foundKey].type === 'error' ? '#EF4444' : (testFeedback[foundKey].type === 'info' ? '#3B82F6' : '#10B981')
+                                                                }}>
+                                                                    {testFeedback[foundKey].text}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </div>
                                             );
