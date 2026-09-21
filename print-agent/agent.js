@@ -207,8 +207,102 @@ ConvertTo-Json -InputObject $list -Compress
 
 // Classic winspool RAW printing (Microsoft KB322091): ESC/POS bytes reach any installed
 // USB/serial/network queue untouched, without native Node printer modules.
-// ponytail: compiles the helper on every print (~1-2s); cache it as a DLL if that ever matters.
-const WINDOWS_RAW_PRINT = `
+// The C# helper is compiled ONCE at startup and cached as a DLL for instant prints.
+
+const WINSPOOL_CS = `
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+public static class KeaRawPrint {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DocInfo { public string DocName; public string OutputFile; public string DataType; }
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool OpenPrinter(string name, out IntPtr handle, IntPtr defaults);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool ClosePrinter(IntPtr handle);
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern int StartDocPrinter(IntPtr handle, int level, [In] DocInfo info);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndDocPrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool StartPagePrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndPagePrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool WritePrinter(IntPtr handle, byte[] data, int length, out int written);
+  public static void Send(string printer, byte[] data) {
+    IntPtr handle;
+    if (!OpenPrinter(printer, out handle, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+    try {
+      DocInfo info = new DocInfo();
+      info.DocName = "Kea Print";
+      info.DataType = "RAW";
+      if (StartDocPrinter(handle, 1, info) == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
+      try {
+        if (!StartPagePrinter(handle)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        int written;
+        bool ok = WritePrinter(handle, data, data.Length, out written);
+        EndPagePrinter(handle);
+        if (!ok || written != data.Length) throw new Win32Exception(Marshal.GetLastWin32Error());
+      } finally {
+        EndDocPrinter(handle);
+      }
+    } finally {
+      ClosePrinter(handle);
+    }
+  }
+  public static int Main(string[] args) {
+    if (args.Length < 2) { Console.Error.WriteLine("Usage: KeaRawPrint <printerName> <filePath>"); return 1; }
+    Send(args[0], File.ReadAllBytes(args[1]));
+    return 0;
+  }
+}
+`;
+
+let cachedPrintExe = '';
+
+async function compilePrintHelper() {
+  if (process.platform !== 'win32') return;
+  const cacheDir = path.join(__dirname, '.cache');
+  const csFile = path.join(cacheDir, 'KeaRawPrint.cs');
+  const exeFile = path.join(cacheDir, 'KeaRawPrint.exe');
+  try {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    // Only recompile if source changed or exe missing
+    const csExists = fs.existsSync(csFile);
+    const exeExists = fs.existsSync(exeFile);
+    const sourceMatch = csExists && fs.readFileSync(csFile, 'utf8') === WINSPOOL_CS;
+    if (sourceMatch && exeExists) {
+      cachedPrintExe = exeFile;
+      console.log('Print helper: using cached KeaRawPrint.exe (instant prints)');
+      return;
+    }
+    fs.writeFileSync(csFile, WINSPOOL_CS);
+    // Use .NET Framework csc.exe (always present on Windows)
+    const cscPaths = [
+      path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'),
+      path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Framework', 'v4.0.30319', 'csc.exe')
+    ];
+    let cscPath = '';
+    for (const p of cscPaths) {
+      if (fs.existsSync(p)) { cscPath = p; break; }
+    }
+    if (!cscPath) {
+      console.warn('Print helper: csc.exe not found, falling back to PowerShell per-print compile');
+      return;
+    }
+    console.log('Compiling print helper (one-time)...');
+    await runCommand(cscPath, ['/nologo', '/optimize', '/out:' + exeFile, csFile]);
+    cachedPrintExe = exeFile;
+    console.log('Print helper: compiled KeaRawPrint.exe — prints will be instant!');
+  } catch (err) {
+    console.warn(`Print helper compile failed (will use PowerShell fallback): ${err.message}`);
+  }
+}
+
+// Fallback: PowerShell inline compile (slow, ~1-2s per print)
+const WINDOWS_RAW_PRINT_PS = `
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
@@ -343,7 +437,13 @@ async function printRawToSystemPrinter(systemName, buffer) {
   fs.writeFileSync(file, buffer);
   try {
     if (process.platform === 'win32') {
-      await runPowerShell(WINDOWS_RAW_PRINT, { KEA_PRINTER_NAME: systemName, KEA_PRINT_FILE: file });
+      if (cachedPrintExe) {
+        // Fast path: pre-compiled EXE (~0.1s)
+        await runCommand(cachedPrintExe, [systemName, file]);
+      } else {
+        // Slow fallback: PowerShell recompiles C# every time (~1-2s)
+        await runPowerShell(WINDOWS_RAW_PRINT_PS, { KEA_PRINTER_NAME: systemName, KEA_PRINT_FILE: file });
+      }
     } else {
       await runCommand('lp', ['-d', systemName, '-o', 'raw', file]);
     }
@@ -762,6 +862,7 @@ socket.on('printer-scan-request', () => {
 });
 socket.on('printer-test', printer => { handleTestPrint(printer); });
 
+compilePrintHelper().catch(err => console.warn(`Print helper init: ${err.message}`));
 refreshDiscoveredPrinters().catch(error => console.error(`Initial LAN discovery failed: ${error.message}`));
 setInterval(() => refreshDiscoveredPrinters().catch(error => console.error(`LAN discovery failed: ${error.message}`)), DISCOVERY_INTERVAL_MS).unref();
 setInterval(pollPendingJobs, PRINT_JOB_POLL_MS).unref();
