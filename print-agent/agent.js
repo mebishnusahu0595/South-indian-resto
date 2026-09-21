@@ -58,6 +58,17 @@ const MAX_PRINT_HISTORY = 10000;
 const LEGACY_KOT_ROLES = ['kitchen', 'bar', 'all'];
 const LEGACY_BILL_ROLES = ['reception', 'counter', 'cashier'];
 
+// Single-instance guard: prevent multiple agent processes from running simultaneously and duplicating prints.
+const SINGLE_INSTANCE_PORT = 39281;
+const instanceLock = net.createServer();
+instanceLock.once('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.warn(`[WARN] Another Kea Print Agent process is already running on this PC (port ${SINGLE_INSTANCE_PORT} in use). Exiting to prevent duplicate prints.`);
+    process.exit(0);
+  }
+});
+instanceLock.listen(SINGLE_INSTANCE_PORT, '127.0.0.1');
+
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 function validPort(value, fallback) {
@@ -762,8 +773,24 @@ async function processJob(job) {
   console.log(`Completed ${jobName} ${ticketLabel} on ${targets.length} physical printer(s)`);
 }
 
+const processedEventIds = new Map();
+const EVENT_DEDUPE_TTL_MS = 10 * 60 * 1000;
+
 function enqueueJob(job, source = 'socket') {
   const eventId = getEventId(job);
+  const now = Date.now();
+
+  // Prune expired entries older than 10 minutes
+  for (const [id, time] of processedEventIds.entries()) {
+    if (now - time > EVENT_DEDUPE_TTL_MS) processedEventIds.delete(id);
+  }
+
+  if (processedEventIds.has(eventId)) {
+    console.log(`[Dedupe] Print job ${eventId} already handled within last 10m; ignoring duplicate from ${source}`);
+    return;
+  }
+  processedEventIds.set(eventId, now);
+
   if (queuedEvents.has(eventId)) return;
   queuedEvents.add(eventId);
   console.log(`Queued ${job.jobType === 'bill' ? 'Bill' : 'KOT'} ${job.billNumber || job.kotTicket || job.orderNumber || eventId} from ${source}`);
@@ -771,7 +798,10 @@ function enqueueJob(job, source = 'socket') {
   // Jobs run independently; per-printer queues keep ticket order, so one offline printer
   // can no longer hold back tickets for every other printer.
   processJob(job)
-    .catch(error => console.error(`Print Job ${eventId} remains pending: ${error.message}`))
+    .catch(error => {
+      processedEventIds.delete(eventId); // Allow retry if processJob failed completely
+      console.error(`Print Job ${eventId} remains pending: ${error.message}`);
+    })
     .finally(() => queuedEvents.delete(eventId));
 }
 

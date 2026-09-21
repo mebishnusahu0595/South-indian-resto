@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
 
     // Restaurant PC print agent announces itself and every printer it can reach.
     socket.on('print-agent:register', async (payload) => {
-        const agent = registerAgent(socket, payload);
+        const agent = registerAgent(socket, payload, io);
         if (!agent) return;
         io.emit('printer-devices-updated', { at: Date.now() });
         try {

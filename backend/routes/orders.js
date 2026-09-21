@@ -99,12 +99,15 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
 
     const io = req.app.get('io');
     if (io) {
-        // Only emit new-order event for completely new orders, never for incremental KOT deltas
+        // Prevent duplicate printing: the desktop agent catches new-order for CREATE,
+        // and new-print-job for incremental KOT deltas (ADD/CANCEL). Emitting both
+        // on CREATE caused the agent to print every KOT twice.
         if (eventType === 'CREATE') {
             io.emit('new-order', eventPayload);
+        } else {
+            io.emit('new-print-job', eventPayload);
+            io.emit('new-kot', eventPayload);
         }
-        io.emit('new-kot', eventPayload);
-        io.emit('new-print-job', eventPayload);
     }
     return eventPayload;
 };

@@ -41,12 +41,27 @@ const isAgentOnline = agent => Boolean(agent)
     && (agent.sockets.size > 0 || Date.now() - agent.lastSeen < ONLINE_GRACE_MS);
 
 // Restaurant PC print agent: "this is me and these are the printers I can reach".
-// Returns the stored agent, or null when the payload/key is invalid.
-const registerAgent = (socket, payload = {}) => {
+const registerAgent = (socket, payload = {}, io = null) => {
     const id = text(payload.agentId, 100);
     if (!id || !isAgentKeyValid(payload.key)) return null;
 
-    const agent = agents.get(id) || { id, sockets: new Set() };
+    let agent = agents.get(id);
+    if (agent && agent.sockets.size > 0 && io) {
+        // Disconnect any older/duplicate sockets for this agent so only ONE agent process receives print jobs
+        for (const oldSocketId of agent.sockets) {
+            if (oldSocketId !== socket.id) {
+                const oldSocket = io.sockets?.sockets?.get ? io.sockets.sockets.get(oldSocketId) : null;
+                if (oldSocket) {
+                    console.log(`[PrintAgent] Disconnecting stale/duplicate socket ${oldSocketId} for agent ${id}`);
+                    oldSocket.disconnect(true);
+                }
+            }
+        }
+        agent.sockets.clear();
+    } else if (!agent) {
+        agent = { id, sockets: new Set() };
+    }
+
     agent.name = text(payload.name, 100) || id;
     agent.platform = text(payload.platform, 60);
     agent.printers = sanitizePrinters(payload.printers);
