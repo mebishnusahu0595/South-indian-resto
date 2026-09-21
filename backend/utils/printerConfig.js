@@ -108,6 +108,20 @@ const getPrinterConfig = async () => {
 
     const port = cleanPort(printerPort);
     const printers = normalizePrinterRegistry(registryValue, port);
+
+    // Safeguard: On a single PC, only ONE installed/USB printer should print KOT by default.
+    // Multiple installed queues for the same physical device cause duplicate slips (e.g. 3 copies).
+    const seenSystemKOTAgents = new Set();
+    for (const printer of printers) {
+        if (printer.type === 'system' && printer.kot) {
+            if (seenSystemKOTAgents.has(printer.agentId)) {
+                printer.kot = false; // Only allow one system printer queue per PC for KOT
+            } else {
+                seenSystemKOTAgents.add(printer.agentId);
+            }
+        }
+    }
+
     const endpointSet = new Set(printers.map(printer => `${printer.host}:${printer.port}`));
 
     addLegacyPrinter(printers, endpointSet, { id: 'kitchen', name: 'Kitchen Printer', role: 'kitchen', host: kitchenIp, port });
@@ -123,10 +137,9 @@ const getPrinterConfig = async () => {
     };
 };
 
-// Default (fresh install / production rollout): every real printer a PC agent or staff phone
-// detects is ticked for KOT and Bill, until Superadmin turns auto-select off. Unticked printers
-// stay in the registry with both flags off, so they are never ticked again. True when saved.
-// ponytail: read-modify-write without a lock; a lost addition is re-added on the next report.
+// Default (fresh install / production rollout): real printers a PC agent or staff phone
+// detects are ticked for KOT and Bill, until Superadmin turns auto-select off.
+// If an agent already has a system printer for KOT, new system printers get kot: false.
 const addDetectedPrinters = async (detectedPrinters, { agentId = '', deviceName = '' } = {}) => {
     const [autoSelect, registryValue, printerPort] = await Promise.all([
         Settings.getSetting('printer_auto_select', true),
@@ -138,26 +151,35 @@ const addDetectedPrinters = async (detectedPrinters, { agentId = '', deviceName 
     const port = cleanPort(printerPort);
     const registry = normalizePrinterRegistry(registryValue, port);
     const known = new Set(registry.map(printerEndpoint));
+    const hasSystemKOT = registry.some(p => p.type === 'system' && p.agentId === agentId && p.kot);
+    let systemKOTTicked = hasSystemKOT;
+
     const detected = (Array.isArray(detectedPrinters) ? detectedPrinters : [])
         // Unknown queues are often virtual (remote desktop, screen tools); those are ticked by hand.
         .filter(printer => printer.type !== 'system' || ['usb', 'wired', 'network'].includes(printer.connection))
-        .map((printer, index) => ({
-            id: `auto-${Date.now()}-${index}`,
-            name: printer.type === 'system'
-                ? `${printer.name || printer.systemName}${deviceName ? ` (${deviceName})` : ''}`
-                : `Network printer ${printer.host}`,
-            type: printer.type,
-            host: printer.host,
-            port: printer.port,
-            systemName: printer.systemName,
-            agentId: printer.type === 'system' ? agentId : '',
-            connection: printer.connection,
-            role: 'all',
-            kot: true,
-            bill: true,
-            copies: 1,
-            enabled: true
-        }));
+        .map((printer, index) => {
+            const isSystem = printer.type === 'system';
+            const tickKOT = isSystem ? !systemKOTTicked : true;
+            if (isSystem && tickKOT) systemKOTTicked = true;
+
+            return {
+                id: `auto-${Date.now()}-${index}`,
+                name: isSystem
+                    ? `${printer.name || printer.systemName}${deviceName ? ` (${deviceName})` : ''}`
+                    : (printer.name || `Network printer ${printer.host}`),
+                type: printer.type,
+                host: printer.host,
+                port: printer.port,
+                systemName: printer.systemName,
+                agentId: isSystem ? agentId : '',
+                connection: printer.connection,
+                role: isSystem ? 'counter' : 'kitchen',
+                kot: tickKOT,
+                bill: true,
+                copies: 1,
+                enabled: true
+            };
+        });
     const additions = normalizePrinterRegistry(detected, port).filter(printer => !known.has(printerEndpoint(printer)));
 
     if (additions.length === 0) return false;

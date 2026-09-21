@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiPlus, FiMinus, FiTrash2, FiSearch, FiShoppingCart, FiUser, FiAlertTriangle, FiX, FiCheck, FiFileText, FiArrowLeft, FiHome, FiSun, FiStar, FiCoffee, FiGrid } from 'react-icons/fi';
-import { getCategories, getMenuItems, getTables, createOrder, getBillerSuggestions, generateBill, getCoupons, getMaxDiscount, getTableSections, updateTable } from '../utils/api';
+import { getCategories, getMenuItems, getTables, createOrder, getBillerSuggestions, generateBill, getCoupons, getMaxDiscount, getTableSections, updateTable, getPrinterSettings, updatePrinterSettings } from '../utils/api';
 import { getImageUrl } from '../utils/config';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
@@ -62,15 +62,33 @@ const AdminCreateOrder = () => {
     const [tempPrinterIp, setTempPrinterIp] = useState(kitchenPrinterIp);
     const handleSavePrinterIp = async () => {
         const clean = tempPrinterIp.trim();
-        if (!clean) {
-            localStorage.setItem('kea_kitchen_printer_ip', '');
-            setKitchenPrinterIp('');
-            setShowPrinterModal(false);
-            return;
-        }
         localStorage.setItem('kea_kitchen_printer_ip', clean);
         setKitchenPrinterIp(clean);
         setShowPrinterModal(false);
+
+        try {
+            const res = await getPrinterSettings();
+            const currentPrinters = res.data?.printers || [];
+            const existingKitchen = currentPrinters.find(p => p.role === 'kitchen' || p.name?.toLowerCase().includes('kitchen'));
+            let updatedPrinters;
+            if (clean) {
+                if (existingKitchen) {
+                    updatedPrinters = currentPrinters.map(p => p === existingKitchen ? { ...p, host: clean, enabled: true, kot: true } : p);
+                } else {
+                    updatedPrinters = [
+                        ...currentPrinters,
+                        { id: 'kitchen', name: 'Kitchen Printer', role: 'kitchen', type: 'tcp', host: clean, port: 9100, kot: true, bill: false, copies: 1, enabled: true }
+                    ];
+                }
+            } else if (existingKitchen) {
+                updatedPrinters = currentPrinters.map(p => p === existingKitchen ? { ...p, enabled: false, kot: false } : p);
+            } else {
+                updatedPrinters = currentPrinters;
+            }
+            await updatePrinterSettings({ printers: updatedPrinters, autoSelectPrinters: res.data?.autoSelect });
+        } catch (err) {
+            console.error('Failed to sync kitchen printer to server:', err);
+        }
     };
 
     // Keyboard Shortcuts
@@ -124,18 +142,26 @@ const AdminCreateOrder = () => {
 
     const fetchInitialData = async () => {
         try {
-            const [catRes, tableRes, couponRes, discountRes, sectionsRes] = await Promise.all([
+            const [catRes, tableRes, couponRes, discountRes, sectionsRes, printerRes] = await Promise.all([
                 getCategories(),
                 getTables(),
                 getCoupons(),
                 getMaxDiscount(),
-                getTableSections()
+                getTableSections(),
+                getPrinterSettings().catch(() => ({ data: {} }))
             ]);
             setCategories(catRes.data);
             setTables(tableRes.data);
             setCoupons(couponRes.data || []);
             setMaxDiscountPercent(discountRes.data.maxDiscountPercent);
             setSections(sectionsRes.data || []);
+
+            const kitchenPr = (printerRes.data?.printers || []).find(p => p.role === 'kitchen' || p.name?.toLowerCase().includes('kitchen'));
+            if (kitchenPr?.host) {
+                setKitchenPrinterIp(kitchenPr.host);
+                setTempPrinterIp(kitchenPr.host);
+                localStorage.setItem('kea_kitchen_printer_ip', kitchenPr.host);
+            }
         } catch (err) {
             console.error('Error fetching admin order data:', err);
             setError('Failed to load menu categories, tables and coupons');

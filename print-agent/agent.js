@@ -652,8 +652,18 @@ function buildTargets(job) {
   const jobFlag = job.jobType === 'bill' ? 'bill' : 'kot';
   const targets = [];
   const endpointKeys = new Set();
+  let hasLocalSystemTarget = false;
+
   const addTarget = target => {
     if (!target || !target[jobFlag] || endpointKeys.has(target.endpointKey)) return;
+    // On a single PC, only ONE USB/system printer queue should receive the job to prevent 2x/3x copies
+    if (target.type === 'system' || target.type === 'device') {
+      if (hasLocalSystemTarget) {
+        console.log(`[Target] Skipping duplicate system printer '${target.name}' (already printing to a counter/USB printer)`);
+        return;
+      }
+      hasLocalSystemTarget = true;
+    }
     endpointKeys.add(target.endpointKey);
     targets.push(target);
   };
