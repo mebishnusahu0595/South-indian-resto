@@ -592,3 +592,155 @@
         flex: 1 1 110px;
     }
 }
+
+/* ─── Expenses Styles ─── */
+.expenses-view {
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+.expense-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.expense-badge.category {
+    background: #F3E8FF;
+    color: #6B21A8;
+    border: 1px solid #D8B4FE;
+}
+
+.expense-badge.payment-cash {
+    background: #ECFDF5;
+    color: #065F46;
+    border: 1px solid #A7F3D0;
+}
+
+.expense-badge.payment-upi,
+.expense-badge.payment-online {
+    background: #EFF6FF;
+    color: #1E40AF;
+    border: 1px solid #BFDBFE;
+}
+
+.expense-badge.payment-card {
+    background: #FFFBEB;
+    color: #92400E;
+    border: 1px solid #FDE68A;
+}
+
+.expense-badge.payment-other {
+    background: #F3F4F6;
+    color: #374151;
+    border: 1px solid #E5E7EB;
+}
+
+/* Expense Modal */
+.expense-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(3px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 99999;
+    padding: 16px;
+}
+
+.expense-modal-content {
+    background: #FFFFFF;
+    width: 100%;
+    max-width: 520px;
+    border-radius: 14px;
+    border: 3px solid #111111;
+    box-shadow: 6px 6px 0px #111111;
+    padding: 24px;
+    position: relative;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: scaleUp 0.15s ease-out;
+}
+
+.expense-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #111111;
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+}
+
+.expense-modal-header h2 {
+    margin: 0;
+    font-size: 1.35rem;
+    color: #111111;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.expense-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.expense-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.expense-form-group label {
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: #222222;
+}
+
+.expense-form-group .input,
+.expense-form-group select,
+.expense-form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #111111;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    background: #FFFFFF;
+    box-sizing: border-box;
+}
+
+.expense-form-group .input:focus,
+.expense-form-group select:focus,
+.expense-form-group textarea:focus {
+    outline: none;
+    border-color: #7C3AED;
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+}
+
+.expense-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.expense-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 12px;
+    border-top: 2px solid #F3F4F6;
+    padding-top: 16px;
+}
+
+@media print {
+    .no-print {
+        display: none !important;
+    }
+}

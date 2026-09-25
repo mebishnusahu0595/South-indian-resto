@@ -3,6 +3,7 @@ const router = express.Router();
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
+const Expense = require('../models/Expense');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const { getDateRange } = require('../utils/helpers');
 const { getBusinessDate, getBusinessDayRange } = require('../utils/orderCalculations');
@@ -219,9 +220,27 @@ router.get('/dashboard', protect, admin, async (req, res) => {
             status: { $in: ['pending', 'confirmed', 'preparing', 'ready'] }
         });
 
+        // Calculate expenses
+        const todayExpensesDoc = await Expense.find({ businessDate: todayString });
+        const todayExpenses = todayExpensesDoc.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+        const monthStartStr = `${todayString.slice(0, 7)}-01`;
+        const monthExpensesDoc = await Expense.find({ businessDate: { $gte: monthStartStr, $lte: todayString } });
+        const monthExpenses = monthExpensesDoc.reduce((sum, e) => sum + (e.amount || 0), 0);
+
         res.json({
-            today: { revenue: todayRevenue, orders: todayOrderCount },
-            month: { revenue: monthRevenue, orders: monthOrderCount },
+            today: {
+                revenue: todayRevenue,
+                orders: todayOrderCount,
+                expenses: todayExpenses,
+                netProfit: todayRevenue - todayExpenses
+            },
+            month: {
+                revenue: monthRevenue,
+                orders: monthOrderCount,
+                expenses: monthExpenses,
+                netProfit: monthRevenue - monthExpenses
+            },
             pendingOrders
         });
     } catch (error) {
@@ -257,7 +276,35 @@ router.get('/revenue', protect, admin, async (req, res) => {
             { $sort: { _id: 1 } }
         ]);
 
-        res.json(orders);
+        const startBDate = getBusinessDate(start);
+        const endBDate = getBusinessDate(end);
+
+        const expenses = await Expense.aggregate([
+            {
+                $match: {
+                    businessDate: { $gte: startBDate, $lte: endBDate }
+                }
+            },
+            {
+                $group: {
+                    _id: '$businessDate',
+                    totalExpense: { $sum: '$amount' }
+                }
+            }
+        ]);
+
+        const expenseMap = Object.fromEntries(expenses.map(e => [e._id, e.totalExpense]));
+
+        const combined = orders.map(day => {
+            const exp = expenseMap[day._id] || 0;
+            return {
+                ...day,
+                expenses: exp,
+                netProfit: day.revenue - exp
+            };
+        });
+
+        res.json(combined);
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
     }

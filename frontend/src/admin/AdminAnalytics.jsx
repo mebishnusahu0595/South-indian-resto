@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend, AreaChart, Area } from 'recharts';
-import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport, getItemWiseSales } from '../utils/api';
+import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport, getItemWiseSales, getExpenses, createExpense, deleteExpense } from '../utils/api';
 import { exportToCSV, downloadCSV, revenueExportColumns } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
-import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers, FiCalendar, FiSearch, FiShoppingBag, FiFilter, FiX } from 'react-icons/fi';
+import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers, FiCalendar, FiSearch, FiShoppingBag, FiFilter, FiX, FiDollarSign, FiPlus, FiTrash2 } from 'react-icons/fi';
 import './AdminAnalytics.css';
 
 const COLORS = ['#C87316', '#E08A2E', '#22C55E', '#3B82F6', '#9333EA', '#EC4899'];
@@ -85,6 +85,26 @@ const AdminAnalytics = () => {
     const [itemSortOrder, setItemSortOrder] = useState('desc');
     const [itemSalesData, setItemSalesData] = useState(null);
     const [fetchingItemSales, setFetchingItemSales] = useState(false);
+
+    // Daily Expenses state
+    const [expensesList, setExpensesList] = useState([]);
+    const [totalPeriodExpenses, setTotalPeriodExpenses] = useState(0);
+    const [expensesPeriod, setExpensesPeriod] = useState('today');
+    const [expensesStartDate, setExpensesStartDate] = useState(getLocalDateString());
+    const [expensesEndDate, setExpensesEndDate] = useState(getLocalDateString());
+    const [expensesRange, setExpensesRange] = useState(null);
+    const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('All');
+    const [fetchingExpenses, setFetchingExpenses] = useState(false);
+    const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+    const [submittingExpense, setSubmittingExpense] = useState(false);
+    const [expenseForm, setExpenseForm] = useState({
+        title: '',
+        amount: '',
+        category: 'Kitchen Supplies',
+        businessDate: getLocalDateString(),
+        paymentMethod: 'cash',
+        notes: ''
+    });
 
     const [fetchingReport, setFetchingReport] = useState(false);
 
@@ -189,21 +209,129 @@ const AdminAnalytics = () => {
         }
     }, [activeTab, itemSalesPeriod, itemSalesRange, itemCategoryFilter, itemSortBy, itemSortOrder]);
 
+    useEffect(() => {
+        if (activeTab === 'expenses') {
+            fetchExpenses();
+        }
+    }, [activeTab, expensesPeriod, expensesRange, expenseCategoryFilter]);
+
     const handleApplyItemSalesSearch = (e) => {
         if (e) e.preventDefault();
         fetchItemSalesData();
     };
 
+    const fetchExpenses = async (overrideParams = {}) => {
+        setFetchingExpenses(true);
+        try {
+            let params = {};
+            if (overrideParams.startDate && overrideParams.endDate) {
+                params = { startDate: overrideParams.startDate, endDate: overrideParams.endDate };
+            } else if (typeof overrideParams === 'string') {
+                params = { date: overrideParams };
+            } else if (expensesPeriod === 'custom' && expensesRange) {
+                params = { startDate: expensesRange.startDate, endDate: expensesRange.endDate };
+            } else if (expensesPeriod === 'today') {
+                params = { date: getLocalDateString() };
+            } else if (expensesPeriod === 'yesterday') {
+                params = { date: getRelativeBusinessDate(-1) };
+            } else if (expensesPeriod === 'week') {
+                params = { startDate: getRelativeBusinessDate(-6), endDate: getLocalDateString() };
+            } else if (expensesPeriod === 'month') {
+                const today = getLocalDateString();
+                params = { startDate: `${today.slice(0, 7)}-01`, endDate: today };
+            }
+
+            if (expenseCategoryFilter && expenseCategoryFilter !== 'All') {
+                params.category = expenseCategoryFilter;
+            }
+
+            const res = await getExpenses({ ...params, ...overrideParams });
+            setExpensesList(res.data?.expenses || []);
+        } catch (err) {
+            console.error('Failed to fetch expenses:', err);
+        } finally {
+            setFetchingExpenses(false);
+        }
+    };
+
+    const openAddExpenseModal = (dateVal) => {
+        setExpenseForm({
+            title: '',
+            amount: '',
+            category: 'Kitchen Supplies',
+            businessDate: dateVal || reportDate || getLocalDateString(),
+            paymentMethod: 'cash',
+            notes: ''
+        });
+        setShowAddExpenseModal(true);
+    };
+
+    const handleCreateExpense = async (e) => {
+        if (e) e.preventDefault();
+        if (!expenseForm.title || !expenseForm.title.trim()) {
+            alert('Please enter an expense title/description.');
+            return;
+        }
+        const amt = parseFloat(expenseForm.amount);
+        if (isNaN(amt) || amt <= 0) {
+            alert('Please enter a valid amount in Rupees (> 0).');
+            return;
+        }
+
+        setSubmittingExpense(true);
+        try {
+            await createExpense({
+                ...expenseForm,
+                title: expenseForm.title.trim(),
+                amount: amt
+            });
+            setShowAddExpenseModal(false);
+            setExpenseForm({
+                title: '',
+                amount: '',
+                category: 'Kitchen Supplies',
+                businessDate: getLocalDateString(),
+                paymentMethod: 'cash',
+                notes: ''
+            });
+            fetchDayEndReport(reportDate);
+            fetchExpenses();
+            fetchData();
+        } catch (err) {
+            console.error('Failed to create expense:', err);
+            alert(err.response?.data?.message || 'Failed to record expense');
+        } finally {
+            setSubmittingExpense(false);
+        }
+    };
+
+    const handleDeleteExpense = async (expenseId) => {
+        if (!window.confirm('Are you sure you want to delete this expense record?')) {
+            return;
+        }
+        try {
+            await deleteExpense(expenseId);
+            fetchDayEndReport(reportDate);
+            fetchExpenses();
+            fetchData();
+        } catch (err) {
+            console.error('Failed to delete expense:', err);
+            alert(err.response?.data?.message || 'Failed to delete expense');
+        }
+    };
+
     const handleDownloadDayEndReport = (dayEndData) => {
         if (!dayEndData) return;
         const dateStr = dayEndData.date || getLocalDateString();
+        const totalExp = dayEndData.summary?.totalExpenses || 0;
+        const netProf = dayEndData.summary?.netProfit !== undefined ? dayEndData.summary.netProfit : ((dayEndData.summary?.netRevenue || 0) - totalExp);
 
         let csv = `KEA BY THE POOL - DAY-END (EOD) SALES REPORT\n`;
         csv += `Date,${dateStr}\n\n`;
         
         csv += `SUMMARY\n`;
-        csv += `Total Orders,Gross Sales (Rs.),Discounts (Rs.),Taxes GST (Rs.),Net Revenue (Rs.)\n`;
-        csv += `${dayEndData.summary?.totalOrders || 0},${(dayEndData.summary?.grossSales || 0).toFixed(2)},${(dayEndData.summary?.totalDiscount || 0).toFixed(2)},${(dayEndData.summary?.totalTax || 0).toFixed(2)},${(dayEndData.summary?.netRevenue || 0).toFixed(2)}\n\n`;
+        csv += `Total Orders,Gross Sales (Rs.),Discounts (Rs.),Taxes GST (Rs.),Net Revenue (Rs.),Total Expenses (Rs.),Realized Net Profit (Rs.)\n`;
+        csv += `${dayEndData.summary?.totalOrders || 0},${(dayEndData.summary?.grossSales || 0).toFixed(2)},${(dayEndData.summary?.totalDiscount || 0).toFixed(2)},${(dayEndData.summary?.totalTax || 0).toFixed(2)},${(dayEndData.summary?.netRevenue || 0).toFixed(2)},${totalExp.toFixed(2)},${netProf.toFixed(2)}\n\n`;
 
         csv += `PAYMENT METHOD BREAKDOWN\n`;
         csv += `Payment Method,Total Amount (Rs.)\n`;
@@ -215,6 +343,16 @@ const AdminAnalytics = () => {
         csv += `  - Split UPI,${(dayEndData.paymentBreakdown?.splitDetails?.upi || 0).toFixed(2)}\n`;
         csv += `  - Split Card,${(dayEndData.paymentBreakdown?.splitDetails?.card || 0).toFixed(2)}\n`;
         csv += `TOTAL COLLECTED,${(dayEndData.summary?.netRevenue || 0).toFixed(2)}\n\n`;
+
+        if (dayEndData.expenses && dayEndData.expenses.length > 0) {
+            csv += `DAILY EXPENSES BREAKDOWN\n`;
+            csv += `Title / Description,Category,Payment Method,Added By,Amount (Rs.),Notes\n`;
+            dayEndData.expenses.forEach(exp => {
+                csv += `"${exp.title}","${exp.category || 'General'}","${exp.paymentMethod || 'cash'}","${exp.addedByName || ''}",${(exp.amount || 0).toFixed(2)},"${exp.notes || ''}"\n`;
+            });
+            csv += `TOTAL EXPENSES,,,,${totalExp.toFixed(2)},\n`;
+            csv += `REALIZED NET PROFIT,,,,${netProf.toFixed(2)},\n\n`;
+        }
 
         csv += `CATEGORY-WISE SALES SUMMARY\n`;
         csv += `Category Name,Total Qty Sold,Total Revenue (Rs.)\n`;
@@ -309,13 +447,14 @@ const AdminAnalytics = () => {
     const fetchData = async () => {
         try {
             const dateParams = period === 'custom' && customRange ? customRange : {};
-            const [statsRes, revenueRes, catRes, topRes, userRes, settingsRes] = await Promise.all([
+            const [statsRes, revenueRes, catRes, topRes, userRes, settingsRes, expensesRes] = await Promise.all([
                 getDashboardStats(),
                 getRevenueData(period, dateParams),
                 getCategorySales(period, dateParams),
                 getTopItems({ period, ...dateParams }),
                 getUserAnalytics(period, dateParams),
-                getAllSettings()
+                getAllSettings(),
+                getExpenses({ period, ...dateParams }).catch(() => ({ data: { totalExpenses: 0, expenses: [] } }))
             ]);
             setStats(statsRes.data);
             setRevenueData(revenueRes.data.map(d => ({
@@ -325,6 +464,7 @@ const AdminAnalytics = () => {
             setCategorySales(catRes.data);
             setTopItems(topRes.data);
             setUserStats(userRes.data);
+            setTotalPeriodExpenses(expensesRes?.data?.totalExpenses || 0);
 
             const settingsArr = Array.isArray(settingsRes.data) ? settingsRes.data : (Array.isArray(settingsRes.data?.data) ? settingsRes.data.data : []);
             const marginSetting = settingsArr.find(s => s.key === 'profit_margin');
@@ -487,6 +627,15 @@ const AdminAnalytics = () => {
                     }}
                 >
                     <FiLayers /> Section & Table Sales
+                </button>
+                <button
+                    className={`btn ${activeTab === 'expenses' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => {
+                        setActiveTab('expenses');
+                        fetchExpenses();
+                    }}
+                >
+                    <FiDollarSign /> Daily Expenses
                 </button>
             </div>
 
@@ -836,7 +985,10 @@ const AdminAnalytics = () => {
                             )}
                         </div>
                         {dayEndData && (
-                            <div style={{ display: 'flex', gap: '8px' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <button className="btn btn-secondary no-print" onClick={() => openAddExpenseModal(dayEndData.date || reportDate)} style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <FiPlus /> Add Expense
+                                </button>
                                 <button className="btn btn-secondary" onClick={() => handleDownloadDayEndReport(dayEndData)} style={{ fontWeight: 'bold' }}>
                                     <FiDownload /> Download Day-End Report
                                 </button>
@@ -877,9 +1029,19 @@ const AdminAnalytics = () => {
                                     <span style={{ fontSize: '0.78rem', color: '#666' }}>Taxes (GST)</span>
                                     <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem' }}>₹{dayEndData.summary.totalTax.toFixed(2)}</h3>
                                 </div>
-                                <div style={{ background: '#ECFDF5', padding: '12px', borderRadius: '8px', border: '2px solid #10B981' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 'bold' }}>NET REVENUE</span>
-                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.5rem', color: '#059669', fontWeight: 'bold' }}>₹{dayEndData.summary.netRevenue.toFixed(2)}</h3>
+                                <div style={{ background: '#F3F4F6', padding: '12px', borderRadius: '8px', border: '1.5px solid #2563EB' }}>
+                                    <span style={{ fontSize: '0.78rem', color: '#2563EB', fontWeight: 'bold' }}>NET REVENUE</span>
+                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: '#2563EB', fontWeight: 'bold' }}>₹{dayEndData.summary.netRevenue.toFixed(2)}</h3>
+                                </div>
+                                <div style={{ background: '#FFF1F2', padding: '12px', borderRadius: '8px', border: '1.5px solid #F43F5E' }}>
+                                    <span style={{ fontSize: '0.78rem', color: '#E11D48', fontWeight: 'bold' }}>TOTAL EXPENSES</span>
+                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: '#E11D48', fontWeight: 'bold' }}>-₹{(dayEndData.summary.totalExpenses || 0).toFixed(2)}</h3>
+                                    <span style={{ fontSize: '0.72rem', color: '#888' }}>{(dayEndData.expenses || []).length} logged</span>
+                                </div>
+                                <div style={{ background: '#ECFDF5', padding: '12px', borderRadius: '8px', border: '2px solid #10B981', boxShadow: '2px 2px 0px #10B981' }}>
+                                    <span style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 'bold' }}>ESTIMATE NET PROFIT</span>
+                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.5rem', color: '#059669', fontWeight: 'bold' }}>₹{(dayEndData.summary.netProfit !== undefined ? dayEndData.summary.netProfit : (dayEndData.summary.netRevenue - (dayEndData.summary.totalExpenses || 0))).toFixed(2)}</h3>
+                                    <span style={{ fontSize: '0.72rem', color: '#059669' }}>Revenue - Expenses</span>
                                 </div>
                             </div>
 
@@ -921,6 +1083,97 @@ const AdminAnalytics = () => {
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
+
+                            {/* Daily Expenses Breakdown */}
+                            <div style={{ marginBottom: '24px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #111', paddingBottom: '6px', marginBottom: '12px' }}>
+                                    <h3 style={{ margin: 0 }}>💸 Daily Expenses Breakdown</h3>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary btn-sm no-print"
+                                        onClick={() => openAddExpenseModal(dayEndData.date || reportDate)}
+                                        style={{ fontSize: '0.82rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                        <FiPlus /> Add Expense
+                                    </button>
+                                </div>
+                                {(!dayEndData.expenses || dayEndData.expenses.length === 0) ? (
+                                    <div style={{ padding: '14px', background: '#F9FAFB', border: '1px dashed #CCC', borderRadius: '6px', textAlign: 'center', color: '#666', fontSize: '0.9rem' }}>
+                                        No expenses recorded for this business day.
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary btn-sm no-print"
+                                            onClick={() => openAddExpenseModal(dayEndData.date || reportDate)}
+                                            style={{ marginLeft: '10px', fontSize: '0.8rem', padding: '2px 8px' }}
+                                        >
+                                            <FiPlus /> Add Expense
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                                        <thead>
+                                            <tr style={{ background: '#F3F4F6', textAlign: 'left' }}>
+                                                <th style={{ padding: '8px', border: '1px solid #DDD' }}>Expense / Title</th>
+                                                <th style={{ padding: '8px', border: '1px solid #DDD' }}>Category</th>
+                                                <th style={{ padding: '8px', border: '1px solid #DDD' }}>Payment Mode</th>
+                                                <th style={{ padding: '8px', border: '1px solid #DDD' }}>Added By</th>
+                                                <th style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right' }}>Amount (₹)</th>
+                                                <th className="no-print" style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'center', width: '50px' }}>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {dayEndData.expenses.map((exp, idx) => (
+                                                <tr key={exp._id || idx}>
+                                                    <td style={{ padding: '8px', border: '1px solid #DDD', fontWeight: '500' }}>
+                                                        {exp.title}
+                                                        {exp.notes && <div style={{ fontSize: '0.78rem', color: '#666' }}>{exp.notes}</div>}
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #DDD' }}>
+                                                        <span className="expense-badge">{exp.category || 'General'}</span>
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #DDD', textTransform: 'capitalize' }}>
+                                                        {exp.paymentMethod || 'cash'}
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #DDD', color: '#555', fontSize: '0.85rem' }}>
+                                                        {exp.addedByName || 'Admin'}
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold', color: '#E11D48' }}>
+                                                        ₹{(exp.amount || 0).toFixed(2)}
+                                                    </td>
+                                                    <td className="no-print" style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'center' }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteExpense(exp._id)}
+                                                            title="Delete Expense"
+                                                            style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
+                                                        >
+                                                            <FiTrash2 size={16} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            <tr style={{ background: '#FFF1F2', fontWeight: 'bold' }}>
+                                                <td colSpan={4} style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#9F1239' }}>
+                                                    TOTAL EXPENSES DEDUCTED:
+                                                </td>
+                                                <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#E11D48', fontSize: '1rem' }}>
+                                                    -₹{(dayEndData.summary.totalExpenses || 0).toFixed(2)}
+                                                </td>
+                                                <td className="no-print" style={{ border: '1px solid #DDD' }}></td>
+                                            </tr>
+                                            <tr style={{ background: '#ECFDF5', fontWeight: 'bold' }}>
+                                                <td colSpan={4} style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#065F46' }}>
+                                                    ESTIMATE NET PROFIT (Net Revenue - Expenses):
+                                                </td>
+                                                <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#059669', fontSize: '1.1rem' }}>
+                                                    ₹{(dayEndData.summary.netProfit !== undefined ? dayEndData.summary.netProfit : (dayEndData.summary.netRevenue - (dayEndData.summary.totalExpenses || 0))).toFixed(2)}
+                                                </td>
+                                                <td className="no-print" style={{ border: '1px solid #DDD' }}></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                )}
                             </div>
 
                             {/* Category Sales */}
@@ -1197,6 +1450,21 @@ const AdminAnalytics = () => {
                     <p className="value">₹{totalRevenue.toFixed(2)}</p>
                     <span className="label">{periodLabel}</span>
                 </div>
+                <div className="summary-card profit" style={{ borderLeft: '4px solid #E11D48' }}>
+                    <div className="card-header-with-action">
+                        <h3>Total Expenses</h3>
+                        <button className="btn btn-secondary btn-sm" onClick={() => openAddExpenseModal()} style={{ padding: '2px 8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <FiPlus /> Add
+                        </button>
+                    </div>
+                    <p className="value" style={{ color: '#E11D48' }}>₹{totalPeriodExpenses.toFixed(2)}</p>
+                    <span className="label">{periodLabel}</span>
+                </div>
+                <div className="summary-card profit" style={{ borderLeft: '4px solid #059669' }}>
+                    <h3>Realized Net Profit</h3>
+                    <p className="value" style={{ color: '#059669' }}>₹{(totalRevenue - totalPeriodExpenses).toFixed(2)}</p>
+                    <span className="label">Revenue - Expenses</span>
+                </div>
                 <div className="summary-card profit">
                     <div className="card-header-with-action">
                         <h3>Estimated Profit</h3>
@@ -1383,23 +1651,356 @@ const AdminAnalytics = () => {
                                 <th>Date</th>
                                 <th>Orders</th>
                                 <th>Revenue</th>
-                                <th>Profit</th>
+                                <th>Expenses</th>
+                                <th>Est. Margin Profit</th>
+                                <th>Net Profit (Rev - Exp)</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {revenueData.map((day, index) => (
-                                <tr key={index}>
-                                    <td>{day.date}</td>
-                                    <td>{day.orders}</td>
-                                    <td>₹{day.revenue.toFixed(2)}</td>
-                                    <td className="profit-cell">₹{day.profit.toFixed(2)}</td>
-                                </tr>
-                            ))}
+                            {revenueData.map((day, index) => {
+                                const dayExp = day.expenses || 0;
+                                const dayNet = day.netProfit !== undefined ? day.netProfit : (day.revenue - dayExp);
+                                return (
+                                    <tr key={index}>
+                                        <td>{day.date}</td>
+                                        <td>{day.orders}</td>
+                                        <td>₹{day.revenue.toFixed(2)}</td>
+                                        <td style={{ color: dayExp > 0 ? '#E11D48' : '#6B7280', fontWeight: dayExp > 0 ? '600' : 'normal' }}>
+                                            {dayExp > 0 ? `-₹${dayExp.toFixed(2)}` : '₹0.00'}
+                                        </td>
+                                        <td style={{ color: '#4B5563' }}>₹{day.profit.toFixed(2)}</td>
+                                        <td className="profit-cell" style={{ color: dayNet >= 0 ? '#059669' : '#DC2626', fontWeight: 'bold' }}>
+                                            ₹{dayNet.toFixed(2)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
             </div>
             </>
+            )}
+
+            {/* DAILY EXPENSES TAB */}
+            {activeTab === 'expenses' && (
+                <div className="daily-expenses-view">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <div className="analytics-filter-controls" style={{ justifyContent: 'flex-start' }}>
+                                <div className="period-selector">
+                                    {['today', 'yesterday', 'week', 'month'].map(p => (
+                                        <button
+                                            key={p}
+                                            className={`period-btn ${expensesPeriod === p ? 'active' : ''}`}
+                                            onClick={() => {
+                                                setExpensesRange(null);
+                                                setExpensesPeriod(p);
+                                            }}
+                                        >
+                                            {p === 'week' ? 'This Week' : p === 'month' ? 'This Month' : p.charAt(0).toUpperCase() + p.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className={`custom-date-filter ${expensesPeriod === 'custom' ? 'active' : ''}`}>
+                                    <FiCalendar />
+                                    <label>
+                                        From
+                                        <input
+                                            type="date"
+                                            value={expensesStartDate}
+                                            max={getLocalDateString()}
+                                            onChange={e => setExpensesStartDate(e.target.value)}
+                                        />
+                                    </label>
+                                    <label>
+                                        To
+                                        <input
+                                            type="date"
+                                            value={expensesEndDate}
+                                            min={expensesStartDate}
+                                            max={getLocalDateString()}
+                                            onChange={e => setExpensesEndDate(e.target.value)}
+                                        />
+                                    </label>
+                                    <button
+                                        type="button"
+                                        className="period-btn custom-apply-btn"
+                                        onClick={() => {
+                                            if (!expensesStartDate || !expensesEndDate) {
+                                                alert('Please select both From and To dates.');
+                                                return;
+                                            }
+                                            if (expensesStartDate > expensesEndDate) {
+                                                alert('From date cannot be after To date.');
+                                                return;
+                                            }
+                                            setExpensesRange({ startDate: expensesStartDate, endDate: expensesEndDate });
+                                            setExpensesPeriod('custom');
+                                        }}
+                                    >
+                                        Apply Date Range
+                                    </button>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <label style={{ fontWeight: 'bold', fontSize: '0.88rem' }}>Category:</label>
+                                <select
+                                    value={expenseCategoryFilter}
+                                    onChange={e => setExpenseCategoryFilter(e.target.value)}
+                                    style={{ padding: '7px 10px', borderRadius: '6px', border: '2px solid #111', fontWeight: '500' }}
+                                >
+                                    <option value="All">All Categories</option>
+                                    <option value="Kitchen Supplies">Kitchen Supplies</option>
+                                    <option value="Raw Materials / Grocery">Raw Materials / Grocery</option>
+                                    <option value="Dairy & Beverages">Dairy & Beverages</option>
+                                    <option value="Maintenance & Repairs">Maintenance & Repairs</option>
+                                    <option value="Utilities & Bills">Utilities & Bills</option>
+                                    <option value="Staff & Salaries">Staff & Salaries</option>
+                                    <option value="Packaging & Delivery">Packaging & Delivery</option>
+                                    <option value="Miscellaneous">Miscellaneous</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => openAddExpenseModal()}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                                <FiPlus /> Add New Expense
+                            </button>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => fetchExpenses()}
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Stat Cards for Expenses */}
+                    {(() => {
+                        const totalExp = expensesList.reduce((sum, e) => sum + (e.amount || 0), 0);
+                        const cashExp = expensesList.filter(e => e.paymentMethod === 'cash').reduce((sum, e) => sum + (e.amount || 0), 0);
+                        const onlineExp = expensesList.filter(e => e.paymentMethod === 'online' || e.paymentMethod === 'upi').reduce((sum, e) => sum + (e.amount || 0), 0);
+                        return (
+                            <div className="summary-grid" style={{ marginBottom: '24px' }}>
+                                <div className="summary-card" style={{ borderLeft: '4px solid #E11D48' }}>
+                                    <h3>Total Expenses</h3>
+                                    <p className="value" style={{ color: '#E11D48' }}>₹{totalExp.toFixed(2)}</p>
+                                    <span className="label">{expensesList.length} expenses recorded</span>
+                                </div>
+                                <div className="summary-card" style={{ borderLeft: '4px solid #F59E0B' }}>
+                                    <h3>Cash Paid</h3>
+                                    <p className="value" style={{ color: '#D97706' }}>₹{cashExp.toFixed(2)}</p>
+                                    <span className="label">Out of cash drawer</span>
+                                </div>
+                                <div className="summary-card" style={{ borderLeft: '4px solid #3B82F6' }}>
+                                    <h3>Online / UPI Paid</h3>
+                                    <p className="value" style={{ color: '#2563EB' }}>₹{onlineExp.toFixed(2)}</p>
+                                    <span className="label">Bank / UPI transfer</span>
+                                </div>
+                                <div className="summary-card" style={{ borderLeft: '4px solid #8B5CF6' }}>
+                                    <h3>Total Records</h3>
+                                    <p className="value">{expensesList.length}</p>
+                                    <span className="label">Filtered count</span>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Expenses Table */}
+                    {fetchingExpenses ? (
+                        <Loader message="Loading expenses..." />
+                    ) : (
+                        <div className="chart-card">
+                            <h2>Expenses Records</h2>
+                            {expensesList.length === 0 ? (
+                                <div style={{ padding: '40px', textAlign: 'center', color: '#666', fontStyle: 'italic' }}>
+                                    No expenses found for the selected period.
+                                    <div style={{ marginTop: '12px' }}>
+                                        <button className="btn btn-primary" onClick={() => openAddExpenseModal()}>
+                                            <FiPlus /> Add First Expense
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Title / Description</th>
+                                                <th>Category</th>
+                                                <th>Payment Mode</th>
+                                                <th>Added By</th>
+                                                <th>Notes</th>
+                                                <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                                                <th style={{ textAlign: 'center', width: '70px' }}>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {expensesList.map((exp) => (
+                                                <tr key={exp._id}>
+                                                    <td style={{ fontWeight: '600' }}>{exp.businessDate || formatBusinessDate(exp.createdAt, { day: 'numeric', month: 'short' })}</td>
+                                                    <td style={{ fontWeight: '500' }}>{exp.title}</td>
+                                                    <td>
+                                                        <span className="expense-badge">{exp.category || 'General'}</span>
+                                                    </td>
+                                                    <td style={{ textTransform: 'capitalize' }}>{exp.paymentMethod || 'cash'}</td>
+                                                    <td style={{ color: '#555', fontSize: '0.88rem' }}>{exp.addedByName || 'Admin'}</td>
+                                                    <td style={{ color: '#777', fontSize: '0.85rem' }}>{exp.notes || '-'}</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#E11D48', fontSize: '1rem' }}>
+                                                        ₹{(exp.amount || 0).toFixed(2)}
+                                                    </td>
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        <button
+                                                            onClick={() => handleDeleteExpense(exp._id)}
+                                                            title="Delete Expense"
+                                                            style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '6px' }}
+                                                        >
+                                                            <FiTrash2 size={18} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{ background: '#F9FAFB', fontWeight: 'bold', borderTop: '2px solid #111' }}>
+                                                <td colSpan={6} style={{ padding: '12px', textAlign: 'right', fontSize: '0.95rem' }}>TOTAL EXPENSES:</td>
+                                                <td style={{ padding: '12px', textAlign: 'right', fontSize: '1.15rem', color: '#E11D48' }}>
+                                                    ₹{expensesList.reduce((sum, e) => sum + (e.amount || 0), 0).toFixed(2)}
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ADD EXPENSE MODAL */}
+            {showAddExpenseModal && (
+                <div className="expense-modal-overlay" onClick={() => !submittingExpense && setShowAddExpenseModal(false)}>
+                    <div className="expense-modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="expense-modal-header">
+                            <h2><FiDollarSign style={{ color: '#E11D48' }} /> Record New Expense</h2>
+                            <button
+                                type="button"
+                                onClick={() => setShowAddExpenseModal(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                            >
+                                <FiX size={22} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleCreateExpense} className="expense-form">
+                            <div className="expense-form-row">
+                                <div className="expense-form-group">
+                                    <label>Business Date *</label>
+                                    <input
+                                        type="date"
+                                        className="input"
+                                        required
+                                        value={expenseForm.businessDate}
+                                        max={getLocalDateString()}
+                                        onChange={e => setExpenseForm({ ...expenseForm, businessDate: e.target.value })}
+                                    />
+                                </div>
+                                <div className="expense-form-group">
+                                    <label>Amount (in Rupees ₹) *</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        placeholder="e.g. 100"
+                                        className="input"
+                                        required
+                                        value={expenseForm.amount}
+                                        onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="expense-form-group">
+                                <label>Expense Title / Description *</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Vegetables, Milk, Gas Cylinder, Cleaning Supplies"
+                                    className="input"
+                                    required
+                                    value={expenseForm.title}
+                                    onChange={e => setExpenseForm({ ...expenseForm, title: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="expense-form-row">
+                                <div className="expense-form-group">
+                                    <label>Category</label>
+                                    <select
+                                        value={expenseForm.category}
+                                        onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })}
+                                    >
+                                        <option value="Kitchen Supplies">Kitchen Supplies</option>
+                                        <option value="Raw Materials / Grocery">Raw Materials / Grocery</option>
+                                        <option value="Dairy & Beverages">Dairy & Beverages</option>
+                                        <option value="Maintenance & Repairs">Maintenance & Repairs</option>
+                                        <option value="Utilities & Bills">Utilities & Bills</option>
+                                        <option value="Staff & Salaries">Staff & Salaries</option>
+                                        <option value="Packaging & Delivery">Packaging & Delivery</option>
+                                        <option value="Miscellaneous">Miscellaneous</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div className="expense-form-group">
+                                    <label>Payment Method</label>
+                                    <select
+                                        value={expenseForm.paymentMethod}
+                                        onChange={e => setExpenseForm({ ...expenseForm, paymentMethod: e.target.value })}
+                                    >
+                                        <option value="cash">💵 Cash</option>
+                                        <option value="upi">📱 UPI / Online</option>
+                                        <option value="card">💳 Card</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="expense-form-group">
+                                <label>Notes / Vendor Details (Optional)</label>
+                                <textarea
+                                    rows="2"
+                                    placeholder="Any additional remarks, invoice number, or vendor name..."
+                                    value={expenseForm.notes}
+                                    onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="expense-modal-actions">
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={submittingExpense}
+                                    onClick={() => setShowAddExpenseModal(false)}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary"
+                                    disabled={submittingExpense}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                                >
+                                    {submittingExpense ? 'Saving...' : 'Save Expense'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -91,6 +91,12 @@ export const getSectionWiseReport = (params) => {
     return axios.get(`${API_URL}/reports/section-wise`, { params: queryParams });
 };
 
+// Expenses
+export const getExpenses = (params = {}) => axios.get(`${API_URL}/expenses`, { params });
+export const createExpense = (data) => axios.post(`${API_URL}/expenses`, data);
+export const updateExpense = (id, data) => axios.put(`${API_URL}/expenses/${id}`, data);
+export const deleteExpense = (id) => axios.delete(`${API_URL}/expenses/${id}`);
+
 // Tables
 export const getTables = () => axios.get(`${API_URL}/tables`);
 export const getTableSections = () => axios.get(`${API_URL}/tables/sections`);

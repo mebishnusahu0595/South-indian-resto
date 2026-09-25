@@ -5,6 +5,7 @@ const Bill = require('../models/Bill');
 const Table = require('../models/Table');
 const MenuItem = require('../models/MenuItem');
 const Employee = require('../models/Employee');
+const Expense = require('../models/Expense');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const { getBusinessDate, getBusinessDayRange } = require('../utils/orderCalculations');
 
@@ -185,6 +186,11 @@ router.get('/day-end', protect, admin, async (req, res) => {
             } : null
         }));
 
+        // Fetch daily expenses for this business date
+        const expenses = await Expense.find({ businessDate: targetDate }).sort({ createdAt: -1 });
+        const totalExpenses = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        const netProfit = netRevenue - totalExpenses;
+
         res.json({
             date: targetDate,
             summary: {
@@ -193,8 +199,11 @@ router.get('/day-end', protect, admin, async (req, res) => {
                 grossSales,
                 totalDiscount,
                 totalTax,
-                netRevenue
+                netRevenue,
+                totalExpenses,
+                netProfit
             },
+            expenses,
             paymentBreakdown,
             categorySales,
             productSales,
