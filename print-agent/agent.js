@@ -22,6 +22,15 @@ const { execFile } = require('child_process');
 const io = require('socket.io-client');
 const { ThermalPrinter, PrinterTypes, CharacterSet, BreakLine } = require('node-thermal-printer');
 
+// Global crash guards – log the error but do NOT let the process die.
+process.on('uncaughtException', (err) => {
+  console.error(`[FATAL] Uncaught exception (agent kept alive): ${err.message}`);
+  console.error(err.stack || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(`[FATAL] Unhandled promise rejection (agent kept alive):`, reason);
+});
+
 const SERVER_URL = (process.env.SERVER_URL || 'https://keabythepool.com').replace(/\/+$/, '');
 const API_URL = (process.env.API_URL || `${SERVER_URL.endsWith('/api') ? SERVER_URL : `${SERVER_URL}/api`}`).replace(/\/+$/, '');
 const PRINT_AGENT_KEY = process.env.PRINT_AGENT_KEY || '';
@@ -58,16 +67,63 @@ const MAX_PRINT_HISTORY = 10000;
 const LEGACY_KOT_ROLES = ['kitchen', 'bar', 'all'];
 const LEGACY_BILL_ROLES = ['reception', 'counter', 'cashier'];
 
-// Single-instance guard: prevent multiple agent processes from running simultaneously and duplicating prints.
+// Single-instance guard & Local Health Server
 const SINGLE_INSTANCE_PORT = 39281;
-const instanceLock = net.createServer();
-instanceLock.once('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.warn(`[WARN] Another Kea Print Agent process is already running on this PC (port ${SINGLE_INSTANCE_PORT} in use). Exiting to prevent duplicate prints.`);
-    process.exit(0);
-  }
-});
-instanceLock.listen(SINGLE_INSTANCE_PORT, '127.0.0.1');
+let localHealthServer;
+function acquireInstanceLock(retries = 6) {
+  return new Promise((resolve) => {
+    localHealthServer = http.createServer((req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
+      if (req.url === '/health' || req.url === '/status' || req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          status: 'running',
+          agentId: AGENT_ID,
+          hostname: os.hostname(),
+          socketConnected: Boolean(socket?.connected),
+          uptime: Math.floor(process.uptime()),
+          pid: process.pid,
+          time: new Date().toISOString()
+        }));
+        return;
+      }
+
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    });
+
+    localHealthServer.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        if (retries > 0) {
+          console.log(`[Lock] Port ${SINGLE_INSTANCE_PORT} busy, retrying in 5s (${retries} retries left)...`);
+          setTimeout(() => acquireInstanceLock(retries - 1).then(resolve), 5000);
+        } else {
+          console.warn(`[WARN] Another Kea Print Agent is genuinely running on this PC. Exiting.`);
+          process.exit(0);
+        }
+      } else {
+        console.error(`[Lock] Server error: ${err.message}`);
+        resolve();
+      }
+    });
+
+    localHealthServer.listen(SINGLE_INSTANCE_PORT, '127.0.0.1', () => {
+      console.log(`[Lock] Single-instance lock & health server active on http://127.0.0.1:${SINGLE_INSTANCE_PORT}`);
+      resolve();
+    });
+  });
+}
+acquireInstanceLock();
 
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
@@ -120,7 +176,11 @@ async function runWithRetry(label, operation) {
     } catch (error) {
       lastError = error;
       console.error(`${label} failed (${attempt}/${PRINT_RETRIES}): ${error.message}`);
-      if (attempt < PRINT_RETRIES) await wait(attempt * 1000);
+      // Do not retry on permanent errors like invalid printer name
+      if (/The printer name is invalid|not found|does not exist/i.test(error.message)) {
+        break;
+      }
+      if (attempt < PRINT_RETRIES) await wait(Math.min(attempt * 500, 1000));
     }
   }
   throw lastError;
@@ -469,7 +529,12 @@ function printerInterfaceFor(target) {
     return { execute: buffer => printRawToSystemPrinter(target.systemName, buffer), isPrinterConnected: async () => true };
   }
   if (target.type === 'device') return target.interface;
-  return `tcp://${target.host}:${target.port}`;
+  try {
+    const Network = require('node-thermal-printer').interfaces.Network;
+    return new Network(target.host, target.port, { timeout: 2500 });
+  } catch (_) {
+    return `tcp://${target.host}:${target.port}`;
+  }
 }
 
 // ─── LAN/WiFi discovery (TCP/9100) ───
@@ -652,18 +717,9 @@ function buildTargets(job) {
   const jobFlag = job.jobType === 'bill' ? 'bill' : 'kot';
   const targets = [];
   const endpointKeys = new Set();
-  let hasLocalSystemTarget = false;
 
   const addTarget = target => {
     if (!target || !target[jobFlag] || endpointKeys.has(target.endpointKey)) return;
-    // On a single PC, only ONE USB/system printer queue should receive the job to prevent 2x/3x copies
-    if (target.type === 'system' || target.type === 'device') {
-      if (hasLocalSystemTarget) {
-        console.log(`[Target] Skipping duplicate system printer '${target.name}' (already printing to a counter/USB printer)`);
-        return;
-      }
-      hasLocalSystemTarget = true;
-    }
     endpointKeys.add(target.endpointKey);
     targets.push(target);
   };
@@ -876,17 +932,81 @@ console.log(`Remembered successful copies: ${successfulCopies.size}`);
 const socket = io(SERVER_URL, {
   transports: ['websocket', 'polling'],
   reconnection: true,
-  reconnectionDelay: 2000,
-  reconnectionDelayMax: 10000
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 4000,
+  reconnectionAttempts: Infinity,
+  timeout: 8000
 });
+
+// Rapid Heartbeat: Ping backend every 2 seconds to guarantee 100% online status
+const HEARTBEAT_INTERVAL_MS = 2000;
+let missedHeartbeats = 0;
+let lastHeartbeatAck = Date.now();
+
+function sendHeartbeat() {
+  try {
+    if (!socket.connected) {
+      missedHeartbeats++;
+      if (missedHeartbeats >= 2) {
+        console.warn(`[Watchdog] Socket disconnected for ${missedHeartbeats * 2}s. Forcing immediate reconnect...`);
+        socket.connect();
+      }
+      return;
+    }
+
+    // Detect silent zombie socket (e.g. WiFi reconnect or PC sleep/wake)
+    if (Date.now() - lastHeartbeatAck > 12000) {
+      console.warn(`[Watchdog] No heartbeat ack received for ${Math.round((Date.now() - lastHeartbeatAck) / 1000)}s. Resetting socket...`);
+      lastHeartbeatAck = Date.now();
+      socket.disconnect().connect();
+      return;
+    }
+
+    missedHeartbeats = 0;
+    socket.emit('print-agent:heartbeat', {
+      agentId: AGENT_ID,
+      name: os.hostname(),
+      time: Date.now()
+    });
+  } catch (err) {
+    console.error(`[Watchdog] Heartbeat error: ${err.message}`);
+  }
+}
 
 socket.on('connect', () => {
   console.log('Connected to backend. Waiting for KOT and Bill print events.');
+  lastHeartbeatAck = Date.now();
   registerWithBackend();
+  sendHeartbeat();
   pollPendingJobs();
 });
-socket.on('disconnect', reason => console.warn(`Disconnected (${reason}). Reconnecting automatically.`));
-socket.on('connect_error', error => console.error(`Backend connection failed: ${error.message}`));
+
+socket.on('reconnect', (attempt) => {
+  console.log(`[Socket] Reconnected to backend after ${attempt} attempt(s).`);
+  lastHeartbeatAck = Date.now();
+  registerWithBackend();
+  sendHeartbeat();
+  pollPendingJobs();
+});
+
+socket.on('disconnect', reason => {
+  console.warn(`Disconnected (${reason}). Reconnecting immediately.`);
+  setTimeout(() => {
+    if (!socket.connected) socket.connect();
+  }, 1000);
+});
+
+socket.on('connect_error', error => {
+  console.error(`Backend connection failed: ${error.message}`);
+  setTimeout(() => {
+    if (!socket.connected) socket.connect();
+  }, 2000);
+});
+
+socket.on('print-agent:heartbeat-ack', () => {
+  lastHeartbeatAck = Date.now();
+});
+
 socket.on('new-order', order => enqueueJob({ ...order, jobType: 'kot' }, 'socket'));
 socket.on('new-print-job', job => enqueueJob({ ...job, jobType: job.jobType || 'kot' }, 'socket'));
 socket.on('new-bill-print', billJob => enqueueJob({ ...billJob, jobType: 'bill' }, 'socket'));
@@ -906,6 +1026,7 @@ compilePrintHelper().catch(err => console.warn(`Print helper init: ${err.message
 refreshDiscoveredPrinters().catch(error => console.error(`Initial LAN discovery failed: ${error.message}`));
 setInterval(() => refreshDiscoveredPrinters().catch(error => console.error(`LAN discovery failed: ${error.message}`)), DISCOVERY_INTERVAL_MS).unref();
 setInterval(pollPendingJobs, PRINT_JOB_POLL_MS).unref();
+setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS).unref();
 
 async function printBillToInterface(bill, printerInterface, printerLabel) {
   const printer = new ThermalPrinter({

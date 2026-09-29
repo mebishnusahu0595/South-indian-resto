@@ -47,17 +47,25 @@ router.get('/', protect, admin, async (req, res) => {
         const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
         const categoryBreakdown = {};
-        const paymentMethodBreakdown = { cash: 0, upi: 0, online: 0, card: 0, other: 0 };
+        const paymentMethodBreakdown = { cash: 0, upi: 0, online: 0, card: 0, bank_transfer: 0, other: 0 };
 
         expenses.forEach(e => {
             const cat = e.category || 'General';
             categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + (e.amount || 0);
 
-            const method = e.paymentMethod || 'cash';
-            if (paymentMethodBreakdown[method] !== undefined) {
-                paymentMethodBreakdown[method] += e.amount || 0;
+            if (e.paymentMethod === 'split' && e.splitPayments) {
+                paymentMethodBreakdown.cash += e.splitPayments.cash || 0;
+                paymentMethodBreakdown.upi += e.splitPayments.upi || 0;
+                paymentMethodBreakdown.card += e.splitPayments.card || 0;
+                paymentMethodBreakdown.bank_transfer += e.splitPayments.bank_transfer || 0;
+                paymentMethodBreakdown.other += e.splitPayments.other || 0;
             } else {
-                paymentMethodBreakdown.other += e.amount || 0;
+                const method = e.paymentMethod || 'cash';
+                if (paymentMethodBreakdown[method] !== undefined) {
+                    paymentMethodBreakdown[method] += e.amount || 0;
+                } else {
+                    paymentMethodBreakdown.other += e.amount || 0;
+                }
             }
         });
 
@@ -76,11 +84,43 @@ router.get('/', protect, admin, async (req, res) => {
 });
 
 // @route   POST /api/expenses
-// @desc    Add a new expense
+// @desc    Add a single or multiple (bulk) expenses
 // @access  Private/Admin & Superadmin
 router.post('/', protect, admin, async (req, res) => {
     try {
-        const { title, amount, category, businessDate, paymentMethod, notes, date } = req.body;
+        // Support multiple expenses in one go
+        if (Array.isArray(req.body.expenses)) {
+            const created = [];
+            for (const item of req.body.expenses) {
+                if (!item.title || !item.title.trim()) continue;
+                const num = parseFloat(item.amount);
+                if (isNaN(num) || num <= 0) continue;
+                const bDate = item.businessDate || req.body.businessDate || getBusinessDate(item.date ? new Date(item.date) : new Date());
+                created.push({
+                    title: item.title.trim(),
+                    amount: num,
+                    category: (item.category && item.category.trim()) || 'General',
+                    businessDate: bDate,
+                    date: item.date ? new Date(item.date) : new Date(),
+                    paymentMethod: item.paymentMethod || 'cash',
+                    splitPayments: item.splitPayments || {},
+                    notes: (item.notes && item.notes.trim()) || '',
+                    addedBy: req.user._id,
+                    addedByName: req.user.name || 'Admin'
+                });
+            }
+            if (created.length === 0) {
+                return res.status(400).json({ message: 'No valid expenses to add' });
+            }
+            const saved = await Expense.insertMany(created);
+            return res.status(201).json({
+                success: true,
+                message: `${saved.length} expenses added successfully`,
+                expenses: saved
+            });
+        }
+
+        const { title, amount, category, businessDate, paymentMethod, splitPayments, notes, date } = req.body;
 
         if (!title || !title.trim()) {
             return res.status(400).json({ message: 'Expense title/description is required' });
@@ -100,6 +140,7 @@ router.post('/', protect, admin, async (req, res) => {
             businessDate: assignedBusinessDate,
             date: date ? new Date(date) : new Date(),
             paymentMethod: paymentMethod || 'cash',
+            splitPayments: splitPayments || {},
             notes: (notes && notes.trim()) || '',
             addedBy: req.user._id,
             addedByName: req.user.name || 'Admin'
@@ -123,7 +164,7 @@ router.post('/', protect, admin, async (req, res) => {
 // @access  Private/Admin & Superadmin
 router.put('/:id', protect, admin, async (req, res) => {
     try {
-        const { title, amount, category, businessDate, paymentMethod, notes } = req.body;
+        const { title, amount, category, businessDate, paymentMethod, splitPayments, notes } = req.body;
         const expense = await Expense.findById(req.params.id);
 
         if (!expense) {
@@ -141,6 +182,7 @@ router.put('/:id', protect, admin, async (req, res) => {
         if (category !== undefined) expense.category = category.trim() || 'General';
         if (businessDate !== undefined) expense.businessDate = businessDate;
         if (paymentMethod !== undefined) expense.paymentMethod = paymentMethod;
+        if (splitPayments !== undefined) expense.splitPayments = splitPayments;
         if (notes !== undefined) expense.notes = notes.trim();
 
         await expense.save();

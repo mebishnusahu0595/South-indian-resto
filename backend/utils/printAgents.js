@@ -7,7 +7,7 @@ const agents = new Map();
 const appDevices = new Map();
 const MAX_APP_DEVICES = 50;
 // A short socket reconnect must not flip printing over to the browser/phone fallback.
-const ONLINE_GRACE_MS = 60 * 1000;
+const ONLINE_GRACE_MS = 90 * 1000;
 
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
 
@@ -39,6 +39,27 @@ const isAgentKeyValid = (supplied) => {
 
 const isAgentOnline = agent => Boolean(agent)
     && (agent.sockets.size > 0 || Date.now() - agent.lastSeen < ONLINE_GRACE_MS);
+
+// Rapid heartbeat support: keeps agent fresh in memory every 2-5 seconds
+const touchAgentHeartbeat = (socket, data = {}) => {
+    const id = text(socket.data?.printAgentId || data?.agentId, 100);
+    if (!id) return false;
+    let agent = agents.get(id);
+    let turnedOnline = false;
+    if (!agent) {
+        agent = { id, sockets: new Set(), name: text(data?.name, 100) || id, printers: [] };
+        agents.set(id, agent);
+        turnedOnline = true;
+    } else if (!isAgentOnline(agent)) {
+        turnedOnline = true;
+    }
+    agent.sockets.add(socket.id);
+    agent.lastSeen = Date.now();
+    if (data?.name && !agent.name) agent.name = text(data.name, 100);
+    socket.data.printAgentId = id;
+    socket.join('print-agents');
+    return turnedOnline;
+};
 
 // Restaurant PC print agent: "this is me and these are the printers I can reach".
 const registerAgent = (socket, payload = {}, io = null) => {
@@ -135,6 +156,7 @@ const getPrintRouting = async () => {
 module.exports = {
     registerAgent,
     unregisterSocket,
+    touchAgentHeartbeat,
     reportAppDevice,
     listDevices,
     getPrintRouting

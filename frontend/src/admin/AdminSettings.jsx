@@ -73,6 +73,52 @@ const AdminSettings = () => {
     const [newEditCode, setNewEditCode] = useState('');
     const [savingEditCode, setSavingEditCode] = useState(false);
 
+    // Local Agent health status (probed directly from http://127.0.0.1:39281/health)
+    const [localAgentStatus, setLocalAgentStatus] = useState({ checked: false, running: false, data: null });
+
+    useEffect(() => {
+        if (!canViewPrinters) return undefined;
+        let active = true;
+        const checkLocalAgent = async () => {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1200);
+                const res = await fetch('http://127.0.0.1:39281/health', { method: 'GET', signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (active) setLocalAgentStatus({ checked: true, running: true, data });
+                    return;
+                }
+            } catch {
+                // Not reachable locally
+            }
+            if (active) setLocalAgentStatus({ checked: true, running: false, data: null });
+        };
+
+        checkLocalAgent();
+        const intervalId = setInterval(checkLocalAgent, 2500);
+        return () => {
+            active = false;
+            clearInterval(intervalId);
+        };
+    }, [canViewPrinters]);
+
+    const handleAutoStartAgent = () => {
+        try {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = 'keaprint://start';
+            document.body.appendChild(iframe);
+            setTimeout(() => {
+                try { document.body.removeChild(iframe); } catch {}
+            }, 3000);
+        } catch {
+            window.location.href = 'keaprint://start';
+        }
+        showNotice('info', 'Starting Kea Print Agent... If it does not start in 5s, open Downloads\\kea-print-agent and double-click install-auto-start.bat');
+    };
+
     useEffect(() => {
         fetchSettings();
         fetchMaxDiscount();
@@ -589,33 +635,60 @@ const AdminSettings = () => {
                             <div>
                                 <strong>Detected Devices &amp; Printers</strong>
                                 <div className="hint">
-                                    {onlineAgents > 0 ? `🟢 ${onlineAgents} PC print agent(s) online` : '🔴 No PC print agent online'} · USB/cable printers on the PC + LAN/WiFi printers
+                                    {onlineAgents > 0
+                                        ? `🟢 ${onlineAgents} PC print agent(s) online (24/7 Active)`
+                                        : (localAgentStatus.running
+                                            ? `🟡 Agent active locally on PC (PID ${localAgentStatus.data?.pid || ''}), syncing with cloud...`
+                                            : '🔴 No PC print agent online')} · USB/cable printers on PC + LAN/WiFi
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                className="btn btn-secondary"
-                                onClick={handleScanPrinters}
-                                disabled={scanningPrinters}
-                                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                            >
-                                <FiRefreshCw /> {scanningPrinters ? 'Scanning…' : 'Scan Network'}
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={handleAutoStartAgent}
+                                    title="Auto-starts Kea Print Agent from Downloads\kea-print-agent"
+                                    style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#059669', color: '#FFF', border: 'none', padding: '7px 12px', fontSize: '13px', borderRadius: '6px', cursor: 'pointer' }}
+                                >
+                                    ⚡ Auto-Start Agent
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={handleScanPrinters}
+                                    disabled={scanningPrinters}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                                >
+                                    <FiRefreshCw /> {scanningPrinters ? 'Scanning…' : 'Scan Network'}
+                                </button>
+                            </div>
                         </div>
 
                         {printerDevices.length === 0 ? (
                             <div className="info-box" style={{ marginBottom: '16px' }}>
                                 <FiInfo />
                                 <div>
-                                    <p style={{ margin: 0 }}>No device has reported printers yet. Start the print agent on the restaurant PC (it scans USB and WiFi printers automatically).</p>
-                                    <div style={{ marginTop: '10px' }}>
+                                    <p style={{ margin: 0, fontWeight: 500 }}>No print agent connected yet. To run 24/7 without stopping:</p>
+                                    <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#4B5563' }}>
+                                        Open your <strong>Downloads \ kea-print-agent</strong> folder and double-click <strong>install-auto-start.bat</strong>.
+                                        It monitors the process every 2 seconds, auto-starts on PC reboot, and auto-restarts if ever closed!
+                                    </p>
+                                    <div style={{ marginTop: '12px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                        <button
+                                            type="button"
+                                            className="btn btn-primary"
+                                            onClick={handleAutoStartAgent}
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '13px', borderRadius: '6px', background: '#059669', color: '#FFF', border: 'none', cursor: 'pointer' }}
+                                        >
+                                            ⚡ Auto-Start Agent Now
+                                        </button>
                                         <a
                                             href="/kea-print-agent.zip"
                                             download="kea-print-agent.zip"
-                                            className="btn btn-primary"
+                                            className="btn btn-secondary"
                                             style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none', padding: '8px 14px', fontSize: '13px', borderRadius: '6px', background: '#7C3AED', color: '#FFF' }}
                                         >
-                                            <FiDownload /> Download PC Print Agent (Windows ZIP)
+                                            <FiDownload /> Download Print Agent (ZIP)
                                         </a>
                                     </div>
                                 </div>

@@ -4,7 +4,8 @@
         margin: 0mm !important;
     }
 
-    html, body {
+    html:not(.printing-report),
+    body:not(.printing-report) {
         width: 80mm !important;
         max-width: 80mm !important;
         margin: 0 !important;
@@ -14,14 +15,14 @@
         print-color-adjust: exact !important;
     }
 
-    body > * {
+    body:not(.printing-report) > * {
         visibility: hidden !important;
     }
 
-    #root,
-    .admin-layout,
-    .admin-main,
-    .admin-content {
+    body:not(.printing-report) #root,
+    body:not(.printing-report) .admin-layout,
+    body:not(.printing-report) .admin-main,
+    body:not(.printing-report) .admin-content {
         visibility: hidden !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -54,8 +55,8 @@
     }
 
     /* Never print background analytics or sales reports when printing bills or KOTs */
-    .report-printable-area,
-    .report-printable-area * {
+    body:not(.printing-report) .report-printable-area,
+    body:not(.printing-report) .report-printable-area * {
         display: none !important;
         visibility: hidden !important;
     }

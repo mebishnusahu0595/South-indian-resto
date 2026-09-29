@@ -27,8 +27,15 @@ const expenseSchema = new mongoose.Schema({
     },
     paymentMethod: {
         type: String,
-        enum: ['cash', 'upi', 'online', 'card', 'bank_transfer', 'other'],
+        enum: ['cash', 'upi', 'online', 'card', 'bank_transfer', 'split', 'cheque', 'other'],
         default: 'cash'
+    },
+    splitPayments: {
+        cash: { type: Number, default: 0 },
+        upi: { type: Number, default: 0 },
+        card: { type: Number, default: 0 },
+        bank_transfer: { type: Number, default: 0 },
+        other: { type: Number, default: 0 }
     },
     notes: {
         type: String,

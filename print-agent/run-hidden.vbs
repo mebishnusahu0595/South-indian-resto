@@ -1,3 +1,6 @@
+Set FSO = CreateObject("Scripting.FileSystemObject")
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.CurrentDirectory = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
-WshShell.Run "cmd /c run-forever.bat", 0, False
+scriptDir = FSO.GetParentFolderName(WScript.ScriptFullName)
+WshShell.CurrentDirectory = scriptDir
+WshShell.Run Chr(34) & scriptDir & "\watchdog.bat" & Chr(34), 0, False
+

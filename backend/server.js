@@ -94,7 +94,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: "Kea By The Pool API is running" });
 });
 
-const { registerAgent, unregisterSocket } = require('./utils/printAgents');
+const { registerAgent, unregisterSocket, touchAgentHeartbeat } = require('./utils/printAgents');
 const { getPrinterConfig, addDetectedPrinters } = require('./utils/printerConfig');
 
 // Socket.IO connection handling
@@ -127,6 +127,15 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error('Could not sync printer registry with print agent:', error.message);
         }
+    });
+
+    // High-frequency heartbeat from agent (every 2-5s) keeping status actively 100% online
+    socket.on('print-agent:heartbeat', (data) => {
+        const turnedOnline = touchAgentHeartbeat(socket, data);
+        if (turnedOnline) {
+            io.emit('printer-devices-updated', { at: Date.now() });
+        }
+        socket.emit('print-agent:heartbeat-ack', { ok: true, serverTime: Date.now() });
     });
 
     socket.on('print-agent:test-result', (result) => {

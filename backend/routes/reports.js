@@ -320,7 +320,7 @@ router.get('/section-wise', protect, admin, async (req, res) => {
         })).sort((a, b) => b.totalRevenue - a.totalRevenue);
 
         res.json({
-            date: targetDate,
+            date: reportDateLabel,
             sections: sectionReports
         });
     } catch (error) {

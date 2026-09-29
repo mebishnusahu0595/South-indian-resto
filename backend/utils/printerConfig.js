@@ -109,18 +109,6 @@ const getPrinterConfig = async () => {
     const port = cleanPort(printerPort);
     const printers = normalizePrinterRegistry(registryValue, port);
 
-    // Safeguard: On a single PC, only ONE installed/USB printer should print KOT by default.
-    // Multiple installed queues for the same physical device cause duplicate slips (e.g. 3 copies).
-    const seenSystemKOTAgents = new Set();
-    for (const printer of printers) {
-        if (printer.type === 'system' && printer.kot) {
-            if (seenSystemKOTAgents.has(printer.agentId)) {
-                printer.kot = false; // Only allow one system printer queue per PC for KOT
-            } else {
-                seenSystemKOTAgents.add(printer.agentId);
-            }
-        }
-    }
 
     const endpointSet = new Set(printers.map(printer => `${printer.host}:${printer.port}`));
 

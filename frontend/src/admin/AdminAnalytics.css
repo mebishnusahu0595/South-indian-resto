@@ -345,80 +345,471 @@
     opacity: 0.9;
 }
 
+/* =========================================================
+   DAY-END REPORT & GENERAL REPORT LAYOUT (Screen & Print)
+   ========================================================= */
+
+.eod-report-container {
+    background: #FFFFFF;
+    padding: 28px 32px;
+    border-radius: 12px;
+    border: 2px solid #111111;
+    box-shadow: 4px 4px 0px #111111;
+    color: #0F172A;
+}
+
+.eod-report-header {
+    text-align: center;
+    border-bottom: 2px solid #111111;
+    padding-bottom: 16px;
+    margin-bottom: 22px;
+}
+
+.eod-report-brand {
+    font-size: 1.85rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #111111;
+    margin-bottom: 2px;
+}
+
+.eod-report-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #7C3AED;
+    letter-spacing: 0.6px;
+    margin-bottom: 6px;
+}
+
+.eod-report-meta {
+    font-size: 0.88rem;
+    color: #64748B;
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.eod-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.eod-stat-box {
+    background: #F8FAFC;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid #CBD5E1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.eod-stat-label {
+    font-size: 0.78rem;
+    color: #64748B;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.eod-stat-val {
+    margin: 4px 0 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.eod-stat-sub {
+    font-size: 0.72rem;
+    color: #64748B;
+    margin-top: 2px;
+}
+
+.eod-stat-box.box-discount {
+    background: #FFF1F2;
+    border-color: #FECDD3;
+}
+.eod-stat-box.box-discount .eod-stat-label,
+.eod-stat-box.box-discount .eod-stat-val {
+    color: #E11D48;
+}
+
+.eod-stat-box.box-net {
+    background: #EFF6FF;
+    border: 1.5px solid #2563EB;
+}
+.eod-stat-box.box-net .eod-stat-label,
+.eod-stat-box.box-net .eod-stat-val {
+    color: #1D4ED8;
+}
+
+.eod-stat-box.box-expenses {
+    background: #FFF1F2;
+    border: 1.5px solid #F43F5E;
+}
+.eod-stat-box.box-expenses .eod-stat-label,
+.eod-stat-box.box-expenses .eod-stat-val {
+    color: #BE123C;
+}
+
+.eod-stat-box.box-profit {
+    background: #ECFDF5;
+    border: 2px solid #10B981;
+    box-shadow: 2px 2px 0px #10B981;
+    grid-column: span 2;
+}
+.eod-stat-box.box-profit .eod-stat-label,
+.eod-stat-box.box-profit .eod-stat-val,
+.eod-stat-box.box-profit .eod-stat-sub {
+    color: #047857;
+}
+
+.eod-report-section {
+    margin-bottom: 24px;
+}
+
+.eod-section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0F172A;
+    border-bottom: 1.5px solid #111111;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+}
+
+.eod-section-title-clean {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0F172A;
+}
+
+.eod-report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.eod-report-table th {
+    background: #F1F5F9;
+    color: #0F172A;
+    font-weight: 700;
+    padding: 8px 10px;
+    border: 1px solid #CBD5E1;
+    text-align: left;
+}
+
+.eod-report-table td {
+    padding: 8px 10px;
+    border: 1px solid #E2E8F0;
+    color: #1E293B;
+}
+
+.eod-report-table tbody tr:nth-child(even) {
+    background-color: #F8FAFC;
+}
+
+.eod-report-footer {
+    text-align: center;
+    border-top: 1px solid #E2E8F0;
+    padding-top: 14px;
+    margin-top: 24px;
+    font-size: 0.8rem;
+    color: #64748B;
+}
+
+@media (max-width: 900px) {
+    .eod-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .eod-stat-box.box-profit {
+        grid-column: span 2;
+    }
+}
+
+@media (max-width: 540px) {
+    .eod-metrics-grid {
+        grid-template-columns: 1fr;
+    }
+    .eod-stat-box.box-profit {
+        grid-column: span 1;
+    }
+}
+
+/* =========================================================
+   REPORT PRINT MEDIA STYLES (A4 Day-End, Section, Item Reports)
+   DO NOT TOUCH BILL / KOT THERMAL RECEIPT STYLES
+   ========================================================= */
+
 @media print {
     /* Always hide reports by default during any normal printing (KOT, Bills, Receipts) */
-    .report-printable-area,
-    .report-printable-area * {
+    html:not(.printing-report) .report-printable-area,
+    body:not(.printing-report) .report-printable-area {
         display: none !important;
         visibility: hidden !important;
     }
 
-    /* Only show report when body explicitly has the printing-report class */
+    /* Active report printing: override thermal receipt 80mm constraints */
+    html.printing-report,
     body.printing-report {
         width: 100% !important;
         max-width: 100% !important;
+        min-width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
-        background: #ffffff !important;
+        background: #FFFFFF !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        color: #0F172A !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        font-size: 11pt !important;
     }
 
-    body.printing-report * {
+    /* Keep app containers visible for report area */
+    body.printing-report #root,
+    body.printing-report .admin-layout,
+    body.printing-report .admin-main,
+    body.printing-report .admin-content,
+    body.printing-report .admin-analytics {
+        visibility: visible !important;
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
+        background: #FFFFFF !important;
+        box-shadow: none !important;
+        border: none !important;
+    }
+
+    /* Hide UI navigation, headers, tabs, action buttons, modals, and date filter toolbars */
+    body.printing-report .admin-sidebar,
+    body.printing-report .admin-header,
+    body.printing-report .analytics-tabs,
+    body.printing-report .page-header,
+    body.printing-report .header-actions,
+    body.printing-report .analytics-filter-controls,
+    body.printing-report .custom-date-filter,
+    body.printing-report .period-selector,
+    body.printing-report .day-end-report-view > div:not(.report-printable-area),
+    body.printing-report .section-wise-report-view > div:not(.report-printable-area),
+    body.printing-report .item-wise-sales-view > div:not(.report-printable-area),
+    body.printing-report .no-print,
+    body.printing-report button,
+    body.printing-report .btn,
+    body.printing-report .item-sales-search-box {
+        display: none !important;
         visibility: hidden !important;
     }
 
-    body.printing-report .report-printable-area,
-    body.printing-report .report-printable-area * {
+    /* Printable area container */
+    body.printing-report .report-printable-area {
         display: block !important;
+        visibility: visible !important;
+        position: relative !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: #FFFFFF !important;
+        color: #0F172A !important;
+    }
+
+    body.printing-report .report-printable-area * {
         visibility: visible !important;
     }
 
-    body.printing-report .report-printable-area table,
-    body.printing-report .report-printable-area tr,
-    body.printing-report .report-printable-area th,
-    body.printing-report .report-printable-area td {
-        display: table-cell !important;
+    /* Report Header */
+    body.printing-report .eod-report-header {
+        text-align: center !important;
+        border-bottom: 2px solid #0F172A !important;
+        padding-bottom: 10px !important;
+        margin-bottom: 14px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
     }
 
+    body.printing-report .eod-report-brand {
+        font-size: 19pt !important;
+        font-weight: 800 !important;
+        letter-spacing: 1px !important;
+        color: #0F172A !important;
+        margin-bottom: 2px !important;
+        text-transform: uppercase !important;
+    }
+
+    body.printing-report .eod-report-title {
+        font-size: 12pt !important;
+        font-weight: 700 !important;
+        color: #4F46E5 !important;
+        letter-spacing: 0.5px !important;
+        margin-bottom: 4px !important;
+    }
+
+    body.printing-report .eod-report-meta {
+        font-size: 8.5pt !important;
+        color: #475569 !important;
+        display: flex !important;
+        justify-content: center !important;
+        gap: 16px !important;
+    }
+
+    /* Executive Metrics Grid in Print (4 columns, compact, clean) */
+    body.printing-report .eod-metrics-grid {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 6px !important;
+        margin-bottom: 14px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    body.printing-report .eod-stat-box {
+        background: #F8FAFC !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 4px !important;
+        padding: 6px 8px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    body.printing-report .eod-stat-label {
+        font-size: 7pt !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.4px !important;
+        color: #64748B !important;
+        margin-bottom: 2px !important;
+    }
+
+    body.printing-report .eod-stat-val {
+        font-size: 12pt !important;
+        font-weight: 800 !important;
+        color: #0F172A !important;
+        margin: 0 !important;
+    }
+
+    body.printing-report .eod-stat-sub {
+        font-size: 6.5pt !important;
+        color: #64748B !important;
+        margin-top: 2px !important;
+    }
+
+    body.printing-report .eod-stat-box.box-discount {
+        background: #FFF1F2 !important;
+        border-color: #FECDD3 !important;
+    }
+    body.printing-report .eod-stat-box.box-discount .eod-stat-label,
+    body.printing-report .eod-stat-box.box-discount .eod-stat-val {
+        color: #E11D48 !important;
+    }
+
+    body.printing-report .eod-stat-box.box-net {
+        background: #EFF6FF !important;
+        border: 1.5px solid #3B82F6 !important;
+    }
+    body.printing-report .eod-stat-box.box-net .eod-stat-label,
+    body.printing-report .eod-stat-box.box-net .eod-stat-val {
+        color: #1D4ED8 !important;
+    }
+
+    body.printing-report .eod-stat-box.box-expenses {
+        background: #FFF1F2 !important;
+        border: 1.5px solid #F43F5E !important;
+    }
+    body.printing-report .eod-stat-box.box-expenses .eod-stat-label,
+    body.printing-report .eod-stat-box.box-expenses .eod-stat-val {
+        color: #BE123C !important;
+    }
+
+    body.printing-report .eod-stat-box.box-profit {
+        background: #ECFDF5 !important;
+        border: 2px solid #10B981 !important;
+        grid-column: span 2 !important;
+    }
+    body.printing-report .eod-stat-box.box-profit .eod-stat-label,
+    body.printing-report .eod-stat-box.box-profit .eod-stat-val,
+    body.printing-report .eod-stat-box.box-profit .eod-stat-sub {
+        color: #047857 !important;
+    }
+
+    /* Sections */
+    body.printing-report .eod-report-section {
+        margin-bottom: 14px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    body.printing-report .eod-section-title {
+        font-size: 10pt !important;
+        font-weight: 700 !important;
+        color: #0F172A !important;
+        border-bottom: 1.5px solid #0F172A !important;
+        padding-bottom: 3px !important;
+        margin-bottom: 6px !important;
+    }
+
+    /* Tables */
+    body.printing-report .eod-report-table,
     body.printing-report .report-printable-area table {
-        display: table !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-bottom: 4px !important;
+        font-size: 8.5pt !important;
     }
 
+    body.printing-report .eod-report-table thead,
     body.printing-report .report-printable-area thead {
         display: table-header-group !important;
     }
 
-    body.printing-report .report-printable-area tbody {
-        display: table-row-group !important;
-    }
-
+    body.printing-report .eod-report-table tr,
     body.printing-report .report-printable-area tr {
-        display: table-row !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
     }
 
-    body.printing-report .report-printable-area {
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        margin: 0 !important;
-        padding: 15px !important;
-        background: white !important;
-        color: black !important;
-        box-shadow: none !important;
-        border: none !important;
-        font-family: Arial, Helvetica, sans-serif !important;
+    body.printing-report .eod-report-table th,
+    body.printing-report .report-printable-area th {
+        background-color: #F1F5F9 !important;
+        color: #0F172A !important;
+        font-weight: 700 !important;
+        border: 1px solid #CBD5E1 !important;
+        padding: 4px 6px !important;
+        font-size: 8pt !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
     }
 
-    body.printing-report .analytics-tabs,
-    body.printing-report .header-actions,
-    body.printing-report .admin-sidebar,
-    body.printing-report .admin-header,
-    body.printing-report button {
-        display: none !important;
-        visibility: hidden !important;
+    body.printing-report .eod-report-table td,
+    body.printing-report .report-printable-area td {
+        border: 1px solid #CBD5E1 !important;
+        padding: 4px 6px !important;
+        font-size: 8.5pt !important;
+        color: #1E293B !important;
+    }
+
+    body.printing-report .eod-report-table tbody tr:nth-child(even),
+    body.printing-report .report-printable-area tbody tr:nth-child(even) {
+        background-color: #F8FAFC !important;
+    }
+
+    body.printing-report .eod-report-footer {
+        text-align: center !important;
+        border-top: 1px solid #CBD5E1 !important;
+        margin-top: 14px !important;
+        padding-top: 6px !important;
+        font-size: 7.5pt !important;
+        color: #64748B !important;
+        page-break-inside: avoid !important;
     }
 }
 
@@ -737,6 +1128,96 @@
     margin-top: 12px;
     border-top: 2px solid #F3F4F6;
     padding-top: 16px;
+}
+
+.expense-mode-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    background: #F3F4F6;
+    padding: 4px;
+    border-radius: 8px;
+}
+
+.expense-mode-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1.5px solid transparent;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    background: transparent;
+    color: #4B5563;
+    transition: all 0.15s ease;
+}
+
+.expense-mode-btn.active {
+    background: #FFFFFF;
+    color: #111111;
+    border-color: #111111;
+    box-shadow: 2px 2px 0px #111111;
+}
+
+.expense-split-box {
+    background: #F8FAFC;
+    border: 2px dashed #93C5FD;
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.expense-split-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+}
+
+.expense-split-summary {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding-top: 8px;
+    border-top: 1px solid #E2E8F0;
+}
+
+.expense-bulk-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.expense-bulk-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1.5fr 1.2fr auto;
+    gap: 8px;
+    align-items: center;
+    background: #FAFAFA;
+    padding: 8px;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+}
+
+.btn-icon-action {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease;
+}
+
+.btn-icon-action:hover {
+    background-color: #F3F4F6;
 }
 
 @media print {

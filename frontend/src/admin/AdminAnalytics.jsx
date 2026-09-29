@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend, AreaChart, Area } from 'recharts';
-import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport, getItemWiseSales, getExpenses, createExpense, deleteExpense } from '../utils/api';
+import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport, getItemWiseSales, getExpenses, createExpense, updateExpense, deleteExpense } from '../utils/api';
 import { exportToCSV, downloadCSV, revenueExportColumns } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
-import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers, FiCalendar, FiSearch, FiShoppingBag, FiFilter, FiX, FiDollarSign, FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiUsers, FiUserPlus, FiActivity, FiRepeat, FiSettings, FiDownload, FiPrinter, FiFileText, FiGrid, FiLayers, FiCalendar, FiSearch, FiShoppingBag, FiFilter, FiX, FiDollarSign, FiPlus, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import './AdminAnalytics.css';
 
 const COLORS = ['#C87316', '#E08A2E', '#22C55E', '#3B82F6', '#9333EA', '#EC4899'];
@@ -96,6 +96,8 @@ const AdminAnalytics = () => {
     const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('All');
     const [fetchingExpenses, setFetchingExpenses] = useState(false);
     const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+    const [editingExpenseId, setEditingExpenseId] = useState(null);
+    const [modalMode, setModalMode] = useState('single'); // 'single' | 'bulk'
     const [submittingExpense, setSubmittingExpense] = useState(false);
     const [expenseForm, setExpenseForm] = useState({
         title: '',
@@ -105,17 +107,52 @@ const AdminAnalytics = () => {
         paymentMethod: 'cash',
         notes: ''
     });
+    const [splitDetails, setSplitDetails] = useState({
+        cash: '',
+        upi: '',
+        card: '',
+        bank_transfer: '',
+        other: ''
+    });
+    const [bulkExpenseRows, setBulkExpenseRows] = useState([
+        { title: '', amount: '', category: 'Kitchen Supplies', paymentMethod: 'cash', notes: '' },
+        { title: '', amount: '', category: 'Raw Materials / Grocery', paymentMethod: 'cash', notes: '' },
+        { title: '', amount: '', category: 'Dairy & Beverages', paymentMethod: 'cash', notes: '' }
+    ]);
 
     const [fetchingReport, setFetchingReport] = useState(false);
 
     const handlePrintReport = () => {
+        document.documentElement.classList.add('printing-report');
         document.body.classList.add('printing-report');
-        window.print();
+
+        // Dynamically inject A4 print page styles only during report printing (never affects bills)
+        let printStyle = document.getElementById('report-print-page-style');
+        if (!printStyle) {
+            printStyle = document.createElement('style');
+            printStyle.id = 'report-print-page-style';
+            printStyle.innerHTML = `
+                @page {
+                    size: A4 portrait !important;
+                    margin: 8mm 10mm !important;
+                }
+            `;
+            document.head.appendChild(printStyle);
+        }
+
+        setTimeout(() => {
+            window.print();
+        }, 50);
     };
 
     useEffect(() => {
         const cleanup = () => {
+            document.documentElement.classList.remove('printing-report');
             document.body.classList.remove('printing-report');
+            const printStyle = document.getElementById('report-print-page-style');
+            if (printStyle) {
+                printStyle.remove();
+            }
         };
         window.addEventListener('afterprint', cleanup);
         return () => {
@@ -255,6 +292,8 @@ const AdminAnalytics = () => {
     };
 
     const openAddExpenseModal = (dateVal) => {
+        setEditingExpenseId(null);
+        setModalMode('single');
         setExpenseForm({
             title: '',
             amount: '',
@@ -263,11 +302,79 @@ const AdminAnalytics = () => {
             paymentMethod: 'cash',
             notes: ''
         });
+        setSplitDetails({
+            cash: '',
+            upi: '',
+            card: '',
+            bank_transfer: '',
+            other: ''
+        });
+        setBulkExpenseRows([
+            { title: '', amount: '', category: 'Kitchen Supplies', paymentMethod: 'cash', notes: '' },
+            { title: '', amount: '', category: 'Raw Materials / Grocery', paymentMethod: 'cash', notes: '' },
+            { title: '', amount: '', category: 'Dairy & Beverages', paymentMethod: 'cash', notes: '' }
+        ]);
         setShowAddExpenseModal(true);
     };
 
-    const handleCreateExpense = async (e) => {
+    const openEditExpenseModal = (exp) => {
+        setEditingExpenseId(exp._id);
+        setModalMode('single');
+        setExpenseForm({
+            title: exp.title || '',
+            amount: exp.amount !== undefined ? exp.amount.toString() : '',
+            category: exp.category || 'Kitchen Supplies',
+            businessDate: exp.businessDate || getLocalDateString(),
+            paymentMethod: exp.paymentMethod || 'cash',
+            notes: exp.notes || ''
+        });
+        setSplitDetails({
+            cash: exp.splitPayments?.cash ? exp.splitPayments.cash.toString() : '',
+            upi: exp.splitPayments?.upi ? exp.splitPayments.upi.toString() : '',
+            card: exp.splitPayments?.card ? exp.splitPayments.card.toString() : '',
+            bank_transfer: exp.splitPayments?.bank_transfer ? exp.splitPayments.bank_transfer.toString() : '',
+            other: exp.splitPayments?.other ? exp.splitPayments.other.toString() : ''
+        });
+        setShowAddExpenseModal(true);
+    };
+
+    const handleSaveExpense = async (e) => {
         if (e) e.preventDefault();
+
+        // 1. Bulk Mode (Multiple Expenses)
+        if (modalMode === 'bulk' && !editingExpenseId) {
+            const validRows = bulkExpenseRows.filter(r => r.title && r.title.trim() && parseFloat(r.amount) > 0);
+            if (validRows.length === 0) {
+                alert('Please enter at least one valid expense row with a title and amount (> 0).');
+                return;
+            }
+
+            setSubmittingExpense(true);
+            try {
+                const payload = validRows.map(r => ({
+                    title: r.title.trim(),
+                    amount: parseFloat(r.amount),
+                    category: r.category || 'Kitchen Supplies',
+                    paymentMethod: r.paymentMethod || 'cash',
+                    businessDate: expenseForm.businessDate,
+                    notes: (r.notes && r.notes.trim()) || ''
+                }));
+
+                await createExpense({ expenses: payload, businessDate: expenseForm.businessDate });
+                setShowAddExpenseModal(false);
+                fetchDayEndReport(reportDate);
+                fetchExpenses();
+                fetchData();
+            } catch (err) {
+                console.error('Failed to create multiple expenses:', err);
+                alert(err.response?.data?.message || 'Failed to save multiple expenses');
+            } finally {
+                setSubmittingExpense(false);
+            }
+            return;
+        }
+
+        // 2. Single Expense Mode (Create or Edit)
         if (!expenseForm.title || !expenseForm.title.trim()) {
             alert('Please enter an expense title/description.');
             return;
@@ -278,28 +385,53 @@ const AdminAnalytics = () => {
             return;
         }
 
+        // Prepare split payments if paymentMethod === 'split'
+        let splitPayload = {};
+        if (expenseForm.paymentMethod === 'split') {
+            const cashPart = parseFloat(splitDetails.cash) || 0;
+            const upiPart = parseFloat(splitDetails.upi) || 0;
+            const cardPart = parseFloat(splitDetails.card) || 0;
+            const bankPart = parseFloat(splitDetails.bank_transfer) || 0;
+            const otherPart = parseFloat(splitDetails.other) || 0;
+            const splitSum = cashPart + upiPart + cardPart + bankPart + otherPart;
+
+            if (splitSum > 0 && Math.abs(splitSum - amt) > 0.5) {
+                if (!window.confirm(`Notice: Split amounts sum to ₹${splitSum.toFixed(2)}, but total expense is ₹${amt.toFixed(2)}. Do you want to proceed anyway?`)) {
+                    return;
+                }
+            }
+            splitPayload = {
+                cash: cashPart,
+                upi: upiPart,
+                card: cardPart,
+                bank_transfer: bankPart,
+                other: otherPart
+            };
+        }
+
         setSubmittingExpense(true);
         try {
-            await createExpense({
+            const payload = {
                 ...expenseForm,
                 title: expenseForm.title.trim(),
-                amount: amt
-            });
+                amount: amt,
+                splitPayments: expenseForm.paymentMethod === 'split' ? splitPayload : undefined
+            };
+
+            if (editingExpenseId) {
+                await updateExpense(editingExpenseId, payload);
+            } else {
+                await createExpense(payload);
+            }
+
             setShowAddExpenseModal(false);
-            setExpenseForm({
-                title: '',
-                amount: '',
-                category: 'Kitchen Supplies',
-                businessDate: getLocalDateString(),
-                paymentMethod: 'cash',
-                notes: ''
-            });
+            setEditingExpenseId(null);
             fetchDayEndReport(reportDate);
             fetchExpenses();
             fetchData();
         } catch (err) {
-            console.error('Failed to create expense:', err);
-            alert(err.response?.data?.message || 'Failed to record expense');
+            console.error('Failed to save expense:', err);
+            alert(err.response?.data?.message || 'Failed to save expense');
         } finally {
             setSubmittingExpense(false);
         }
@@ -318,6 +450,37 @@ const AdminAnalytics = () => {
             console.error('Failed to delete expense:', err);
             alert(err.response?.data?.message || 'Failed to delete expense');
         }
+    };
+
+    const renderPaymentMethodBadge = (exp) => {
+        if (!exp) return '💵 Cash';
+        if (exp.paymentMethod === 'split' && exp.splitPayments) {
+            const parts = [];
+            if (exp.splitPayments.cash > 0) parts.push(`Cash: ₹${exp.splitPayments.cash}`);
+            if (exp.splitPayments.upi > 0) parts.push(`UPI: ₹${exp.splitPayments.upi}`);
+            if (exp.splitPayments.card > 0) parts.push(`Card: ₹${exp.splitPayments.card}`);
+            if (exp.splitPayments.bank_transfer > 0) parts.push(`Bank: ₹${exp.splitPayments.bank_transfer}`);
+            if (exp.splitPayments.other > 0) parts.push(`Other: ₹${exp.splitPayments.other}`);
+            return (
+                <div>
+                    <span style={{ fontWeight: 'bold', color: '#7C3AED' }}>🔀 Split</span>
+                    <div style={{ fontSize: '0.74rem', color: '#555', marginTop: '2px' }}>
+                        {parts.length > 0 ? parts.join(' | ') : 'Multi-Method'}
+                    </div>
+                </div>
+            );
+        }
+        const labels = {
+            cash: '💵 Cash',
+            upi: '📱 UPI',
+            online: '📱 Online / UPI',
+            card: '💳 Card',
+            bank_transfer: '🏦 Bank Transfer',
+            split: '🔀 Split',
+            cheque: '📜 Cheque',
+            other: 'Other'
+        };
+        return labels[exp.paymentMethod] || (exp.paymentMethod ? exp.paymentMethod.toUpperCase() : 'Cash');
     };
 
     const handleDownloadDayEndReport = (dayEndData) => {
@@ -524,20 +687,6 @@ const AdminAnalytics = () => {
 
     return (
         <div className="admin-analytics">
-            <style dangerouslySetInnerHTML={{ __html: `
-                @media print {
-                    .report-printable-area,
-                    .report-printable-area * {
-                        display: none !important;
-                        visibility: hidden !important;
-                    }
-                    body.printing-report .report-printable-area,
-                    body.printing-report .report-printable-area * {
-                        display: block !important;
-                        visibility: visible !important;
-                    }
-                }
-            ` }} />
             <div className="page-header">
                 <h1>Analytics & Reports</h1>
                 <div className="header-actions">
@@ -1002,93 +1151,95 @@ const AdminAnalytics = () => {
                     {fetchingReport ? (
                         <Loader message="Generating Day-End Report..." />
                     ) : dayEndData ? (
-                        <div className="report-printable-area" style={{ background: '#FFF', padding: '24px', borderRadius: '12px', border: '2px solid #111', boxShadow: '4px 4px 0px #111' }}>
-                            <div style={{ textAlign: 'center', borderBottom: '2px solid #111', paddingBottom: '16px', marginBottom: '20px' }}>
-                                <h1 style={{ margin: '0 0 4px', fontSize: '1.8rem', textTransform: 'uppercase' }}>Kea By The Pool</h1>
-                                <h3 style={{ margin: '0 0 4px', color: '#7C3AED' }}>DAY-END (EOD) SALES REPORT</h3>
-                                <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
-                                    Date: <strong>{formatBusinessDate(dayEndData.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong> (Shift: 3:00 AM – 3:00 AM IST) | Printed: {new Date().toLocaleTimeString()}
-                                </p>
+                        <div className="report-printable-area eod-report-container">
+                            <div className="eod-report-header">
+                                <div className="eod-report-brand">Kea By The Pool</div>
+                                <div className="eod-report-title">DAY-END (EOD) SALES REPORT</div>
+                                <div className="eod-report-meta">
+                                    <span>Date: <strong>{formatBusinessDate(dayEndData.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong></span>
+                                    <span>Shift: <strong>3:00 AM – 3:00 AM IST</strong></span>
+                                    <span>Printed: <strong>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</strong></span>
+                                </div>
                             </div>
 
                             {/* Summary Grid */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-                                <div style={{ background: '#F3F4F6', padding: '12px', borderRadius: '8px', border: '1px solid #DDD' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#666' }}>Total Orders</span>
-                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem' }}>{dayEndData.summary.totalOrders}</h3>
+                            <div className="eod-metrics-grid">
+                                <div className="eod-stat-box">
+                                    <span className="eod-stat-label">Total Orders</span>
+                                    <h3 className="eod-stat-val">{dayEndData.summary.totalOrders}</h3>
                                 </div>
-                                <div style={{ background: '#F3F4F6', padding: '12px', borderRadius: '8px', border: '1px solid #DDD' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#666' }}>Gross Sales</span>
-                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem' }}>₹{dayEndData.summary.grossSales.toFixed(2)}</h3>
+                                <div className="eod-stat-box">
+                                    <span className="eod-stat-label">Gross Sales</span>
+                                    <h3 className="eod-stat-val">₹{dayEndData.summary.grossSales.toFixed(2)}</h3>
                                 </div>
-                                <div style={{ background: '#FEF2F2', padding: '12px', borderRadius: '8px', border: '1px solid #FCA5A5' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#DC2626' }}>Discounts</span>
-                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: '#DC2626' }}>-₹{dayEndData.summary.totalDiscount.toFixed(2)}</h3>
+                                <div className="eod-stat-box box-discount">
+                                    <span className="eod-stat-label">Discounts</span>
+                                    <h3 className="eod-stat-val">-₹{dayEndData.summary.totalDiscount.toFixed(2)}</h3>
                                 </div>
-                                <div style={{ background: '#F3F4F6', padding: '12px', borderRadius: '8px', border: '1px solid #DDD' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#666' }}>Taxes (GST)</span>
-                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem' }}>₹{dayEndData.summary.totalTax.toFixed(2)}</h3>
+                                <div className="eod-stat-box">
+                                    <span className="eod-stat-label">Taxes (GST)</span>
+                                    <h3 className="eod-stat-val">₹{dayEndData.summary.totalTax.toFixed(2)}</h3>
                                 </div>
-                                <div style={{ background: '#F3F4F6', padding: '12px', borderRadius: '8px', border: '1.5px solid #2563EB' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#2563EB', fontWeight: 'bold' }}>NET REVENUE</span>
-                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: '#2563EB', fontWeight: 'bold' }}>₹{dayEndData.summary.netRevenue.toFixed(2)}</h3>
+                                <div className="eod-stat-box box-net">
+                                    <span className="eod-stat-label">NET REVENUE</span>
+                                    <h3 className="eod-stat-val">₹{dayEndData.summary.netRevenue.toFixed(2)}</h3>
                                 </div>
-                                <div style={{ background: '#FFF1F2', padding: '12px', borderRadius: '8px', border: '1.5px solid #F43F5E' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#E11D48', fontWeight: 'bold' }}>TOTAL EXPENSES</span>
-                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: '#E11D48', fontWeight: 'bold' }}>-₹{(dayEndData.summary.totalExpenses || 0).toFixed(2)}</h3>
-                                    <span style={{ fontSize: '0.72rem', color: '#888' }}>{(dayEndData.expenses || []).length} logged</span>
+                                <div className="eod-stat-box box-expenses">
+                                    <span className="eod-stat-label">TOTAL EXPENSES</span>
+                                    <h3 className="eod-stat-val">-₹{(dayEndData.summary.totalExpenses || 0).toFixed(2)}</h3>
+                                    <span className="eod-stat-sub">{(dayEndData.expenses || []).length} logged</span>
                                 </div>
-                                <div style={{ background: '#ECFDF5', padding: '12px', borderRadius: '8px', border: '2px solid #10B981', boxShadow: '2px 2px 0px #10B981' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 'bold' }}>ESTIMATE NET PROFIT</span>
-                                    <h3 style={{ margin: '4px 0 0', fontSize: '1.5rem', color: '#059669', fontWeight: 'bold' }}>₹{(dayEndData.summary.netProfit !== undefined ? dayEndData.summary.netProfit : (dayEndData.summary.netRevenue - (dayEndData.summary.totalExpenses || 0))).toFixed(2)}</h3>
-                                    <span style={{ fontSize: '0.72rem', color: '#059669' }}>Revenue - Expenses</span>
+                                <div className="eod-stat-box box-profit">
+                                    <span className="eod-stat-label">ESTIMATE NET PROFIT</span>
+                                    <h3 className="eod-stat-val">₹{(dayEndData.summary.netProfit !== undefined ? dayEndData.summary.netProfit : (dayEndData.summary.netRevenue - (dayEndData.summary.totalExpenses || 0))).toFixed(2)}</h3>
+                                    <span className="eod-stat-sub">Revenue - Expenses</span>
                                 </div>
                             </div>
 
                             {/* Payment Method Breakdown */}
-                            <div style={{ marginBottom: '24px' }}>
-                                <h3 style={{ borderBottom: '1.5px solid #111', paddingBottom: '6px', marginBottom: '12px' }}>💳 Payment Method Breakdown</h3>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                            <div className="eod-report-section">
+                                <h3 className="eod-section-title">💳 Payment Method Breakdown</h3>
+                                <table className="eod-report-table">
                                     <thead>
-                                        <tr style={{ background: '#F3F4F6', textAlign: 'left' }}>
-                                            <th style={{ padding: '8px', border: '1px solid #DDD' }}>Payment Method</th>
-                                            <th style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right' }}>Total Amount</th>
+                                        <tr>
+                                            <th>Payment Method</th>
+                                            <th style={{ textAlign: 'right' }}>Total Amount</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD' }}>💵 Cash Paid</td>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.cash.toFixed(2)}</td>
+                                            <td>💵 Cash Paid</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.cash.toFixed(2)}</td>
                                         </tr>
                                         <tr>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD' }}>📱 UPI / Online Paid</td>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.online.toFixed(2)}</td>
+                                            <td>📱 UPI / Online Paid</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.online.toFixed(2)}</td>
                                         </tr>
                                         <tr>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD' }}>💳 Card Paid</td>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.card.toFixed(2)}</td>
+                                            <td>💳 Card Paid</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.card.toFixed(2)}</td>
                                         </tr>
                                         <tr>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD' }}>
+                                            <td>
                                                 🔀 Split Payment Total
                                                 <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '2px' }}>
                                                     (Cash: ₹{dayEndData.paymentBreakdown.splitDetails.cash.toFixed(2)} | UPI: ₹{dayEndData.paymentBreakdown.splitDetails.upi.toFixed(2)} | Card: ₹{dayEndData.paymentBreakdown.splitDetails.card.toFixed(2)})
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.split.toFixed(2)}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.split.toFixed(2)}</td>
                                         </tr>
                                         <tr style={{ background: '#F9FAFB', fontWeight: 'bold' }}>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD' }}>TOTAL COLLECTED</td>
-                                            <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#7C3AED' }}>₹{dayEndData.summary.netRevenue.toFixed(2)}</td>
+                                            <td>TOTAL COLLECTED</td>
+                                            <td style={{ textAlign: 'right', color: '#7C3AED' }}>₹{dayEndData.summary.netRevenue.toFixed(2)}</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
 
                             {/* Daily Expenses Breakdown */}
-                            <div style={{ marginBottom: '24px' }}>
+                            <div className="eod-report-section">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #111', paddingBottom: '6px', marginBottom: '12px' }}>
-                                    <h3 style={{ margin: 0 }}>💸 Daily Expenses Breakdown</h3>
+                                    <h3 style={{ margin: 0 }} className="eod-section-title-clean">💸 Daily Expenses Breakdown</h3>
                                     <button
                                         type="button"
                                         className="btn btn-secondary btn-sm no-print"
@@ -1111,42 +1262,52 @@ const AdminAnalytics = () => {
                                         </button>
                                     </div>
                                 ) : (
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                                    <table className="eod-report-table">
                                         <thead>
-                                            <tr style={{ background: '#F3F4F6', textAlign: 'left' }}>
-                                                <th style={{ padding: '8px', border: '1px solid #DDD' }}>Expense / Title</th>
-                                                <th style={{ padding: '8px', border: '1px solid #DDD' }}>Category</th>
-                                                <th style={{ padding: '8px', border: '1px solid #DDD' }}>Payment Mode</th>
-                                                <th style={{ padding: '8px', border: '1px solid #DDD' }}>Added By</th>
-                                                <th style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right' }}>Amount (₹)</th>
-                                                <th className="no-print" style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'center', width: '50px' }}>Action</th>
+                                            <tr>
+                                                <th>Expense / Title</th>
+                                                <th>Category</th>
+                                                <th>Payment Mode</th>
+                                                <th>Added By</th>
+                                                <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                                                <th className="no-print" style={{ textAlign: 'center', width: '60px' }}>Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {dayEndData.expenses.map((exp, idx) => (
                                                 <tr key={exp._id || idx}>
-                                                    <td style={{ padding: '8px', border: '1px solid #DDD', fontWeight: '500' }}>
+                                                    <td style={{ fontWeight: '500' }}>
                                                         {exp.title}
                                                         {exp.notes && <div style={{ fontSize: '0.78rem', color: '#666' }}>{exp.notes}</div>}
                                                     </td>
-                                                    <td style={{ padding: '8px', border: '1px solid #DDD' }}>
+                                                    <td>
                                                         <span className="expense-badge">{exp.category || 'General'}</span>
                                                     </td>
-                                                    <td style={{ padding: '8px', border: '1px solid #DDD', textTransform: 'capitalize' }}>
-                                                        {exp.paymentMethod || 'cash'}
+                                                    <td>
+                                                        {renderPaymentMethodBadge(exp)}
                                                     </td>
-                                                    <td style={{ padding: '8px', border: '1px solid #DDD', color: '#555', fontSize: '0.85rem' }}>
+                                                    <td style={{ color: '#555', fontSize: '0.85rem' }}>
                                                         {exp.addedByName || 'Admin'}
                                                     </td>
-                                                    <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold', color: '#E11D48' }}>
+                                                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#E11D48' }}>
                                                         ₹{(exp.amount || 0).toFixed(2)}
                                                     </td>
-                                                    <td className="no-print" style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'center' }}>
+                                                    <td className="no-print" style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openEditExpenseModal(exp)}
+                                                            title="Edit Expense"
+                                                            className="btn-icon-action"
+                                                            style={{ color: '#2563EB', marginRight: '6px' }}
+                                                        >
+                                                            <FiEdit2 size={16} />
+                                                        </button>
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeleteExpense(exp._id)}
                                                             title="Delete Expense"
-                                                            style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
+                                                            className="btn-icon-action"
+                                                            style={{ color: '#EF4444' }}
                                                         >
                                                             <FiTrash2 size={16} />
                                                         </button>
@@ -1154,22 +1315,22 @@ const AdminAnalytics = () => {
                                                 </tr>
                                             ))}
                                             <tr style={{ background: '#FFF1F2', fontWeight: 'bold' }}>
-                                                <td colSpan={4} style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#9F1239' }}>
+                                                <td colSpan={4} style={{ textAlign: 'right', color: '#9F1239' }}>
                                                     TOTAL EXPENSES DEDUCTED:
                                                 </td>
-                                                <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#E11D48', fontSize: '1rem' }}>
+                                                <td style={{ textAlign: 'right', color: '#E11D48', fontSize: '1rem' }}>
                                                     -₹{(dayEndData.summary.totalExpenses || 0).toFixed(2)}
                                                 </td>
-                                                <td className="no-print" style={{ border: '1px solid #DDD' }}></td>
+                                                <td className="no-print"></td>
                                             </tr>
                                             <tr style={{ background: '#ECFDF5', fontWeight: 'bold' }}>
-                                                <td colSpan={4} style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#065F46' }}>
+                                                <td colSpan={4} style={{ textAlign: 'right', color: '#065F46' }}>
                                                     ESTIMATE NET PROFIT (Net Revenue - Expenses):
                                                 </td>
-                                                <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', color: '#059669', fontSize: '1.1rem' }}>
+                                                <td style={{ textAlign: 'right', color: '#059669', fontSize: '1.1rem' }}>
                                                     ₹{(dayEndData.summary.netProfit !== undefined ? dayEndData.summary.netProfit : (dayEndData.summary.netRevenue - (dayEndData.summary.totalExpenses || 0))).toFixed(2)}
                                                 </td>
-                                                <td className="no-print" style={{ border: '1px solid #DDD' }}></td>
+                                                <td className="no-print"></td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -1177,22 +1338,22 @@ const AdminAnalytics = () => {
                             </div>
 
                             {/* Category Sales */}
-                            <div style={{ marginBottom: '24px' }}>
-                                <h3 style={{ borderBottom: '1.5px solid #111', paddingBottom: '6px', marginBottom: '12px' }}>🍽️ Category-Wise Sales Summary</h3>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                            <div className="eod-report-section">
+                                <h3 className="eod-section-title">🍽️ Category-Wise Sales Summary</h3>
+                                <table className="eod-report-table">
                                     <thead>
-                                        <tr style={{ background: '#F3F4F6', textAlign: 'left' }}>
-                                            <th style={{ padding: '8px', border: '1px solid #DDD' }}>Category Name</th>
-                                            <th style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'center' }}>Total Qty Sold</th>
-                                            <th style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right' }}>Total Revenue</th>
+                                        <tr>
+                                            <th>Category Name</th>
+                                            <th style={{ textAlign: 'center' }}>Total Qty Sold</th>
+                                            <th style={{ textAlign: 'right' }}>Total Revenue</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {dayEndData.categorySales.map((cat, idx) => (
                                             <tr key={idx}>
-                                                <td style={{ padding: '8px', border: '1px solid #DDD', fontWeight: '600' }}>{cat.name}</td>
-                                                <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'center' }}>{cat.totalQty}</td>
-                                                <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold' }}>₹{cat.totalRevenue.toFixed(2)}</td>
+                                                <td style={{ fontWeight: '600' }}>{cat.name}</td>
+                                                <td style={{ textAlign: 'center' }}>{cat.totalQty}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{cat.totalRevenue.toFixed(2)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -1200,24 +1361,24 @@ const AdminAnalytics = () => {
                             </div>
 
                             {/* Product Sales */}
-                            <div style={{ marginBottom: '24px' }}>
-                                <h3 style={{ borderBottom: '1.5px solid #111', paddingBottom: '6px', marginBottom: '12px' }}>📦 Product / Item Sales Breakdown</h3>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                            <div className="eod-report-section">
+                                <h3 className="eod-section-title">📦 Product / Item Sales Breakdown</h3>
+                                <table className="eod-report-table" style={{ fontSize: '0.85rem' }}>
                                     <thead>
-                                        <tr style={{ background: '#F3F4F6', textAlign: 'left' }}>
-                                            <th style={{ padding: '6px 8px', border: '1px solid #DDD' }}>Item Name</th>
-                                            <th style={{ padding: '6px 8px', border: '1px solid #DDD' }}>Category</th>
-                                            <th style={{ padding: '6px 8px', border: '1px solid #DDD', textAlign: 'center' }}>Qty Sold</th>
-                                            <th style={{ padding: '6px 8px', border: '1px solid #DDD', textAlign: 'right' }}>Revenue</th>
+                                        <tr>
+                                            <th>Item Name</th>
+                                            <th>Category</th>
+                                            <th style={{ textAlign: 'center' }}>Qty Sold</th>
+                                            <th style={{ textAlign: 'right' }}>Revenue</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {dayEndData.productSales.map((prod, idx) => (
                                             <tr key={idx}>
-                                                <td style={{ padding: '6px 8px', border: '1px solid #DDD', fontWeight: '500' }}>{prod.name}</td>
-                                                <td style={{ padding: '6px 8px', border: '1px solid #DDD', color: '#666' }}>{prod.category}</td>
-                                                <td style={{ padding: '6px 8px', border: '1px solid #DDD', textAlign: 'center', fontWeight: 'bold' }}>{prod.qtySold}</td>
-                                                <td style={{ padding: '6px 8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold' }}>₹{prod.totalRevenue.toFixed(2)}</td>
+                                                <td style={{ fontWeight: '500' }}>{prod.name}</td>
+                                                <td style={{ color: '#666' }}>{prod.category}</td>
+                                                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{prod.qtySold}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{prod.totalRevenue.toFixed(2)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -1225,26 +1386,30 @@ const AdminAnalytics = () => {
                             </div>
 
                             {/* Staff Sales */}
-                            <div>
-                                <h3 style={{ borderBottom: '1.5px solid #111', paddingBottom: '6px', marginBottom: '12px' }}>👤 Staff Sales Performance</h3>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                            <div className="eod-report-section">
+                                <h3 className="eod-section-title">👤 Staff Sales Performance</h3>
+                                <table className="eod-report-table">
                                     <thead>
-                                        <tr style={{ background: '#F3F4F6', textAlign: 'left' }}>
-                                            <th style={{ padding: '8px', border: '1px solid #DDD' }}>Staff / Biller Name</th>
-                                            <th style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'center' }}>Orders Count</th>
-                                            <th style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right' }}>Total Sales</th>
+                                        <tr>
+                                            <th>Staff / Biller Name</th>
+                                            <th style={{ textAlign: 'center' }}>Orders Count</th>
+                                            <th style={{ textAlign: 'right' }}>Total Sales</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {dayEndData.staffSales.map((st, idx) => (
                                             <tr key={idx}>
-                                                <td style={{ padding: '8px', border: '1px solid #DDD', fontWeight: '600' }}>{st.name}</td>
-                                                <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'center' }}>{st.ordersCount}</td>
-                                                <td style={{ padding: '8px', border: '1px solid #DDD', textAlign: 'right', fontWeight: 'bold' }}>₹{st.totalSales.toFixed(2)}</td>
+                                                <td style={{ fontWeight: '600' }}>{st.name}</td>
+                                                <td style={{ textAlign: 'center' }}>{st.ordersCount}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{st.totalSales.toFixed(2)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <div className="eod-report-footer">
+                                <span>Kea By The Pool • Day-End Sales & Expense Report • Confidential Business Report</span>
                             </div>
                         </div>
                     ) : null}
@@ -1849,17 +2014,30 @@ const AdminAnalytics = () => {
                                                     <td>
                                                         <span className="expense-badge">{exp.category || 'General'}</span>
                                                     </td>
-                                                    <td style={{ textTransform: 'capitalize' }}>{exp.paymentMethod || 'cash'}</td>
+                                                    <td>
+                                                        {renderPaymentMethodBadge(exp)}
+                                                    </td>
                                                     <td style={{ color: '#555', fontSize: '0.88rem' }}>{exp.addedByName || 'Admin'}</td>
                                                     <td style={{ color: '#777', fontSize: '0.85rem' }}>{exp.notes || '-'}</td>
                                                     <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#E11D48', fontSize: '1rem' }}>
                                                         ₹{(exp.amount || 0).toFixed(2)}
                                                     </td>
-                                                    <td style={{ textAlign: 'center' }}>
+                                                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                         <button
+                                                            type="button"
+                                                            onClick={() => openEditExpenseModal(exp)}
+                                                            title="Edit Expense"
+                                                            className="btn-icon-action"
+                                                            style={{ color: '#2563EB', marginRight: '6px' }}
+                                                        >
+                                                            <FiEdit2 size={18} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
                                                             onClick={() => handleDeleteExpense(exp._id)}
                                                             title="Delete Expense"
-                                                            style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '6px' }}
+                                                            className="btn-icon-action"
+                                                            style={{ color: '#EF4444' }}
                                                         >
                                                             <FiTrash2 size={18} />
                                                         </button>
@@ -1884,12 +2062,15 @@ const AdminAnalytics = () => {
                 </div>
             )}
 
-            {/* ADD EXPENSE MODAL */}
+            {/* ADD / EDIT EXPENSE MODAL */}
             {showAddExpenseModal && (
                 <div className="expense-modal-overlay" onClick={() => !submittingExpense && setShowAddExpenseModal(false)}>
-                    <div className="expense-modal-content" onClick={e => e.stopPropagation()}>
+                    <div className="expense-modal-content" style={{ maxWidth: modalMode === 'bulk' && !editingExpenseId ? '720px' : '520px' }} onClick={e => e.stopPropagation()}>
                         <div className="expense-modal-header">
-                            <h2><FiDollarSign style={{ color: '#E11D48' }} /> Record New Expense</h2>
+                            <h2>
+                                <FiDollarSign style={{ color: '#E11D48' }} />
+                                {editingExpenseId ? 'Edit Expense' : (modalMode === 'bulk' ? 'Add Multiple Expenses' : 'Record New Expense')}
+                            </h2>
                             <button
                                 type="button"
                                 onClick={() => setShowAddExpenseModal(false)}
@@ -1898,87 +2079,301 @@ const AdminAnalytics = () => {
                                 <FiX size={22} />
                             </button>
                         </div>
-                        <form onSubmit={handleCreateExpense} className="expense-form">
-                            <div className="expense-form-row">
-                                <div className="expense-form-group">
-                                    <label>Business Date *</label>
-                                    <input
-                                        type="date"
-                                        className="input"
-                                        required
-                                        value={expenseForm.businessDate}
-                                        max={getLocalDateString()}
-                                        onChange={e => setExpenseForm({ ...expenseForm, businessDate: e.target.value })}
-                                    />
-                                </div>
-                                <div className="expense-form-group">
-                                    <label>Amount (in Rupees ₹) *</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0.01"
-                                        placeholder="e.g. 100"
-                                        className="input"
-                                        required
-                                        value={expenseForm.amount}
-                                        onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-                                    />
-                                </div>
-                            </div>
 
-                            <div className="expense-form-group">
-                                <label>Expense Title / Description *</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. Vegetables, Milk, Gas Cylinder, Cleaning Supplies"
-                                    className="input"
-                                    required
-                                    value={expenseForm.title}
-                                    onChange={e => setExpenseForm({ ...expenseForm, title: e.target.value })}
-                                />
+                        {/* Mode Switcher (Only when adding new, not when editing) */}
+                        {!editingExpenseId && (
+                            <div className="expense-mode-toggle">
+                                <button
+                                    type="button"
+                                    className={`expense-mode-btn ${modalMode === 'single' ? 'active' : ''}`}
+                                    onClick={() => setModalMode('single')}
+                                >
+                                    Single Expense
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`expense-mode-btn ${modalMode === 'bulk' ? 'active' : ''}`}
+                                    onClick={() => setModalMode('bulk')}
+                                >
+                                    ⚡ Multiple Expenses (Bulk Add)
+                                </button>
                             </div>
+                        )}
 
-                            <div className="expense-form-row">
-                                <div className="expense-form-group">
-                                    <label>Category</label>
-                                    <select
-                                        value={expenseForm.category}
-                                        onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })}
-                                    >
-                                        <option value="Kitchen Supplies">Kitchen Supplies</option>
-                                        <option value="Raw Materials / Grocery">Raw Materials / Grocery</option>
-                                        <option value="Dairy & Beverages">Dairy & Beverages</option>
-                                        <option value="Maintenance & Repairs">Maintenance & Repairs</option>
-                                        <option value="Utilities & Bills">Utilities & Bills</option>
-                                        <option value="Staff & Salaries">Staff & Salaries</option>
-                                        <option value="Packaging & Delivery">Packaging & Delivery</option>
-                                        <option value="Miscellaneous">Miscellaneous</option>
-                                        <option value="Other">Other</option>
-                                    </select>
-                                </div>
-                                <div className="expense-form-group">
-                                    <label>Payment Method</label>
-                                    <select
-                                        value={expenseForm.paymentMethod}
-                                        onChange={e => setExpenseForm({ ...expenseForm, paymentMethod: e.target.value })}
-                                    >
-                                        <option value="cash">💵 Cash</option>
-                                        <option value="upi">📱 UPI / Online</option>
-                                        <option value="card">💳 Card</option>
-                                        <option value="other">Other</option>
-                                    </select>
-                                </div>
-                            </div>
+                        <form onSubmit={handleSaveExpense} className="expense-form">
+                            {/* SINGLE MODE */}
+                            {modalMode === 'single' ? (
+                                <>
+                                    <div className="expense-form-row">
+                                        <div className="expense-form-group">
+                                            <label>Business Date *</label>
+                                            <input
+                                                type="date"
+                                                className="input"
+                                                required
+                                                value={expenseForm.businessDate}
+                                                max={getLocalDateString()}
+                                                onChange={e => setExpenseForm({ ...expenseForm, businessDate: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="expense-form-group">
+                                            <label>Amount (in Rupees ₹) *</label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0.01"
+                                                placeholder="e.g. 100"
+                                                className="input"
+                                                required
+                                                value={expenseForm.amount}
+                                                onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
 
-                            <div className="expense-form-group">
-                                <label>Notes / Vendor Details (Optional)</label>
-                                <textarea
-                                    rows="2"
-                                    placeholder="Any additional remarks, invoice number, or vendor name..."
-                                    value={expenseForm.notes}
-                                    onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })}
-                                />
-                            </div>
+                                    <div className="expense-form-group">
+                                        <label>Expense Title / Description *</label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. Vegetables, Milk, Gas Cylinder, Cleaning Supplies"
+                                            className="input"
+                                            required
+                                            value={expenseForm.title}
+                                            onChange={e => setExpenseForm({ ...expenseForm, title: e.target.value })}
+                                        />
+                                    </div>
+
+                                    <div className="expense-form-row">
+                                        <div className="expense-form-group">
+                                            <label>Category</label>
+                                            <select
+                                                value={expenseForm.category}
+                                                onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })}
+                                            >
+                                                <option value="Kitchen Supplies">Kitchen Supplies</option>
+                                                <option value="Raw Materials / Grocery">Raw Materials / Grocery</option>
+                                                <option value="Dairy & Beverages">Dairy & Beverages</option>
+                                                <option value="Maintenance & Repairs">Maintenance & Repairs</option>
+                                                <option value="Utilities & Bills">Utilities & Bills</option>
+                                                <option value="Staff & Salaries">Staff & Salaries</option>
+                                                <option value="Packaging & Delivery">Packaging & Delivery</option>
+                                                <option value="Miscellaneous">Miscellaneous</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
+                                        <div className="expense-form-group">
+                                            <label>Payment Method *</label>
+                                            <select
+                                                value={expenseForm.paymentMethod}
+                                                onChange={e => setExpenseForm({ ...expenseForm, paymentMethod: e.target.value })}
+                                            >
+                                                <option value="cash">💵 Cash</option>
+                                                <option value="upi">📱 UPI (GPay / PhonePe / Paytm)</option>
+                                                <option value="card">💳 Card (Debit / Credit)</option>
+                                                <option value="bank_transfer">🏦 Bank Transfer</option>
+                                                <option value="split">🔀 Split Payment (Multi-Method)</option>
+                                                <option value="cheque">📜 Cheque</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Split Payment Multi-Method Details */}
+                                    {expenseForm.paymentMethod === 'split' && (
+                                        <div className="expense-split-box">
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <strong style={{ fontSize: '0.9rem', color: '#1E40AF' }}>🔀 Split Payment Breakdown (Rupees ₹)</strong>
+                                                <span style={{ fontSize: '0.8rem', color: '#6B7280' }}>Total: ₹{parseFloat(expenseForm.amount) || 0}</span>
+                                            </div>
+                                            <div className="expense-split-grid">
+                                                <div className="expense-form-group">
+                                                    <label style={{ fontSize: '0.8rem' }}>💵 Cash</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        className="input"
+                                                        value={splitDetails.cash}
+                                                        onChange={e => setSplitDetails({ ...splitDetails, cash: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div className="expense-form-group">
+                                                    <label style={{ fontSize: '0.8rem' }}>📱 UPI / Online</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        className="input"
+                                                        value={splitDetails.upi}
+                                                        onChange={e => setSplitDetails({ ...splitDetails, upi: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div className="expense-form-group">
+                                                    <label style={{ fontSize: '0.8rem' }}>💳 Card</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        className="input"
+                                                        value={splitDetails.card}
+                                                        onChange={e => setSplitDetails({ ...splitDetails, card: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div className="expense-form-group">
+                                                    <label style={{ fontSize: '0.8rem' }}>🏦 Bank Transfer</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        className="input"
+                                                        value={splitDetails.bank_transfer}
+                                                        onChange={e => setSplitDetails({ ...splitDetails, bank_transfer: e.target.value })}
+                                                    />
+                                                </div>
+                                            </div>
+                                            {(() => {
+                                                const currentSum = (parseFloat(splitDetails.cash) || 0)
+                                                    + (parseFloat(splitDetails.upi) || 0)
+                                                    + (parseFloat(splitDetails.card) || 0)
+                                                    + (parseFloat(splitDetails.bank_transfer) || 0)
+                                                    + (parseFloat(splitDetails.other) || 0);
+                                                const totalReq = parseFloat(expenseForm.amount) || 0;
+                                                const diff = totalReq - currentSum;
+                                                return (
+                                                    <div className="expense-split-summary">
+                                                        <span>Sum of Split: <strong>₹{currentSum.toFixed(2)}</strong></span>
+                                                        <span style={{ color: Math.abs(diff) < 0.01 ? '#059669' : '#DC2626' }}>
+                                                            {Math.abs(diff) < 0.01 ? '✓ Balanced' : `Remaining: ₹${diff.toFixed(2)}`}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+
+                                    <div className="expense-form-group">
+                                        <label>Notes / Vendor Details (Optional)</label>
+                                        <textarea
+                                            rows="2"
+                                            placeholder="Any additional remarks, invoice number, or vendor name..."
+                                            value={expenseForm.notes}
+                                            onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                /* BULK MODE (Multiple Expenses) */
+                                <>
+                                    <div className="expense-form-group" style={{ maxWidth: '240px' }}>
+                                        <label>Business Date for All Entries *</label>
+                                        <input
+                                            type="date"
+                                            className="input"
+                                            required
+                                            value={expenseForm.businessDate}
+                                            max={getLocalDateString()}
+                                            onChange={e => setExpenseForm({ ...expenseForm, businessDate: e.target.value })}
+                                        />
+                                    </div>
+
+                                    <div style={{ margin: '8px 0 4px', fontSize: '0.88rem', fontWeight: 'bold', color: '#374151' }}>
+                                        List of Expense Items:
+                                    </div>
+
+                                    <div className="expense-bulk-container">
+                                        {bulkExpenseRows.map((row, idx) => (
+                                            <div key={idx} className="expense-bulk-row">
+                                                <input
+                                                    type="text"
+                                                    className="input"
+                                                    placeholder={`Expense #${idx + 1} (e.g. Milk, Onions)`}
+                                                    value={row.title}
+                                                    onChange={e => {
+                                                        const updated = [...bulkExpenseRows];
+                                                        updated[idx].title = e.target.value;
+                                                        setBulkExpenseRows(updated);
+                                                    }}
+                                                />
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    className="input"
+                                                    placeholder="₹ Amount"
+                                                    value={row.amount}
+                                                    onChange={e => {
+                                                        const updated = [...bulkExpenseRows];
+                                                        updated[idx].amount = e.target.value;
+                                                        setBulkExpenseRows(updated);
+                                                    }}
+                                                />
+                                                <select
+                                                    value={row.category}
+                                                    onChange={e => {
+                                                        const updated = [...bulkExpenseRows];
+                                                        updated[idx].category = e.target.value;
+                                                        setBulkExpenseRows(updated);
+                                                    }}
+                                                    style={{ padding: '8px', borderRadius: '6px', border: '1px solid #CCC', fontSize: '0.88rem' }}
+                                                >
+                                                    <option value="Kitchen Supplies">Kitchen Supplies</option>
+                                                    <option value="Raw Materials / Grocery">Raw Materials</option>
+                                                    <option value="Dairy & Beverages">Dairy & Bev</option>
+                                                    <option value="Maintenance & Repairs">Maintenance</option>
+                                                    <option value="Utilities & Bills">Utilities</option>
+                                                    <option value="Staff & Salaries">Staff/Salary</option>
+                                                    <option value="Packaging & Delivery">Packaging</option>
+                                                    <option value="Miscellaneous">Misc</option>
+                                                    <option value="Other">Other</option>
+                                                </select>
+                                                <select
+                                                    value={row.paymentMethod}
+                                                    onChange={e => {
+                                                        const updated = [...bulkExpenseRows];
+                                                        updated[idx].paymentMethod = e.target.value;
+                                                        setBulkExpenseRows(updated);
+                                                    }}
+                                                    style={{ padding: '8px', borderRadius: '6px', border: '1px solid #CCC', fontSize: '0.88rem' }}
+                                                >
+                                                    <option value="cash">💵 Cash</option>
+                                                    <option value="upi">📱 UPI</option>
+                                                    <option value="card">💳 Card</option>
+                                                    <option value="bank_transfer">🏦 Bank</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (bulkExpenseRows.length <= 1) return;
+                                                        setBulkExpenseRows(bulkExpenseRows.filter((_, i) => i !== idx));
+                                                    }}
+                                                    title="Remove Row"
+                                                    style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: '4px' }}
+                                                >
+                                                    <FiX size={18} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary btn-sm"
+                                            onClick={() => setBulkExpenseRows([
+                                                ...bulkExpenseRows,
+                                                { title: '', amount: '', category: 'Kitchen Supplies', paymentMethod: 'cash', notes: '' }
+                                            ])}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        >
+                                            <FiPlus /> Add Another Item
+                                        </button>
+                                        <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
+                                            Total: <span style={{ color: '#E11D48' }}>₹{bulkExpenseRows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
 
                             <div className="expense-modal-actions">
                                 <button
@@ -1995,7 +2390,13 @@ const AdminAnalytics = () => {
                                     disabled={submittingExpense}
                                     style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                                 >
-                                    {submittingExpense ? 'Saving...' : 'Save Expense'}
+                                    {submittingExpense
+                                        ? 'Saving...'
+                                        : (editingExpenseId
+                                            ? 'Update Expense'
+                                            : (modalMode === 'bulk'
+                                                ? `Save All Expenses (${bulkExpenseRows.filter(r => r.title?.trim() && parseFloat(r.amount) > 0).length})`
+                                                : 'Save Expense'))}
                                 </button>
                             </div>
                         </form>
