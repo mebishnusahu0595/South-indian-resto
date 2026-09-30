@@ -482,13 +482,52 @@ async function printRawToSystemPrinter(systemName, buffer) {
   }
 }
 
+// Direct raw TCP printing for network thermal printers (port 9100).
+// node-thermal-printer's default network interface destroys the socket immediately on write,
+// which sends a TCP RST and causes many physical thermal printers to drop unprinted buffer data.
+// We write raw bytes, wait 300ms for hardware buffer consumption, and cleanly end with FIN.
+function printRawToNetworkPrinter(host, port, buffer, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const socket = new net.Socket();
+    let settled = false;
+
+    const cleanup = () => {
+      socket.removeAllListeners();
+    };
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try { socket.destroy(); } catch {}
+      reject(err);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('timeout', () => fail(new Error(`Timeout (${timeoutMs}ms) connecting to network printer ${host}:${port}`)));
+    socket.once('error', (err) => fail(new Error(`Network printer ${host}:${port} socket error: ${err.message}`)));
+
+    socket.connect(port, host, () => {
+      socket.write(buffer, (err) => {
+        if (err) return fail(err);
+        setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          socket.end(() => resolve('OK'));
+        }, 300);
+      });
+    });
+  });
+}
+
 // node-thermal-printer accepts a custom interface object with execute(buffer).
 function printerInterfaceFor(target) {
   if (target.type === 'system') {
     return { execute: buffer => printRawToSystemPrinter(target.systemName, buffer), isPrinterConnected: async () => true };
   }
   if (target.type === 'device') return target.interface;
-  return `tcp://${target.host}:${target.port}`;
+  return { execute: buffer => printRawToNetworkPrinter(target.host, target.port, buffer), isPrinterConnected: async () => true };
 }
 
 // ─── LAN/WiFi discovery (TCP/9100) ───
