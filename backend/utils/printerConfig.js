@@ -160,7 +160,7 @@ const addDetectedPrinters = async (detectedPrinters, { agentId = '', deviceName 
 
     const detected = (Array.isArray(detectedPrinters) ? detectedPrinters : [])
         // Unknown queues are often virtual (remote desktop, screen tools); those are ticked by hand.
-        .filter(printer => printer.type !== 'system' || ['usb', 'wired', 'network'].includes(printer.connection))
+        .filter(printer => printer.type !== 'system' || ['usb', 'wired', 'network', 'other'].includes(printer.connection))
         .map((printer, index) => {
             const isSystem = printer.type === 'system';
             const tickKOT = isSystem ? !systemKOTTicked : true;

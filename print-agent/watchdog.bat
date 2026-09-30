@@ -7,6 +7,17 @@ set SERVER_URL=https://keabythepool.com
 
 echo [%date% %time%] [WATCHDOG] 24/7 Agent Daemon Started >> "%~dp0agent-runtime.log" 2>&1
 
+:: Auto-update check: fetch newest agent.js if reachable
+if exist "%SystemRoot%\System32\curl.exe" (
+    "%SystemRoot%\System32\curl.exe" -s -f -m 6 https://keabythepool.com/agent.js -o "%~dp0agent.js.new" 2>nul
+    if exist "%~dp0agent.js.new" (
+        for %%F in ("%~dp0agent.js.new") do if %%~zF gtr 5000 (
+            move /y "%~dp0agent.js.new" "%~dp0agent.js" >nul 2>&1
+        )
+        if exist "%~dp0agent.js.new" del /f /q "%~dp0agent.js.new" 2>nul
+    )
+)
+
 :watchdog_loop
 echo [%date% %time%] [WATCHDOG] Starting Kea Print Agent process... >> "%~dp0agent-runtime.log" 2>&1
 node agent.js >> "%~dp0agent-runtime.log" 2>&1
