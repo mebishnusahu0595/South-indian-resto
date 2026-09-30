@@ -1,0 +1,3 @@
+# cmd.exe mis-reads goto labels in LF-only batch files; Windows scripts must ship with CRLF.
+*.bat text eol=crlf
+*.vbs text eol=crlf

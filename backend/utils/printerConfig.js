@@ -125,22 +125,38 @@ const getPrinterConfig = async () => {
     };
 };
 
+// Printers auto-select has already added once. A printer Superadmin removed stays removed
+// (it can still be ticked again from the detected list in Settings).
+const SEEN_PRINTERS_KEY = 'printer_seen_endpoints';
+const rememberSeenPrinters = async (printers) => {
+    const saved = await Settings.getSetting(SEEN_PRINTERS_KEY, []);
+    const seen = new Set(Array.isArray(saved) ? saved : []);
+    const before = seen.size;
+    printers.forEach(printer => seen.add(printerEndpoint(printer)));
+    if (seen.size === before) return;
+    await Settings.setSetting(SEEN_PRINTERS_KEY, Array.from(seen).slice(-500), 'Printers auto-select already added once; removed printers are not auto-added again');
+};
+
 // Default (fresh install / production rollout): real printers a PC agent or staff phone
 // detects are ticked for KOT and Bill, until Superadmin turns auto-select off.
 // If an agent already has a system printer for KOT, new system printers get kot: false.
 const addDetectedPrinters = async (detectedPrinters, { agentId = '', deviceName = '' } = {}) => {
-    const [autoSelect, registryValue, printerPort] = await Promise.all([
+    const [autoSelect, registryValue, printerPort, seenValue] = await Promise.all([
         Settings.getSetting('printer_auto_select', true),
         Settings.getSetting('printer_registry', []),
-        Settings.getSetting('printer_port', DEFAULT_PRINTER_PORT)
+        Settings.getSetting('printer_port', DEFAULT_PRINTER_PORT),
+        Settings.getSetting(SEEN_PRINTERS_KEY, [])
     ]);
     if (autoSelect === false) return false;
+    const seen = new Set(Array.isArray(seenValue) ? seenValue : []);
 
     const port = cleanPort(printerPort);
     const registry = normalizePrinterRegistry(registryValue, port);
     const known = new Set(registry.map(printerEndpoint));
-    const hasSystemKOT = registry.some(p => p.type === 'system' && p.agentId === agentId && p.kot);
-    let systemKOTTicked = hasSystemKOT;
+    // Only a KOT queue the PC still reports counts: when Windows renames the USB queue
+    // (e.g. "POS-80 (Copy 1)" after a reboot/port change) the new queue must take over KOT.
+    const reported = new Set((Array.isArray(detectedPrinters) ? detectedPrinters : []).map(p => p.systemName));
+    let systemKOTTicked = registry.some(p => p.type === 'system' && p.agentId === agentId && p.kot && reported.has(p.systemName));
 
     const detected = (Array.isArray(detectedPrinters) ? detectedPrinters : [])
         // Unknown queues are often virtual (remote desktop, screen tools); those are ticked by hand.
@@ -168,10 +184,12 @@ const addDetectedPrinters = async (detectedPrinters, { agentId = '', deviceName 
                 enabled: true
             };
         });
-    const additions = normalizePrinterRegistry(detected, port).filter(printer => !known.has(printerEndpoint(printer)));
+    const additions = normalizePrinterRegistry(detected, port)
+        .filter(printer => !known.has(printerEndpoint(printer)) && !seen.has(printerEndpoint(printer)));
 
     if (additions.length === 0) return false;
     await Settings.setSetting('printer_registry', [...registry, ...additions], 'All thermal printers and whether each prints KOT and/or Bill');
+    await rememberSeenPrinters(additions);
     return true;
 };
 
@@ -182,5 +200,6 @@ module.exports = {
     normalizePrinterRegistry,
     printerEndpoint,
     getPrinterConfig,
-    addDetectedPrinters
+    addDetectedPrinters,
+    rememberSeenPrinters
 };

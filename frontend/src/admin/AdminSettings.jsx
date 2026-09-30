@@ -892,7 +892,7 @@ const AdminSettings = () => {
                                                     <button
                                                         type="button"
                                                         onClick={() => editPrinters(current => ({ ...current, printers: current.printers.filter((_, itemIndex) => itemIndex !== index) }))}
-                                                        title="Remove printer (while auto-tick is On, a printer that is still detected comes back ticked; untick KOT and Bill instead)"
+                                                        title="Remove printer (it is not auto-added again; tick it from the detected list above to bring it back)"
                                                         style={{ border: 'none', background: '#FEE2E2', color: '#DC2626', cursor: 'pointer', borderRadius: '5px', padding: '7px' }}
                                                     >
                                                         <FiTrash2 />

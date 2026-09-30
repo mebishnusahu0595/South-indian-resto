@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const KOTPrintJob = require('../models/KOTPrintJob');
 const { getPrinterConfig, cleanHost, cleanPort } = require('./printerConfig');
 
 // ponytail: in-memory device registry for the single PM2 instance. Agents re-register on
@@ -40,24 +41,13 @@ const isAgentKeyValid = (supplied) => {
 const isAgentOnline = agent => Boolean(agent)
     && (agent.sockets.size > 0 || Date.now() - agent.lastSeen < ONLINE_GRACE_MS);
 
-// Rapid heartbeat support: keeps agent fresh in memory every 2-5 seconds
-const touchAgentHeartbeat = (socket, data = {}) => {
-    const id = text(socket.data?.printAgentId || data?.agentId, 100);
-    if (!id) return false;
-    let agent = agents.get(id);
-    let turnedOnline = false;
-    if (!agent) {
-        agent = { id, sockets: new Set(), name: text(data?.name, 100) || id, printers: [] };
-        agents.set(id, agent);
-        turnedOnline = true;
-    } else if (!isAgentOnline(agent)) {
-        turnedOnline = true;
-    }
+// Heartbeats only refresh an agent that registered on this socket (registration checks the key).
+const touchAgentHeartbeat = (socket) => {
+    const agent = agents.get(socket.data?.printAgentId);
+    if (!agent) return false;
+    const turnedOnline = !isAgentOnline(agent);
     agent.sockets.add(socket.id);
     agent.lastSeen = Date.now();
-    if (data?.name && !agent.name) agent.name = text(data.name, 100);
-    socket.data.printAgentId = id;
-    socket.join('print-agents');
     return turnedOnline;
 };
 
@@ -153,7 +143,46 @@ const getPrintRouting = async () => {
     };
 };
 
+// Pending tickets older than this are not replayed: a KOT/bill printed hours late only confuses staff.
+const PRINT_JOB_RETRY_WINDOW_MS = (Number.parseInt(process.env.PRINT_JOB_RETRY_WINDOW_MIN, 10) || 30) * 60 * 1000;
+
+// Durable outbox: jobs no agent has confirmed yet (it was reconnecting, or a printer failed).
+const listPendingPrintJobs = () => KOTPrintJob.find({
+    status: 'pending',
+    createdAt: { $gte: new Date(Date.now() - PRINT_JOB_RETRY_WINDOW_MS) }
+})
+    .sort('createdAt')
+    .limit(100)
+    .lean();
+
+// ok = every selected printer printed. Returns null for jobs that were never persisted.
+const recordPrintJobResult = async (eventId, { ok, agentId, results, error } = {}, io = null) => {
+    const update = {
+        agentId: text(agentId, 100),
+        results: Array.isArray(results) ? results.slice(0, 50) : [],
+        lastError: ok ? '' : text(error || 'One or more printer targets failed', 1000)
+    };
+    if (ok) Object.assign(update, { status: 'printed', printedAt: new Date() });
+    const job = await KOTPrintJob.findOneAndUpdate(
+        { eventId: String(eventId) },
+        { $set: update, $inc: { attempts: 1 } },
+        { new: true }
+    );
+    // Alert admin panels once per job; the agent keeps retrying every few seconds.
+    if (job && !ok && job.attempts === 1) {
+        io?.emit('print-job-failed', {
+            eventId: job.eventId,
+            jobType: job.jobType,
+            label: job.payload?.billNumber || job.payload?.kotTicket || job.payload?.orderNumber || '',
+            error: job.lastError
+        });
+    }
+    return job;
+};
+
 module.exports = {
+    listPendingPrintJobs,
+    recordPrintJobResult,
     registerAgent,
     unregisterSocket,
     touchAgentHeartbeat,

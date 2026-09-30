@@ -1,5 +1,5 @@
 @echo off
-title Stop Kea Print Agent & Watchdog
+title Stop Kea Print Agent ^& Watchdog
 cd /d "%~dp0"
 
 echo Stopping Kea Print Agent and 24/7 Watchdog processes...

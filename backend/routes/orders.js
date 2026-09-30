@@ -12,7 +12,7 @@ const User = require('../models/User');
 const LoyaltySettings = require('../models/LoyaltySettings');
 const LoyaltyOffer = require('../models/LoyaltyOffer');
 const KOTPrintJob = require('../models/KOTPrintJob');
-const { getPrintRouting } = require('../utils/printAgents');
+const { getPrintRouting, listPendingPrintJobs, recordPrintJobResult } = require('../utils/printAgents');
 const { checkOrderEditCode, isOrderEditCodeSet } = require('../utils/orderEditCode');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const { generateOrderNumber } = require('../utils/helpers');
@@ -288,21 +288,11 @@ router.get('/kot-logs', protect, admin, async (req, res) => {
     }
 });
 
-// Pending tickets older than this are not replayed: a KOT/bill printed hours late only confuses staff.
-const PRINT_JOB_RETRY_WINDOW_MS = (Number.parseInt(process.env.PRINT_JOB_RETRY_WINDOW_MIN, 10) || 30) * 60 * 1000;
-
-// Desktop print agent durable catch-up endpoint. Socket delivery remains the
-// fast path; this endpoint recovers KOTs created while the local agent was off.
+// Desktop print agent durable catch-up over HTTP (agents with PRINT_AGENT_KEY). Agents without a key
+// use the same outbox over the websocket (server.js).
 router.get('/print-jobs/pending', requirePrintAgent, async (req, res) => {
     try {
-        const jobs = await KOTPrintJob.find({
-            status: 'pending',
-            createdAt: { $gte: new Date(Date.now() - PRINT_JOB_RETRY_WINDOW_MS) }
-        })
-            .sort('createdAt')
-            .limit(100)
-            .lean();
-        res.json({ jobs });
+        res.json({ jobs: await listPendingPrintJobs() });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -310,20 +300,7 @@ router.get('/print-jobs/pending', requirePrintAgent, async (req, res) => {
 
 router.post('/print-jobs/:eventId/ack', requirePrintAgent, async (req, res) => {
     try {
-        const job = await KOTPrintJob.findOneAndUpdate(
-            { eventId: req.params.eventId },
-            {
-                $set: {
-                    status: 'printed',
-                    printedAt: new Date(),
-                    agentId: String(req.body.agentId || '').slice(0, 100),
-                    results: Array.isArray(req.body.results) ? req.body.results : [],
-                    lastError: ''
-                },
-                $inc: { attempts: 1 }
-            },
-            { new: true }
-        );
+        const job = await recordPrintJobResult(req.params.eventId, { ...req.body, ok: true }, req.app.get('io'));
         if (!job) return res.status(404).json({ message: 'KOT print job not found' });
         res.json({ acknowledged: true, eventId: job.eventId });
     } catch (error) {
@@ -333,28 +310,8 @@ router.post('/print-jobs/:eventId/ack', requirePrintAgent, async (req, res) => {
 
 router.post('/print-jobs/:eventId/failure', requirePrintAgent, async (req, res) => {
     try {
-        const job = await KOTPrintJob.findOneAndUpdate(
-            { eventId: req.params.eventId },
-            {
-                $set: {
-                    agentId: String(req.body.agentId || '').slice(0, 100),
-                    results: Array.isArray(req.body.results) ? req.body.results : [],
-                    lastError: String(req.body.error || 'One or more printer targets failed').slice(0, 1000)
-                },
-                $inc: { attempts: 1 }
-            },
-            { new: true }
-        );
+        const job = await recordPrintJobResult(req.params.eventId, { ...req.body, ok: false }, req.app.get('io'));
         if (!job) return res.status(404).json({ message: 'KOT print job not found' });
-        // Alert admin panels once per job; the agent keeps retrying every few seconds.
-        if (job.attempts === 1) {
-            req.app.get('io')?.emit('print-job-failed', {
-                eventId: job.eventId,
-                jobType: job.jobType,
-                label: job.payload?.billNumber || job.payload?.kotTicket || job.payload?.orderNumber || '',
-                error: job.lastError
-            });
-        }
         res.json({ recorded: true, eventId: job.eventId });
     } catch (error) {
         res.status(500).json({ message: error.message });

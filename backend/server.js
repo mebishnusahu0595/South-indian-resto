@@ -94,7 +94,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: "Kea By The Pool API is running" });
 });
 
-const { registerAgent, unregisterSocket, touchAgentHeartbeat } = require('./utils/printAgents');
+const { registerAgent, unregisterSocket, touchAgentHeartbeat, listPendingPrintJobs, recordPrintJobResult } = require('./utils/printAgents');
 const { getPrinterConfig, addDetectedPrinters } = require('./utils/printerConfig');
 
 // Socket.IO connection handling
@@ -117,6 +117,7 @@ io.on('connection', (socket) => {
     socket.on('print-agent:register', async (payload) => {
         const agent = registerAgent(socket, payload, io);
         if (!agent) return;
+        console.log(`[PrintAgent] Agent registered: ${agent.id} (${agent.name}) with ${agent.printers.length} printer(s)`);
         io.emit('printer-devices-updated', { at: Date.now() });
         try {
             // Default: newly detected printers are ticked for KOT and Bill (auto-select).
@@ -130,12 +131,33 @@ io.on('connection', (socket) => {
     });
 
     // High-frequency heartbeat from agent (every 2-5s) keeping status actively 100% online
-    socket.on('print-agent:heartbeat', (data) => {
-        const turnedOnline = touchAgentHeartbeat(socket, data);
+    socket.on('print-agent:heartbeat', () => {
+        const turnedOnline = touchAgentHeartbeat(socket);
         if (turnedOnline) {
             io.emit('printer-devices-updated', { at: Date.now() });
         }
         socket.emit('print-agent:heartbeat-ack', { ok: true, serverTime: Date.now() });
+    });
+
+    // Durable outbox over the websocket (works without PRINT_AGENT_KEY): KOTs/Bills emitted while the
+    // agent was reconnecting are replayed until the agent confirms them.
+    socket.on('print-agent:pending', async (_payload, reply) => {
+        if (typeof reply !== 'function') return;
+        if (!socket.data.printAgentId) return reply({ jobs: [] });
+        try {
+            reply({ jobs: await listPendingPrintJobs() });
+        } catch (error) {
+            reply({ jobs: [], error: error.message });
+        }
+    });
+
+    socket.on('print-agent:job-result', async (result) => {
+        if (!socket.data.printAgentId || !result?.eventId) return;
+        try {
+            await recordPrintJobResult(result.eventId, { ...result, agentId: socket.data.printAgentId }, io);
+        } catch (error) {
+            console.error('Could not record print job result:', error.message);
+        }
     });
 
     socket.on('print-agent:test-result', (result) => {

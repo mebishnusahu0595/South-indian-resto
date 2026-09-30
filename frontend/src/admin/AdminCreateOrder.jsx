@@ -54,40 +54,40 @@ const AdminCreateOrder = () => {
     // Max discount cap
     const [maxDiscountPercent, setMaxDiscountPercent] = useState(20);
 
-    // Kitchen Printer IP state (saved in localStorage)
-    const [kitchenPrinterIp, setKitchenPrinterIp] = useState(() => {
-        return localStorage.getItem('kea_kitchen_printer_ip') || '';
-    });
+    // Printer status comes from the server registry (what the PC print agent actually uses).
+    const [kitchenPrinterIp, setKitchenPrinterIp] = useState('');
+    const [printAgentOnline, setPrintAgentOnline] = useState(false);
     const [showPrinterModal, setShowPrinterModal] = useState(false);
-    const [tempPrinterIp, setTempPrinterIp] = useState(kitchenPrinterIp);
+    const [tempPrinterIp, setTempPrinterIp] = useState('');
+    const showPrinterStatus = (data) => {
+        const kotHosts = (data?.printers || [])
+            .filter(p => p.type !== 'system' && p.host && p.kot && p.enabled !== false)
+            .map(p => p.host);
+        setKitchenPrinterIp(kotHosts.join(', '));
+        setPrintAgentOnline(Boolean(data?.agentsOnline));
+    };
+    // Adds the IP as a KOT printer (or re-enables it), saved on the server so every KOT prints on it.
     const handleSavePrinterIp = async () => {
         const clean = tempPrinterIp.trim();
-        localStorage.setItem('kea_kitchen_printer_ip', clean);
-        setKitchenPrinterIp(clean);
-        setShowPrinterModal(false);
-
+        if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(clean)) {
+            alert('Enter a valid printer IP, e.g. 192.168.1.87');
+            return;
+        }
         try {
             const res = await getPrinterSettings();
             const currentPrinters = res.data?.printers || [];
-            const existingKitchen = currentPrinters.find(p => p.role === 'kitchen' || p.name?.toLowerCase().includes('kitchen'));
-            let updatedPrinters;
-            if (clean) {
-                if (existingKitchen) {
-                    updatedPrinters = currentPrinters.map(p => p === existingKitchen ? { ...p, host: clean, enabled: true, kot: true } : p);
-                } else {
-                    updatedPrinters = [
-                        ...currentPrinters,
-                        { id: 'kitchen', name: 'Kitchen Printer', role: 'kitchen', type: 'tcp', host: clean, port: 9100, kot: true, bill: false, copies: 1, enabled: true }
-                    ];
-                }
-            } else if (existingKitchen) {
-                updatedPrinters = currentPrinters.map(p => p === existingKitchen ? { ...p, enabled: false, kot: false } : p);
-            } else {
-                updatedPrinters = currentPrinters;
-            }
-            await updatePrinterSettings({ printers: updatedPrinters, autoSelectPrinters: res.data?.autoSelect });
+            const existing = currentPrinters.find(p => p.type !== 'system' && p.host === clean);
+            const updatedPrinters = existing
+                ? currentPrinters.map(p => p === existing ? { ...p, enabled: true, kot: true } : p)
+                : [
+                    ...currentPrinters,
+                    { id: `printer-${Date.now()}`, name: `WiFi Printer ${clean}`, role: 'kitchen', type: 'tcp', host: clean, port: 9100, kot: true, bill: false, copies: 1, enabled: true }
+                ];
+            const saved = await updatePrinterSettings({ ...res.data, printers: updatedPrinters });
+            showPrinterStatus({ ...saved.data, agentsOnline: res.data?.agentsOnline });
+            setShowPrinterModal(false);
         } catch (err) {
-            console.error('Failed to sync kitchen printer to server:', err);
+            alert(err.response?.data?.message || 'Could not save printer IP. Only Superadmin can add printers.');
         }
     };
 
@@ -156,12 +156,7 @@ const AdminCreateOrder = () => {
             setMaxDiscountPercent(discountRes.data.maxDiscountPercent);
             setSections(sectionsRes.data || []);
 
-            const kitchenPr = (printerRes.data?.printers || []).find(p => p.role === 'kitchen' || p.name?.toLowerCase().includes('kitchen'));
-            if (kitchenPr?.host) {
-                setKitchenPrinterIp(kitchenPr.host);
-                setTempPrinterIp(kitchenPr.host);
-                localStorage.setItem('kea_kitchen_printer_ip', kitchenPr.host);
-            }
+            showPrinterStatus(printerRes.data);
         } catch (err) {
             console.error('Error fetching admin order data:', err);
             setError('Failed to load menu categories, tables and coupons');
@@ -425,22 +420,22 @@ const AdminCreateOrder = () => {
                             </p>
                             {/* Dual Printer Status Bar */}
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                <span style={{ fontSize: '0.82rem', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', padding: '4px 10px', borderRadius: '16px', fontWeight: '700' }}>
-                                    🖥️ Counter USB: Connected
+                                <span style={{ fontSize: '0.82rem', background: printAgentOnline ? '#ECFDF5' : '#FEF3C7', border: printAgentOnline ? '1px solid #A7F3D0' : '1px solid #FDE68A', color: printAgentOnline ? '#065F46' : '#92400E', padding: '4px 10px', borderRadius: '16px', fontWeight: '700' }}>
+                                    🖥️ PC Print Agent: {printAgentOnline ? 'Online' : 'Offline (browser prints)'}
                                 </span>
                                 <span style={{ fontSize: '0.82rem', background: kitchenPrinterIp ? '#ECFDF5' : '#FEF3C7', border: kitchenPrinterIp ? '1px solid #A7F3D0' : '1px solid #FDE68A', color: kitchenPrinterIp ? '#065F46' : '#92400E', padding: '4px 10px', borderRadius: '16px', fontWeight: '700' }}>
-                                    🖨️ Kitchen WiFi IP: {kitchenPrinterIp ? `${kitchenPrinterIp}:9100` : 'Not Set'}
+                                    🖨️ KOT WiFi Printers: {kitchenPrinterIp || 'Not Set'}
                                 </span>
                                 <button
                                     type="button"
                                     className="btn btn-secondary btn-sm"
                                     style={{ padding: '4px 10px', fontSize: '0.78rem', fontWeight: 'bold' }}
                                     onClick={() => {
-                                        setTempPrinterIp(kitchenPrinterIp);
+                                        setTempPrinterIp('');
                                         setShowPrinterModal(true);
                                     }}
                                 >
-                                    ⚙️ Connect WiFi Printer IP
+                                    ⚙️ Add WiFi Printer IP
                                 </button>
                             </div>
                         </div>
@@ -1011,15 +1006,15 @@ const AdminCreateOrder = () => {
                 <div className="modal-overlay" onClick={() => setShowPrinterModal(false)}>
                     <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '460px', width: '92%' }}>
                         <div className="modal-header">
-                            <h2 style={{ margin: 0, fontSize: '1.2rem' }}>🖨️ Configure Kitchen WiFi Printer</h2>
+                            <h2 style={{ margin: 0, fontSize: '1.2rem' }}>🖨️ Add WiFi Printer</h2>
                             <button className="modal-close" onClick={() => setShowPrinterModal(false)}>×</button>
                         </div>
                         <div style={{ padding: '16px 0' }}>
                             <p style={{ fontSize: '0.9rem', color: '#4B5563', margin: '0 0 12px 0', lineHeight: '1.4' }}>
-                                Enter the LAN/WiFi IP address of your Kitchen Thermal Printer (Port 9100). The IP address will be saved and used by your Desktop Print Agent & Staff App.
+                                Enter the LAN/WiFi IP address of the thermal printer (Port 9100). It is saved on the server and every KOT prints on it, along with the other selected printers.
                             </p>
                             <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.88rem', marginBottom: '6px' }}>
-                                Kitchen Printer IP Address:
+                                Printer IP Address:
                             </label>
                             <input
                                 type="text"
@@ -1031,7 +1026,7 @@ const AdminCreateOrder = () => {
                             />
 
                             <div style={{ marginTop: '12px', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '10px 12px', borderRadius: '6px', fontSize: '0.84rem', color: '#065F46', lineHeight: '1.4' }}>
-                                💡 <strong>How it works:</strong> Clicking <strong>Save Printer IP</strong> binds <strong style={{ color: '#047857' }}>{tempPrinterIp || '192.168.1.67'}</strong> to Port 9100. Both Counter USB & Kitchen WiFi printers will receive KOT slips!
+                                💡 <strong>How it works:</strong> Clicking <strong>Save Printer IP</strong> adds <strong style={{ color: '#047857' }}>{tempPrinterIp || '192.168.1.67'}</strong> (Port 9100) as a KOT printer. Counter USB and all WiFi KOT printers receive every KOT. Remove or untick printers in Settings → Printers.
                             </div>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>

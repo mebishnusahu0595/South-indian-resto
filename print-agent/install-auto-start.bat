@@ -1,9 +1,10 @@
 @echo off
-title Kea Print Agent - 24/7 Auto Start & Protocol Setup
+title Kea Print Agent - 24/7 Auto Start ^& Protocol Setup
 cd /d "%~dp0"
 
 echo ====================================================
-echo   Kea Print Agent - 24/7 Auto Start & Auto-Run Setup
+echo   Kea Print Agent - 24/7 Auto Start ^& Auto-Run Setup
+
 echo ====================================================
 echo.
 

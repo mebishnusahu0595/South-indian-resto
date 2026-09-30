@@ -11,7 +11,8 @@ Settings.setSetting = async (key, value) => {
 };
 
 const { normalizePrinterRegistry, addDetectedPrinters, getPrinterConfig } = require('../utils/printerConfig');
-const { registerAgent, unregisterSocket, getPrintRouting } = require('../utils/printAgents');
+const KOTPrintJob = require('../models/KOTPrintJob');
+const { registerAgent, unregisterSocket, touchAgentHeartbeat, recordPrintJobResult, getPrintRouting } = require('../utils/printAgents');
 const { setOrderEditCode, checkOrderEditCode } = require('../utils/orderEditCode');
 
 const routed = async () => {
@@ -54,6 +55,11 @@ const routed = async () => {
     config = await getPrinterConfig();
     assert.strictEqual(config.printers.find(p => p.type === 'tcp').kot, false);
 
+    // Superadmin removes the LAN printer: the next scan must not add it back (ticks stay as saved).
+    store.set('printer_registry', config.printers.filter(p => p.type !== 'tcp'));
+    assert.strictEqual(await addDetectedPrinters(agent.printers, { agentId: agent.id }), false);
+    assert.strictEqual((await getPrinterConfig()).printers.some(p => p.type === 'tcp'), false);
+
     // A USB printer on another (offline) PC is unreachable; per-job ticks and the master switch are respected.
     store.set('printer_registry', [{ type: 'system', systemName: 'EPSON TM-T82', agentId: 'OTHER-PC', kot: true, bill: true }]);
     assert.deepStrictEqual(await routed(), [false, false]);
@@ -70,6 +76,40 @@ const routed = async () => {
     // Auto-select off: detected printers are listed but not added.
     store.set('printer_auto_select', false);
     assert.strictEqual(await addDetectedPrinters([{ type: 'tcp', host: '192.168.1.99', port: 9100 }]), false);
+
+    // Windows renamed the USB queue after a reboot: the new queue takes over KOT; a second queue does not.
+    store.set('printer_auto_select', true);
+    store.set('printer_registry', [{ type: 'system', systemName: 'POS-80', agentId: 'COUNTER-PC', kot: true, bill: true }]);
+    await addDetectedPrinters([{ type: 'system', systemName: 'POS-80 (Copy 1)', connection: 'usb' }], { agentId: 'COUNTER-PC' });
+    assert.strictEqual((await getPrinterConfig()).printers.find(p => p.systemName === 'POS-80 (Copy 1)').kot, true);
+    await addDetectedPrinters([
+        { type: 'system', systemName: 'POS-80 (Copy 1)', connection: 'usb' },
+        { type: 'system', systemName: 'POS-80 (Copy 2)', connection: 'usb' }
+    ], { agentId: 'COUNTER-PC' });
+    assert.strictEqual((await getPrinterConfig()).printers.find(p => p.systemName === 'POS-80 (Copy 2)').kot, false);
+
+    // Heartbeats never turn an unregistered socket into a print agent.
+    const stranger = { id: 's2', data: {}, join() {} };
+    assert.strictEqual(touchAgentHeartbeat(stranger), false);
+    assert.strictEqual(stranger.data.printAgentId, undefined);
+
+    // Outbox results: success marks the job printed; the first failure alerts admin panels once.
+    const updates = [];
+    const emitted = [];
+    let attempts = 0;
+    KOTPrintJob.findOneAndUpdate = async (filter, update) => {
+        updates.push([filter, update]);
+        attempts += 1;
+        return { eventId: filter.eventId, jobType: 'kot', attempts, payload: { kotTicket: 'KOT-7' }, lastError: update.$set.lastError };
+    };
+    const fakeIo = { emit: (...args) => emitted.push(args) };
+    await recordPrintJobResult('ord:KOT-7', { ok: false, error: 'ETIMEDOUT' }, fakeIo);
+    await recordPrintJobResult('ord:KOT-7', { ok: false, error: 'ETIMEDOUT' }, fakeIo);
+    await recordPrintJobResult('ord:KOT-7', { ok: true }, fakeIo);
+    assert.strictEqual(emitted.length, 1);
+    assert.strictEqual(emitted[0][1].label, 'KOT-7');
+    assert.strictEqual(updates[2][1].$set.status, 'printed');
+    assert.strictEqual(updates[0][1].$set.status, undefined);
 
     // Edit code: no code set = works as before; once set it is required; 5 wrong tries lock the user.
     const staff = { _id: 'staff-1' };

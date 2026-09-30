@@ -16,7 +16,6 @@ const path = require('path');
 const os = require('os');
 const net = require('net');
 const http = require('http');
-const https = require('https');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
 const io = require('socket.io-client');
@@ -32,7 +31,6 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const SERVER_URL = (process.env.SERVER_URL || 'https://keabythepool.com').replace(/\/+$/, '');
-const API_URL = (process.env.API_URL || `${SERVER_URL.endsWith('/api') ? SERVER_URL : `${SERVER_URL}/api`}`).replace(/\/+$/, '');
 const PRINT_AGENT_KEY = process.env.PRINT_AGENT_KEY || '';
 const AGENT_ID = process.env.PRINT_AGENT_ID || os.hostname();
 
@@ -110,7 +108,7 @@ function acquireInstanceLock() {
       console.log(`[INFO] Port ${SINGLE_INSTANCE_PORT} is active.`);
       console.log(`[INFO] Exiting this duplicate window to prevent conflicts.`);
       console.log(`====================================================`);
-      setTimeout(() => process.exit(0), 1000);
+      setTimeout(() => process.exit(3), 1000); // watchdog.bat: 3 = already running, stop this watchdog
     } else {
       console.error(`[Lock] Server error: ${err.message}`);
       startCloudSocket();
@@ -183,44 +181,6 @@ async function runWithRetry(label, operation) {
     }
   }
   throw lastError;
-}
-
-function requestJson(method, urlString, body) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(urlString);
-    const transport = url.protocol === 'https:' ? https : http;
-    const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
-    const request = transport.request({
-      protocol: url.protocol,
-      hostname: url.hostname,
-      port: url.port || undefined,
-      path: `${url.pathname}${url.search}`,
-      method,
-      headers: {
-        Accept: 'application/json',
-        ...(PRINT_AGENT_KEY ? { 'x-print-agent-key': PRINT_AGENT_KEY } : {}),
-        ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': payload.length } : {})
-      },
-      timeout: 10000
-    }, response => {
-      let responseBody = '';
-      response.setEncoding('utf8');
-      response.on('data', chunk => { responseBody += chunk; });
-      response.on('end', () => {
-        let parsed = {};
-        try { parsed = responseBody ? JSON.parse(responseBody) : {}; } catch (_) { parsed = { raw: responseBody }; }
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          resolve(parsed);
-        } else {
-          reject(new Error(`HTTP ${response.statusCode}: ${parsed.message || responseBody || 'Request failed'}`));
-        }
-      });
-    });
-    request.on('timeout', () => request.destroy(new Error('HTTP request timed out')));
-    request.on('error', reject);
-    if (payload) request.write(payload);
-    request.end();
-  });
 }
 
 // ─── Printers installed on this PC (USB cable, serial, Windows/CUPS queues) ───
@@ -528,12 +488,7 @@ function printerInterfaceFor(target) {
     return { execute: buffer => printRawToSystemPrinter(target.systemName, buffer), isPrinterConnected: async () => true };
   }
   if (target.type === 'device') return target.interface;
-  try {
-    const Network = require('node-thermal-printer').interfaces.Network;
-    return new Network(target.host, target.port, { timeout: 2500 });
-  } catch (_) {
-    return `tcp://${target.host}:${target.port}`;
-  }
+  return `tcp://${target.host}:${target.port}`;
 }
 
 // ─── LAN/WiFi discovery (TCP/9100) ───
@@ -592,6 +547,7 @@ async function scanSubnet(prefix, port) {
 let discoveredPrinters = [];
 let systemPrinters = [];
 let discoveryRunning = null;
+let lastLanScanAt = 0;
 async function refreshDiscoveredPrinters() {
   if (discoveryRunning) return discoveryRunning;
 
@@ -617,6 +573,7 @@ async function refreshDiscoveredPrinters() {
           discovered: true
         }));
         console.log(`LAN discovery found ${discoveredPrinters.length} printer(s): ${hosts.join(', ') || 'none'}`);
+        lastLanScanAt = Date.now();
       }
     }
 
@@ -630,6 +587,13 @@ async function refreshDiscoveredPrinters() {
   })().finally(() => { discoveryRunning = null; });
 
   return discoveryRunning;
+}
+
+// At boot the PC may start before WiFi/spooler are ready, and a WiFi printer that stops answering
+// usually got a new DHCP IP: rescan (at most once a minute) so new printers are auto-added and ticked.
+function rescanSoon() {
+  if (Date.now() - lastLanScanAt < 60000) return;
+  refreshDiscoveredPrinters().catch(error => console.error(`Printer rescan failed: ${error.message}`));
 }
 
 // Tells the backend (websocket) which printers this PC can reach, for Superadmin Settings.
@@ -784,24 +748,16 @@ async function printTarget(job, eventId, target) {
       results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'printed' });
     } catch (error) {
       results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'failed', error: error.message });
+      if (target.type === 'tcp') rescanSoon();
     }
   }
   return results;
 }
 
-async function reportJob(eventId, succeeded, results, errorMessage = '') {
-  if (!PRINT_AGENT_KEY) return;
-  const endpoint = succeeded ? 'ack' : 'failure';
-  try {
-    await requestJson('POST', `${API_URL}/orders/print-jobs/${encodeURIComponent(eventId)}/${endpoint}`, {
-      agentId: AGENT_ID,
-      results,
-      error: errorMessage
-    });
-  } catch (error) {
-    // 404 = socket-only job that the backend did not persist (browser/app fallback mode).
-    if (!/^HTTP 404/.test(error.message)) console.error(`Could not report print job ${eventId} ${endpoint}: ${error.message}`);
-  }
+// The backend keeps every job in its outbox until an agent confirms it. Emits made while the
+// socket is reconnecting are buffered by socket.io and sent on reconnect.
+function reportJob(eventId, succeeded, results, errorMessage = '') {
+  socket.emit('print-agent:job-result', { eventId, ok: succeeded, results, error: errorMessage });
 }
 
 async function processJob(job) {
@@ -851,7 +807,8 @@ function enqueueJob(job, source = 'socket') {
   }
 
   if (processedEventIds.has(eventId)) {
-    console.log(`[Dedupe] Print job ${eventId} already handled within last 10m; ignoring duplicate from ${source}`);
+    // The outbox is polled every few seconds; only duplicate live events are worth logging.
+    if (source !== 'backend-outbox') console.log(`[Dedupe] Print job ${eventId} already handled within last 10m; ignoring duplicate from ${source}`);
     return;
   }
   processedEventIds.set(eventId, now);
@@ -902,17 +859,19 @@ async function handleTestPrint(printer) {
   }
 }
 
+// Catch-up for KOTs/Bills emitted while this agent was offline or reconnecting, and retries of
+// jobs where a printer failed. Printed copies are remembered, so nothing prints twice.
 let polling = false;
 async function pollPendingJobs() {
-  if (!PRINT_AGENT_KEY || polling) return;
+  if (polling || !socket?.connected) return;
   polling = true;
   try {
-    const response = await requestJson('GET', `${API_URL}/orders/print-jobs/pending`);
-    for (const job of response.jobs || []) {
+    const response = await socket.timeout(10000).emitWithAck('print-agent:pending', {});
+    for (const job of response?.jobs || []) {
       if (job?.payload) enqueueJob({ ...job.payload, eventId: job.eventId, jobType: job.jobType || job.payload.jobType || 'kot' }, 'backend-outbox');
     }
-  } catch (error) {
-    console.error(`Could not poll pending print jobs: ${error.message}`);
+  } catch (_) {
+    // Reconnecting, or a backend without the outbox handler: live socket events still print.
   } finally {
     polling = false;
   }
@@ -926,7 +885,6 @@ function startCloudSocket() {
   console.log(`Agent ID: ${AGENT_ID}`);
   console.log(`Counter printer: ${COUNTER_INTERFACE || 'not set (select printers in Superadmin Settings)'}`);
   console.log(`LAN auto-discovery: ${AUTO_DISCOVER_PRINTERS ? 'enabled' : 'disabled'}`);
-  console.log(`Durable backend polling: ${PRINT_AGENT_KEY ? 'enabled' : 'disabled (set PRINT_AGENT_KEY)'}`);
   console.log(`Remembered successful copies: ${successfulCopies.size}`);
 
   socket = io(SERVER_URL, {
@@ -979,14 +937,7 @@ function startCloudSocket() {
     registerWithBackend();
     sendHeartbeat();
     pollPendingJobs();
-  });
-
-  socket.on('reconnect', (attempt) => {
-    console.log(`[Socket] Reconnected to backend after ${attempt} attempt(s).`);
-    lastHeartbeatAck = Date.now();
-    registerWithBackend();
-    sendHeartbeat();
-    pollPendingJobs();
+    rescanSoon();
   });
 
   socket.on('disconnect', reason => {

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
-const { cleanHost, cleanPort, normalizePrinterRegistry, getPrinterConfig, addDetectedPrinters } = require('../utils/printerConfig');
+const { cleanHost, cleanPort, normalizePrinterRegistry, getPrinterConfig, addDetectedPrinters, rememberSeenPrinters } = require('../utils/printerConfig');
 const { reportAppDevice, listDevices, getPrintRouting } = require('../utils/printAgents');
 const { CODE_KEY, isValidOrderEditCode, setOrderEditCode, isOrderEditCodeSet } = require('../utils/orderEditCode');
 const { protect, admin, superadmin } = require('../middleware/auth');
@@ -184,6 +184,8 @@ router.get('/printers', protect, admin, async (req, res) => {
 router.put('/printers', protect, superadmin, async (req, res) => {
     try {
         const currentConfig = await getPrinterConfig();
+        // Anything Superadmin removes in this save must not be auto-added back by the next scan.
+        await rememberSeenPrinters(currentConfig.printers);
         const printerPort = cleanPort(req.body.printerPort, currentConfig.defaultPort);
         const printerEnabled = req.body.printerEnabled !== false;
         // Older clients (current APK) do not send this flag, so keep whatever is saved.
