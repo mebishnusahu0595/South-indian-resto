@@ -362,11 +362,11 @@ router.post('/:id/print', protect, admin, async (req, res) => {
         const bill = await populateBill(req.params.id);
         if (!bill) return res.status(404).json({ message: 'Bill not found' });
 
-        // Queue only when an online PC print agent can reach a Superadmin-selected Bill printer.
-        // Otherwise the admin browser prints it, so no job is left behind to replay later.
+        // Queue whenever the PC print agent owns Bill printing: it prints now, or the moment it
+        // reconnects. Without an agent / ticked Bill printer the admin browser prints it as before.
         const routing = await getPrintRouting();
-        if (!routing.billRouted) {
-            return res.json({ routed: false, message: 'No online print agent has a selected Bill printer' });
+        if (!routing.billRouted && !routing.agentBill) {
+            return res.json({ routed: false, message: 'No print agent has a selected Bill printer' });
         }
 
         const eventId = `BILL-${bill._id}-${Date.now()}`;
@@ -389,7 +389,7 @@ router.post('/:id/print', protect, admin, async (req, res) => {
             total: bill.total || 0,
             paymentMethod: bill.paymentMethod || 'pending',
             createdAt: bill.createdAt || new Date(),
-            printerConfig: routing.config
+            printerConfig: routing.agentConfig
         };
 
         const printJob = new KOTPrintJob({
@@ -398,14 +398,16 @@ router.post('/:id/print', protect, admin, async (req, res) => {
             status: 'pending',
             payload: jobPayload
         });
-        await printJob.save();
+        // Saved before the agent can ack it, emitted without waiting so the bill prints instantly.
+        const saved = printJob.save().catch(error => console.error(`Could not persist bill print job ${eventId}:`, error.message));
 
         const io = req.app.get('io');
         if (io) {
             io.emit('new-bill-print', jobPayload);
         }
+        await saved;
 
-        res.json({ routed: true, message: 'Bill print job queued successfully', eventId });
+        res.json({ routed: true, queued: !routing.billRouted, message: 'Bill print job queued successfully', eventId });
     } catch (error) {
         console.error('Bill print route error:', error);
         res.status(500).json({ message: error.message || 'Server error' });

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
 const { cleanHost, cleanPort, normalizePrinterRegistry, getPrinterConfig, addDetectedPrinters, rememberSeenPrinters } = require('../utils/printerConfig');
-const { reportAppDevice, listDevices, getPrintRouting } = require('../utils/printAgents');
+const { reportAppDevice, listDevices, getPrintRouting, withoutDuplicateRoutes } = require('../utils/printAgents');
 const { CODE_KEY, isValidOrderEditCode, setOrderEditCode, isOrderEditCodeSet } = require('../utils/orderEditCode');
 const { protect, admin, superadmin } = require('../middleware/auth');
 
@@ -218,7 +218,7 @@ router.put('/printers', protect, superadmin, async (req, res) => {
 
         const config = { version: 1, enabled: printerEnabled, autoSelect, defaultPort: printerPort, printers };
         const io = req.app.get('io');
-        if (io) io.emit('printer-settings-updated', config);
+        if (io) io.emit('printer-settings-updated', withoutDuplicateRoutes(config));
 
         res.json({
             message: 'Printer registry updated',
@@ -257,7 +257,7 @@ router.post('/printer-devices/report', protect, admin, async (req, res) => {
         const io = req.app.get('io');
         io?.emit('printer-devices-updated', { at: Date.now() });
         if (await addDetectedPrinters(device.printers, { deviceName: device.name })) {
-            io?.emit('printer-settings-updated', await getPrinterConfig());
+            io?.emit('printer-settings-updated', withoutDuplicateRoutes(await getPrinterConfig()));
         }
         res.json({ reported: true });
     } catch (error) {

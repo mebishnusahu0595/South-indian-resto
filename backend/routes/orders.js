@@ -34,24 +34,32 @@ const getKOTEventId = (payload) => {
     return `${orderId}:${ticketId}`;
 };
 
+// Browsers send "Mozilla/5.0 ..."; the React Native staff app sends "okhttp/..." and prints
+// straight to the WiFi printer itself whenever no PC agent is online.
+const isBrowserRequest = req => /^Mozilla\//.test(req.get('user-agent') || '');
+
 const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
     const eventId = getKOTEventId(payload);
     let printerConfig = { version: 1, enabled: true, defaultPort: 9100, printers: [] };
     let kotRouted = false;
+    let agentKot = false;
 
     try {
-        ({ config: printerConfig, kotRouted } = await getPrintRouting());
+        ({ agentConfig: printerConfig, kotRouted, agentKot } = await getPrintRouting());
     } catch (error) {
         console.error('Could not load printer registry for KOT:', error.message);
     }
+    // PC agent offline for a moment (restart, WiFi drop): browser KOTs wait in the outbox and print the
+    // moment it reconnects, instead of a browser popup. Staff-app KOTs are printed by the phone then.
+    const queued = !kotRouted && agentKot && isBrowserRequest(req);
 
     const eventPayload = JSON.parse(JSON.stringify({
         ...payload,
         eventId,
         kotEventType: eventType,
         printerConfig,
-        // Admin browsers skip their auto-print popup when the PC print agent owns this KOT.
-        printRouting: { kotRouted }
+        // Admin browsers skip their print popup whenever the PC print agent owns this KOT.
+        printRouting: { kotRouted, queued, agentKot }
     }));
     const durablePayload = {
         _id: eventPayload._id,
@@ -75,27 +83,26 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
         printerConfig
     };
 
-    // Persist only when an online print agent owns the KOT. When the browser/staff app prints it as
-    // the fallback, an agent that comes back later must not replay the same ticket to the kitchen.
-    if (kotRouted) {
-        try {
-            await KOTPrintJob.findOneAndUpdate(
-                { eventId },
-                {
-                    $setOnInsert: {
-                        eventId,
-                        status: 'pending',
-                        payload: durablePayload,
-                        expiresAt: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000))
-                    }
-                },
-                { upsert: true, new: true }
-            );
-        } catch (error) {
+    // Persist only when the print agent owns the KOT. When the browser/staff app prints it as the
+    // fallback, an agent that comes back later must not replay the same ticket to the kitchen.
+    // The write starts before the emit (no added print latency) and lands long before the agent's ack.
+    const persisted = (kotRouted || queued)
+        ? KOTPrintJob.findOneAndUpdate(
+            { eventId },
+            {
+                $setOnInsert: {
+                    eventId,
+                    status: 'pending',
+                    payload: durablePayload,
+                    expiresAt: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000))
+                }
+            },
+            { upsert: true, new: true }
+        ).catch((error) => {
             // Socket delivery must still happen if the durable outbox is temporarily unavailable.
             console.error(`Could not persist KOT print job ${eventId}:`, error.message);
-        }
-    }
+        })
+        : null;
 
     const io = req.app.get('io');
     if (io) {
@@ -109,6 +116,7 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
             io.emit('new-kot', eventPayload);
         }
     }
+    await persisted;
     return eventPayload;
 };
 

@@ -12,7 +12,7 @@ Settings.setSetting = async (key, value) => {
 
 const { normalizePrinterRegistry, addDetectedPrinters, getPrinterConfig } = require('../utils/printerConfig');
 const KOTPrintJob = require('../models/KOTPrintJob');
-const { registerAgent, unregisterSocket, touchAgentHeartbeat, recordPrintJobResult, getPrintRouting } = require('../utils/printAgents');
+const { registerAgent, unregisterSocket, touchAgentHeartbeat, recordPrintJobResult, getPrintRouting, withoutDuplicateRoutes } = require('../utils/printAgents');
 const { setOrderEditCode, checkOrderEditCode } = require('../utils/orderEditCode');
 
 const routed = async () => {
@@ -32,7 +32,8 @@ const routed = async () => {
     // No agent online: browser / staff app keep printing.
     assert.deepStrictEqual(await routed(), [false, false]);
 
-    // Agent reports printers: real ones are auto-ticked for KOT + Bill, unknown queues are not.
+    // Agent reports printers: real ones are auto-ticked for KOT + Bill; unknown queues get Bill only
+    // (one installed queue per PC takes KOT).
     const socket = { id: 's1', data: {}, join() {} };
     const agent = registerAgent(socket, {
         agentId: 'COUNTER-PC',
@@ -46,7 +47,7 @@ const routed = async () => {
     assert.ok(agent);
     assert.strictEqual(await addDetectedPrinters(agent.printers, { agentId: agent.id, deviceName: agent.name }), true);
     let config = await getPrinterConfig();
-    assert.deepStrictEqual(config.printers.map(p => [p.type, p.kot, p.bill]), [['tcp', true, true], ['system', true, true]]);
+    assert.deepStrictEqual(config.printers.map(p => [p.type, p.kot, p.bill]), [['tcp', true, true], ['system', true, true], ['system', false, true]]);
     assert.deepStrictEqual(await routed(), [true, true]);
 
     // Superadmin unticks the LAN printer: the next scan must not tick it again.
@@ -110,6 +111,30 @@ const routed = async () => {
     assert.strictEqual(emitted[0][1].label, 'KOT-7');
     assert.strictEqual(updates[2][1].$set.status, 'printed');
     assert.strictEqual(updates[0][1].$set.status, undefined);
+
+    // Agent offline but known (it owns a saved USB printer): it still owns KOT/Bill (outbox), so no popup.
+    store.set('printer_registry', [
+        { type: 'system', systemName: 'RETSOL RTP-81', agentId: 'COUNTER-PC', kot: true, bill: true },
+        { type: 'system', systemName: 'KITCHAN', agentId: 'COUNTER-PC', kot: true, bill: false },
+        { type: 'tcp', host: '192.168.1.67', kot: true, bill: false }
+    ]);
+    let routing = await getPrintRouting();
+    assert.deepStrictEqual([routing.kotRouted, routing.agentKot, routing.agentBill], [true, true, true]);
+
+    // KITCHAN is the Windows queue of 192.168.1.67: agents print that KOT once, over direct WiFi.
+    const pc = registerAgent({ id: 's3', data: {}, join() {} }, {
+        agentId: 'COUNTER-PC',
+        printers: [
+            { type: 'system', systemName: 'RETSOL RTP-81', connection: 'usb' },
+            { type: 'system', systemName: 'KITCHAN', connection: 'network', host: '192.168.1.67' }
+        ]
+    });
+    routing = await getPrintRouting();
+    const agentKOT = routing.agentConfig.printers.filter(p => p.kot).map(p => p.systemName || p.host);
+    assert.deepStrictEqual(agentKOT, ['RETSOL RTP-81', '192.168.1.67']);
+    assert.strictEqual(routing.config.printers.find(p => p.systemName === 'KITCHAN').kot, true);
+    assert.strictEqual(withoutDuplicateRoutes(routing.config).printers.find(p => p.systemName === 'KITCHAN').kot, false);
+    assert.ok(pc);
 
     // Edit code: no code set = works as before; once set it is required; 5 wrong tries lock the user.
     const staff = { _id: 'staff-1' };

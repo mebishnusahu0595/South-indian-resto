@@ -94,7 +94,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: "Kea By The Pool API is running" });
 });
 
-const { registerAgent, unregisterSocket, touchAgentHeartbeat, listPendingPrintJobs, recordPrintJobResult } = require('./utils/printAgents');
+const { registerAgent, unregisterSocket, touchAgentHeartbeat, listPendingPrintJobs, recordPrintJobResult, withoutDuplicateRoutes } = require('./utils/printAgents');
 const { getPrinterConfig, addDetectedPrinters } = require('./utils/printerConfig');
 
 // Socket.IO connection handling
@@ -122,7 +122,7 @@ io.on('connection', (socket) => {
         try {
             // Default: newly detected printers are ticked for KOT and Bill (auto-select).
             const added = await addDetectedPrinters(agent.printers, { agentId: agent.id, deviceName: agent.name });
-            const config = await getPrinterConfig();
+            const config = withoutDuplicateRoutes(await getPrinterConfig());
             if (added) io.emit('printer-settings-updated', config);
             else socket.emit('printer-settings-updated', config);
         } catch (error) {

@@ -123,23 +123,51 @@ const listDevices = () => [
     ...Array.from(appDevices.values()).map(device => ({ ...device, kind: 'app' }))
 ];
 
-// kotRouted/billRouted = an online PC agent can reach at least one printer selected for that job.
-// Only then the agent owns printing; otherwise browser/staff-app printing is used as before.
+// One physical printer ticked twice: its Windows queue (e.g. "KITCHAN") and its IP as a WiFi printer.
+// Both routes print every ticket and the two connections fight over the printer (one copy comes out
+// late), so agents only get the direct WiFi route for that job. Settings still shows the saved ticks.
+const withoutDuplicateRoutes = (config) => {
+    const direct = new Set(config.printers
+        .filter(printer => printer.type !== 'system' && printer.enabled !== false)
+        .flatMap(printer => ['kot', 'bill'].filter(job => printer[job]).map(job => `${job}:${printer.host}`)));
+    return {
+        ...config,
+        printers: config.printers.map((printer) => {
+            if (printer.type !== 'system') return printer;
+            const host = (agents.get(printer.agentId)?.printers || [])
+                .find(found => found.type === 'system' && found.systemName === printer.systemName)?.host;
+            if (!host) return printer;
+            const kot = printer.kot && !direct.has(`kot:${host}`);
+            const bill = printer.bill && !direct.has(`bill:${host}`);
+            return kot === printer.kot && bill === printer.bill ? printer : { ...printer, kot, bill };
+        })
+    };
+};
+
+// kotRouted/billRouted = an online PC agent can reach a printer ticked for that job right now.
+// agentKot/agentBill = a PC agent owns that job (one registered since this server started, or one that
+// owns a saved USB/installed printer): it prints now, or from the outbox as soon as it reconnects,
+// so browsers never need their print popup. Without any agent, browser/staff-app printing works as before.
 const getPrintRouting = async () => {
     const config = await getPrinterConfig();
     const onlineAgentIds = new Set(Array.from(agents.values()).filter(isAgentOnline).map(agent => agent.id));
-    // USB/installed printers need their own PC online; LAN printers can be reached by any agent.
-    const isReachable = printer => (printer.type === 'system'
-        ? onlineAgentIds.has(printer.agentId)
-        : onlineAgentIds.size > 0);
-    const isRouted = job => config.enabled !== false
-        && config.printers.some(printer => printer.enabled !== false && printer[job] && isReachable(printer));
+    const knownAgentIds = new Set([
+        ...agents.keys(),
+        ...config.printers.filter(printer => printer.type === 'system').map(printer => printer.agentId)
+    ]);
+    // USB/installed printers need their own PC; LAN printers can be reached by any agent.
+    const canPrint = (job, agentIds) => config.enabled !== false
+        && config.printers.some(printer => printer.enabled !== false && printer[job]
+            && (printer.type === 'system' ? agentIds.has(printer.agentId) : agentIds.size > 0));
 
     return {
         config,
+        agentConfig: withoutDuplicateRoutes(config),
         agentsOnline: onlineAgentIds.size,
-        kotRouted: isRouted('kot'),
-        billRouted: isRouted('bill')
+        kotRouted: canPrint('kot', onlineAgentIds),
+        billRouted: canPrint('bill', onlineAgentIds),
+        agentKot: canPrint('kot', knownAgentIds),
+        agentBill: canPrint('bill', knownAgentIds)
     };
 };
 
@@ -181,6 +209,7 @@ const recordPrintJobResult = async (eventId, { ok, agentId, results, error } = {
 };
 
 module.exports = {
+    withoutDuplicateRoutes,
     listPendingPrintJobs,
     recordPrintJobResult,
     registerAgent,

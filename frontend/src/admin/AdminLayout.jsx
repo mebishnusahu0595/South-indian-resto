@@ -70,6 +70,11 @@ const AdminLayout = () => {
 
     const [layoutKOT, setLayoutKOT] = useState(null);
     const [kotQueue, setKotQueue] = useState([]);
+    // One click closes the popup: waiting tickets are dropped too, otherwise the next one pops up at once.
+    const closeKOTPopups = () => {
+        setKotQueue([]);
+        setLayoutKOT(null);
+    };
     const handledKOTKeysRef = useRef(loadHandledKOTKeys());
 
     // Only one ticket is mounted and printed at a time. The next ticket waits
@@ -127,8 +132,17 @@ const AdminLayout = () => {
                 return;
             }
 
-            // The restaurant PC print agent is printing this KOT on the Superadmin-selected printers.
-            if (order.printRouting?.kotRouted) {
+            // The restaurant PC print agent prints this KOT on the ticked printers, now or the moment it
+            // reconnects: no browser popup. Staff only get a note while the agent is offline.
+            const routing = order.printRouting || {};
+            if (routing.kotRouted || routing.agentKot) {
+                if (!routing.kotRouted) {
+                    setNotifications(prev => [...prev, {
+                        type: 'bill',
+                        message: `⚠️ PC print agent offline — KOT ${order.kotTicket || `#${order.orderNumber}`} ${routing.queued ? 'prints automatically when it reconnects' : 'is printed from the staff app'}`,
+                        id: order._id
+                    }]);
+                }
                 return;
             }
 
@@ -355,7 +369,7 @@ const AdminLayout = () => {
 
             {/* Global 80mm KOT Ticket Printable Modal across all admin tabs */}
             {layoutKOT && (
-                <div className="bill-modal-overlay" onClick={() => setLayoutKOT(null)}>
+                <div className="bill-modal-overlay" onClick={closeKOTPopups}>
                     <div className="bill-container print-bill-overlay" onClick={e => e.stopPropagation()} style={{ maxWidth: '380px' }}>
                         <div className="bill-header">
                             <h2>KEA BY THE POOL</h2>
@@ -420,7 +434,7 @@ const AdminLayout = () => {
 
                         <div className="bill-actions">
                             <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => window.print()}>🖨️ Print KOT</button>
-                            <button className="btn-close" onClick={() => setLayoutKOT(null)}>Close</button>
+                            <button className="btn-close" onClick={closeKOTPopups}>Close</button>
                         </div>
                     </div>
                 </div>
