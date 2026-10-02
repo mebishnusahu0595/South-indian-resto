@@ -132,18 +132,14 @@ const AdminLayout = () => {
                 return;
             }
 
-            // The restaurant PC print agent prints this KOT on the ticked printers, now or the moment it
-            // reconnects: no browser popup. Staff only get a note while the agent is offline.
+            // Show notification if PC agent is currently offline
             const routing = order.printRouting || {};
-            if (routing.kotRouted || routing.agentKot) {
-                if (!routing.kotRouted) {
-                    setNotifications(prev => [...prev, {
-                        type: 'bill',
-                        message: `⚠️ PC print agent offline — KOT ${order.kotTicket || `#${order.orderNumber}`} ${routing.queued ? 'prints automatically when it reconnects' : 'is printed from the staff app'}`,
-                        id: order._id
-                    }]);
-                }
-                return;
+            if (routing.agentKot && !routing.kotRouted) {
+                setNotifications(prev => [...prev, {
+                    type: 'bill',
+                    message: `⚠️ PC print agent offline — KOT ${order.kotTicket || `#${order.orderNumber}`} ${routing.queued ? 'prints automatically when it reconnects' : 'is printed from the staff app'}`,
+                    id: order._id
+                }]);
             }
 
             const cleanOrdNo = String(order.orderNumber || '').replace(/^CD-/, '');
@@ -182,7 +178,8 @@ const AdminLayout = () => {
                     notes: i.notes || i.instruction || i.specialInstructions || i.note || ''
                 })),
                 notes: order.specialInstructions || order.instructions || order.notes || '',
-                timestamp: order.kotCreatedAt || order.createdAt || new Date()
+                timestamp: order.kotCreatedAt || order.createdAt || new Date(),
+                kotRouted: Boolean(routing.kotRouted)
             };
 
             setKotQueue(prev => prev.some(ticket => ticket.printKey === printKey) ? prev : [...prev, kotObj]);

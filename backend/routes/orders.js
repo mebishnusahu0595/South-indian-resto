@@ -111,6 +111,7 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
         // on CREATE caused the agent to print every KOT twice.
         if (eventType === 'CREATE') {
             io.emit('new-order', eventPayload);
+            io.emit('new-kot', eventPayload);
         } else {
             io.emit('new-print-job', eventPayload);
             io.emit('new-kot', eventPayload);

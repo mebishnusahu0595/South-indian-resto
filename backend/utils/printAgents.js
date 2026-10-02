@@ -7,6 +7,9 @@ const { getPrinterConfig, cleanHost, cleanPort } = require('./printerConfig');
 const agents = new Map();
 const appDevices = new Map();
 const MAX_APP_DEVICES = 50;
+// Last IP each PC reported for an installed network queue. Windows sometimes lists the same queue
+// without its IP (port "Ne01:"), and the duplicate-route check below still needs it.
+const systemPrinterHosts = new Map();
 // A short socket reconnect must not flip printing over to the browser/phone fallback.
 const ONLINE_GRACE_MS = 90 * 1000;
 
@@ -76,6 +79,9 @@ const registerAgent = (socket, payload = {}, io = null) => {
     agent.name = text(payload.name, 100) || id;
     agent.platform = text(payload.platform, 60);
     agent.printers = sanitizePrinters(payload.printers);
+    agent.printers
+        .filter(printer => printer.type === 'system' && printer.host)
+        .forEach(printer => systemPrinterHosts.set(`${id}:${printer.systemName}`, printer.host));
     agent.lastSeen = Date.now();
     agent.sockets.add(socket.id);
     agents.set(id, agent);
@@ -135,7 +141,8 @@ const withoutDuplicateRoutes = (config) => {
         printers: config.printers.map((printer) => {
             if (printer.type !== 'system') return printer;
             const host = (agents.get(printer.agentId)?.printers || [])
-                .find(found => found.type === 'system' && found.systemName === printer.systemName)?.host;
+                .find(found => found.type === 'system' && found.systemName === printer.systemName)?.host
+                || systemPrinterHosts.get(`${printer.agentId}:${printer.systemName}`);
             if (!host) return printer;
             const kot = printer.kot && !direct.has(`kot:${host}`);
             const bill = printer.bill && !direct.has(`bill:${host}`);

@@ -135,6 +135,12 @@ const routed = async () => {
     assert.strictEqual(routing.config.printers.find(p => p.systemName === 'KITCHAN').kot, true);
     assert.strictEqual(withoutDuplicateRoutes(routing.config).printers.find(p => p.systemName === 'KITCHAN').kot, false);
     assert.ok(pc);
+    // Windows later lists KITCHAN without its IP (port "Ne01:"): it is still printed only once.
+    registerAgent({ id: 's4', data: {}, join() {} }, {
+        agentId: 'COUNTER-PC',
+        printers: [{ type: 'system', systemName: 'KITCHAN', connection: 'usb' }]
+    });
+    assert.strictEqual((await getPrintRouting()).agentConfig.printers.find(p => p.systemName === 'KITCHAN').kot, false);
 
     // Edit code: no code set = works as before; once set it is required; 5 wrong tries lock the user.
     const staff = { _id: 'staff-1' };
