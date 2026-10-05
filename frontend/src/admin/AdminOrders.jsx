@@ -901,9 +901,9 @@ const AdminOrders = () => {
                             No KOT tickets generated for this date.
                         </p>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '16px' }}>
+                        <div className="kots-grid">
                             {kotList.map(kot => (
-                                <div key={kot._id} style={{ background: '#FFF', border: '2px solid #111', borderRadius: '10px', padding: '16px', boxShadow: '3px 3px 0px #111', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div key={kot._id} style={{ background: '#FFF', border: '2px solid #111', borderRadius: '10px', padding: '16px', boxShadow: '3px 3px 0px #111', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0, boxSizing: 'border-box' }}>
                                     <div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #111', paddingBottom: '8px', marginBottom: '10px' }}>
                                             <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#7C3AED' }}>{kot.kotNumber}</span>
@@ -2359,7 +2359,7 @@ const AdminOrders = () => {
                         </div>
 
                         <div className="bill-actions no-print">
-                            <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => window.print()}>🖨️ Print KOT</button>
+                            <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => { window.print(); setTimeout(() => setSelectedKOTForPrint(null), 350); }}>🖨️ Print KOT</button>
                             <button className="btn-close" onClick={() => setSelectedKOTForPrint(null)}>Close</button>
                         </div>
                     </div>

@@ -1,3 +1,10 @@
+.admin-orders {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
 .admin-orders h1 {
     margin-bottom: 24px;
 }
@@ -5,8 +12,13 @@
 .orders-board {
     background: white;
     border-radius: var(--radius-lg);
-    padding: 20px;
+    padding: clamp(12px, 1.5vw, 20px);
     min-height: 500px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .no-orders {
@@ -19,8 +31,22 @@
 
 .orders-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: 16px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.kots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+    gap: 16px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
 .order-card {
@@ -29,6 +55,9 @@
     padding: 16px;
     border-left: 4px solid;
     transition: all var(--transition-fast);
+    min-width: 0;
+    box-sizing: border-box;
+    word-break: break-word;
 }
 
 .order-card.status-pending {

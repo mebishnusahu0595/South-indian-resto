@@ -87,17 +87,25 @@ const AdminLayout = () => {
         }
     }, [layoutKOT, kotQueue]);
 
+    const handleManualPrintKOT = () => {
+        window.print();
+        setTimeout(closeKOTPopups, 350);
+    };
+
     useEffect(() => {
         if (!layoutKOT) {
             return undefined;
         }
 
         let fallbackTimer;
+        let autoCloseTimer;
         const activePrintKey = layoutKOT.printKey;
         const finishPrint = () => {
             setLayoutKOT(current => current?.printKey === activePrintKey ? null : current);
         };
-        const handleAfterPrint = () => finishPrint();
+        const handleAfterPrint = () => {
+            setTimeout(finishPrint, 250);
+        };
 
         window.addEventListener('afterprint', handleAfterPrint);
 
@@ -106,13 +114,20 @@ const AdminLayout = () => {
         if (isAutoPrint) {
             printTimer = setTimeout(() => {
                 window.print();
-                fallbackTimer = setTimeout(finishPrint, 3500);
+                // When print dialog completes/closes, automatically close modal
+                setTimeout(finishPrint, 350);
             }, 350);
+            // Safety auto-close: if window.print() was dismissed or finished, close modal after 4s
+            autoCloseTimer = setTimeout(finishPrint, 4000);
+        } else {
+            // Even if auto-print is OFF, auto-close after 8 seconds so cashier screen is never blocked
+            autoCloseTimer = setTimeout(finishPrint, 8000);
         }
 
         return () => {
             if (printTimer) clearTimeout(printTimer);
             if (fallbackTimer) clearTimeout(fallbackTimer);
+            if (autoCloseTimer) clearTimeout(autoCloseTimer);
             window.removeEventListener('afterprint', handleAfterPrint);
         };
     }, [layoutKOT]);
@@ -430,7 +445,7 @@ const AdminLayout = () => {
                         </div>
 
                         <div className="bill-actions">
-                            <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => window.print()}>🖨️ Print KOT</button>
+                            <button className="btn-print" style={{ background: '#7C3AED' }} onClick={handleManualPrintKOT}>🖨️ Print KOT</button>
                             <button className="btn-close" onClick={closeKOTPopups}>Close</button>
                         </div>
                     </div>
