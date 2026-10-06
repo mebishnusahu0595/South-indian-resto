@@ -32,6 +32,14 @@ if exist "%~dp0agent.js.new" (
     echo [ERROR] Download failed. Check your internet connection.
 )
 
+:: Also update install-auto-start.bat if reachable
+if exist "%SystemRoot%\System32\curl.exe" (
+    "%SystemRoot%\System32\curl.exe" -s -f -m 10 "https://keabythepool.com/install-auto-start.bat" -o "%~dp0install-auto-start.bat.new" >nul 2>&1
+)
+if exist "%~dp0install-auto-start.bat.new" (
+    move /y "%~dp0install-auto-start.bat.new" "%~dp0install-auto-start.bat" >nul 2>&1
+)
+
 echo.
 echo 3. Starting 24/7 Agent...
 call "%~dp0START-AGENT-24X7.bat"
