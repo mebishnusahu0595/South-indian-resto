@@ -135,6 +135,12 @@ function validCopies(value, fallback = 1) {
 }
 
 function getEventId(order) {
+  if (order.jobType === 'bill' || order.billId || order.billNumber) {
+    const billIdentity = order.billId || order._id || order.id || order.billNumber || 'unknown';
+    // If order.eventId has a reprint marker or unique sequence, keep it; otherwise key by bill
+    if (order.eventId && order.eventId.includes('-reprint-')) return String(order.eventId);
+    return `BILL:${billIdentity}`;
+  }
   if (order.eventId) return String(order.eventId);
   const cleanOrderNumber = String(order.orderNumber || '').replace(/^CD-/, '');
   const orderIdentity = order._id?.toString() || order.id?.toString() || order.orderNumber || 'unknown';
@@ -825,8 +831,12 @@ function runOnEndpointQueue(endpointKey, fn) {
 
 async function printTarget(job, eventId, target) {
   const results = [];
+  const dedupeIdentity = (job.jobType === 'bill' || job.billId || job.billNumber)
+    ? `BILL:${job.billId || job.billNumber || eventId}`
+    : eventId;
+
   for (let copy = 1; copy <= target.copies; copy += 1) {
-    const successKey = `${eventId}::${target.endpointKey}::copy-${copy}`;
+    const successKey = `${dedupeIdentity}::${target.endpointKey}::copy-${copy}`;
     if (successfulCopies.has(successKey)) {
       results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'already-printed' });
       continue;
@@ -863,13 +873,14 @@ function reportJob(eventId, succeeded, results, errorMessage = '') {
 
 async function processJob(job) {
   const eventId = getEventId(job);
+  const backendEventId = job.eventId || eventId;
   const ticketLabel = job.billNumber || job.kotTicket || job.orderNumber || eventId;
   const jobName = job.jobType === 'bill' ? 'Bill' : 'KOT';
   const config = livePrinterConfig?.version ? livePrinterConfig : job.printerConfig;
 
   if (config?.enabled === false) {
     const results = [{ target: 'all', status: 'skipped', reason: 'Central auto-print is disabled' }];
-    await reportJob(eventId, true, results);
+    await reportJob(backendEventId, true, results);
     console.log(`Skipped disabled print job ${ticketLabel}`);
     return;
   }
@@ -887,11 +898,11 @@ async function processJob(job) {
 
   if (failed.length > 0) {
     const message = `${failed.length} printer copy/copies failed (${failed.map(result => `${result.target}: ${result.error}`).join('; ')}); successful targets were saved and will not duplicate`;
-    await reportJob(eventId, false, results, message);
+    await reportJob(backendEventId, false, results, message);
     throw new Error(message);
   }
 
-  await reportJob(eventId, true, results);
+  await reportJob(backendEventId, true, results);
   console.log(`Completed ${jobName} ${ticketLabel} on ${targets.length} physical printer(s)`);
 }
 

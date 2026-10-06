@@ -369,11 +369,35 @@ router.post('/:id/print', protect, admin, async (req, res) => {
             return res.json({ routed: false, message: 'No print agent has a selected Bill printer' });
         }
 
-        const eventId = `BILL-${bill._id}-${Date.now()}`;
+        const forceReprint = Boolean(req.body?.forceReprint || req.query?.reprint === 'true');
+        const billIdStr = bill._id.toString();
+
+        // Deduplication: prevent duplicate prints if already printed or queued within the last 15 seconds
+        const duplicateWindowMs = 15000;
+        const recentJob = await KOTPrintJob.findOne({
+            jobType: 'bill',
+            'payload.billId': billIdStr,
+            createdAt: { $gte: new Date(Date.now() - duplicateWindowMs) }
+        }).sort({ createdAt: -1 });
+
+        if (recentJob && !forceReprint) {
+            console.log(`[Dedupe] Bill print request for ${bill.billNumber || billIdStr} suppressed (already queued ${recentJob.eventId} ${Math.round((Date.now() - recentJob.createdAt.getTime()) / 1000)}s ago)`);
+            return res.json({
+                routed: true,
+                queued: false,
+                duplicate: true,
+                message: 'Bill print job already queued or printed recently',
+                eventId: recentJob.eventId
+            });
+        }
+
+        // Deterministic eventId: unique to this bill instance (and print sequence if force reprint)
+        const reprintSuffix = forceReprint ? `-${Date.now()}` : '';
+        const eventId = `BILL-${bill._id}${reprintSuffix}`;
         const jobPayload = {
             jobType: 'bill',
             eventId,
-            billId: bill._id.toString(),
+            billId: billIdStr,
             billNumber: bill.billNumber,
             orderNumber: (bill.orderNumbers && bill.orderNumbers.length > 0) ? bill.orderNumbers.join(', ') : (bill.order?.orderNumber || ''),
             tableNumber: (bill.tableNumbers && bill.tableNumbers.length > 0) ? bill.tableNumbers.join(', ') : 'Takeaway',

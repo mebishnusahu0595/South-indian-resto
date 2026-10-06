@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import './OrderBill.css';
 import { FiCheck, FiX, FiFileText, FiPrinter } from 'react-icons/fi';
 import { printBill } from '../utils/api';
 
 const OrderBill = ({ order, orders, bill, onCancel }) => {
     const [silentQueued, setSilentQueued] = useState(false);
+    const [isPrinting, setIsPrinting] = useState(false);
+    const printedBillRef = useRef(null);
+
     // Prefer the backend Bill snapshot so consolidated totals/items are rendered exactly once.
     const ordersList = bill?.orders?.length
         ? bill.orders
@@ -16,24 +19,25 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
     // Auto print once per bill: the PC print agent prints on the Superadmin-selected Bill
     // printers when it is online; otherwise the browser print popup is used as before.
     useEffect(() => {
-        if (!hasOrders) return undefined;
+        if (!hasOrders || !billId) return undefined;
+        // Strict deduplication: never fire printBill automatically more than once per bill instance
+        if (printedBillRef.current === billId) return undefined;
+        printedBillRef.current = billId;
+
         let cancelled = false;
         let timer;
         const browserPrint = () => {
             if (!cancelled) timer = setTimeout(() => window.print(), 350);
         };
 
-        if (billId) {
-            printBill(billId)
-                .then(res => {
-                    if (cancelled) return;
-                    if (res.data?.routed) setSilentQueued(true);
-                    else browserPrint();
-                })
-                .catch(browserPrint);
-        } else {
-            browserPrint();
-        }
+        printBill(billId)
+            .then(res => {
+                if (cancelled) return;
+                if (res.data?.routed) setSilentQueued(true);
+                else browserPrint();
+            })
+            .catch(browserPrint);
+
         return () => {
             cancelled = true;
             clearTimeout(timer);
@@ -43,7 +47,9 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
     if (ordersList.length === 0) return null;
 
     const handlePrint = async () => {
+        if (isPrinting) return;
         if (bill?._id) {
+            setIsPrinting(true);
             try {
                 const res = await printBill(bill._id);
                 if (res.data?.routed) setSilentQueued(true);
@@ -51,6 +57,8 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
             } catch (err) {
                 console.error('Silent print failed, fallback to browser print dialog:', err);
                 window.print();
+            } finally {
+                setTimeout(() => setIsPrinting(false), 2000);
             }
         } else {
             window.print();
@@ -216,8 +224,8 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
                     <button className="btn-print" onClick={handleBrowserPrint} style={{ background: '#7C3AED' }}>
                         <FiPrinter /> Print Bill
                     </button>
-                    <button className="btn-print" onClick={handlePrint} style={{ background: silentQueued ? '#10B981' : '#2563EB' }}>
-                        <FiPrinter /> {silentQueued ? '✓ Thermal Printed' : 'Thermal Print'}
+                    <button className="btn-print" onClick={handlePrint} disabled={isPrinting} style={{ background: silentQueued ? '#10B981' : '#2563EB', opacity: isPrinting ? 0.7 : 1 }}>
+                        <FiPrinter /> {isPrinting ? 'Sending...' : (silentQueued ? '✓ Thermal Printed' : 'Thermal Print')}
                     </button>
                     <button className="btn-close" onClick={onCancel}>Close</button>
                 </div>

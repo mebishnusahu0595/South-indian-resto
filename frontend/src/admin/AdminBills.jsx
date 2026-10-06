@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FiChevronLeft, FiChevronRight, FiCalendar, FiTrash2, FiPrinter, FiX, FiPlus, FiMinus, FiSearch, FiDownload } from 'react-icons/fi';
 import { getBills, getBillerSuggestions, generateBill, deleteBill, printBill, bulkDeleteBills, getAllMenuItems, updateOrderItems, getCoupons, getMaxDiscount } from '../utils/api';
 import { downloadCSV } from '../utils/exportUtils';
@@ -100,6 +100,8 @@ const AdminBills = () => {
     // Bulk select state
     const [selectedBillIds, setSelectedBillIds] = useState([]);
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [isPrintingThermal, setIsPrintingThermal] = useState(false);
+    const printedBillIdsRef = useRef(new Set());
 
     useEffect(() => {
         fetchBills();
@@ -107,20 +109,19 @@ const AdminBills = () => {
     }, [selectedDate]);
 
     useEffect(() => {
-        if (!createdBill) return undefined;
+        if (!createdBill || !createdBill._id) return undefined;
+        if (printedBillIdsRef.current.has(createdBill._id)) return undefined;
+        printedBillIdsRef.current.add(createdBill._id);
+
         let cancelled = false;
         let timer;
         // PC print agent prints on the selected Bill printers when online; otherwise browser popup.
         const browserPrint = () => {
             if (!cancelled) timer = setTimeout(() => window.print(), 350);
         };
-        if (createdBill._id) {
-            printBill(createdBill._id)
-                .then(res => { if (!res.data?.routed) browserPrint(); })
-                .catch(browserPrint);
-        } else {
-            browserPrint();
-        }
+        printBill(createdBill._id)
+            .then(res => { if (!res.data?.routed) browserPrint(); })
+            .catch(browserPrint);
         return () => {
             cancelled = true;
             clearTimeout(timer);
@@ -1046,18 +1047,33 @@ const AdminBills = () => {
                             <button className="btn-print" style={{ background: '#7C3AED' }} onClick={() => window.print()}>
                                 🖨️ Print Bill
                             </button>
-                            <button className="btn-print" style={{ background: '#2563EB' }} onClick={() => {
-                                if (createdBill?._id) {
-                                    printBill(createdBill._id)
-                                        .then(res => {
-                                            if (res.data?.routed) alert('Bill sent to the selected Bill printer(s)!');
-                                            else window.print();
-                                        })
-                                        .catch(() => window.print());
-                                } else {
-                                    window.print();
-                                }
-                            }}>Thermal Print</button>
+                            <button
+                                className="btn-print"
+                                style={{ background: '#2563EB', opacity: isPrintingThermal ? 0.7 : 1 }}
+                                disabled={isPrintingThermal}
+                                onClick={async () => {
+                                    if (isPrintingThermal) return;
+                                    if (createdBill?._id) {
+                                        setIsPrintingThermal(true);
+                                        try {
+                                            const res = await printBill(createdBill._id);
+                                            if (res.data?.routed) {
+                                                alert(res.data?.duplicate ? 'Bill print is already queued or printed!' : 'Bill sent to the selected Bill printer(s)!');
+                                            } else {
+                                                window.print();
+                                            }
+                                        } catch (err) {
+                                            window.print();
+                                        } finally {
+                                            setTimeout(() => setIsPrintingThermal(false), 2000);
+                                        }
+                                    } else {
+                                        window.print();
+                                    }
+                                }}
+                            >
+                                {isPrintingThermal ? 'Sending...' : 'Thermal Print'}
+                            </button>
                             <button className="btn-close" onClick={() => {
                                 setShowEditModal(false);
                                 setCreatedBill(null);
