@@ -136,10 +136,17 @@ const withoutDuplicateRoutes = (config) => {
     const direct = new Set(config.printers
         .filter(printer => printer.type !== 'system' && printer.enabled !== false)
         .flatMap(printer => ['kot', 'bill'].filter(job => printer[job]).map(job => `${job}:${printer.host}`)));
+    const hasDirectKitchenKOT = config.printers.some(p => p.type !== 'system' && p.enabled !== false && p.kot && (p.role === 'kitchen' || p.host === '192.168.1.67'));
+
     return {
         ...config,
         printers: config.printers.map((printer) => {
             if (printer.type !== 'system') return printer;
+            // Never allow a duplicate system queue named "kitchen" or "kitchan" if a direct WiFi kitchen printer is configured
+            const isKitchenQueue = /kitch(?:e|a)n/i.test(printer.systemName || printer.name || '');
+            if (hasDirectKitchenKOT && isKitchenQueue) {
+                return { ...printer, kot: false };
+            }
             const host = (agents.get(printer.agentId)?.printers || [])
                 .find(found => found.type === 'system' && found.systemName === printer.systemName)?.host
                 || systemPrinterHosts.get(`${printer.agentId}:${printer.systemName}`);

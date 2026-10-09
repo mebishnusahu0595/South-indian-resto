@@ -1003,9 +1003,9 @@ function startCloudSocket() {
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 4000,
+    reconnectionDelayMax: 5000,
     reconnectionAttempts: Infinity,
-    timeout: 8000
+    timeout: 20000
   });
 
   // Rapid Heartbeat: Ping backend every 2 seconds to guarantee 100% online status
@@ -1017,15 +1017,17 @@ function startCloudSocket() {
     try {
       if (!socket.connected) {
         missedHeartbeats++;
-        if (missedHeartbeats >= 2) {
+        if (missedHeartbeats >= 5) {
           console.warn(`[Watchdog] Socket disconnected for ${missedHeartbeats * 2}s. Forcing immediate reconnect...`);
           socket.connect();
+          missedHeartbeats = 0;
         }
         return;
       }
 
       // Detect silent zombie socket (e.g. WiFi reconnect or PC sleep/wake)
-      if (Date.now() - lastHeartbeatAck > 12000) {
+      // Allow 60 seconds grace for network jitter / WiFi latency before resetting socket
+      if (Date.now() - lastHeartbeatAck > 60000) {
         console.warn(`[Watchdog] No heartbeat ack received for ${Math.round((Date.now() - lastHeartbeatAck) / 1000)}s. Resetting socket...`);
         lastHeartbeatAck = Date.now();
         socket.disconnect().connect();
