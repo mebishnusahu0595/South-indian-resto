@@ -26,6 +26,7 @@ const {
     getBusinessDate,
     roundMoney
 } = require('../utils/orderCalculations');
+const { splitItemsByBeverage } = require('../utils/beverageHelper');
 const { runAtomic, sessionOptions } = require('../utils/transactions');
 
 const getKOTEventId = (payload) => {
@@ -39,7 +40,7 @@ const getKOTEventId = (payload) => {
 const isBrowserRequest = req => /^Mozilla\//.test(req.get('user-agent') || '');
 
 const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
-    const eventId = getKOTEventId(payload);
+    const baseEventId = getKOTEventId(payload);
     let printerConfig = { version: 1, enabled: true, defaultPort: 9100, printers: [] };
     let kotRouted = false;
     let agentKot = false;
@@ -49,76 +50,125 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
     } catch (error) {
         console.error('Could not load printer registry for KOT:', error.message);
     }
-    // PC agent offline for a moment (restart, WiFi drop): browser KOTs wait in the outbox and print the
-    // moment it reconnects, instead of a browser popup. Staff-app KOTs are printed by the phone then.
     const queued = !kotRouted && agentKot && isBrowserRequest(req);
 
-    const eventPayload = JSON.parse(JSON.stringify({
-        ...payload,
-        eventId,
-        kotEventType: eventType,
-        printerConfig,
-        // Admin browsers skip their print popup whenever the PC print agent owns this KOT.
-        printRouting: { kotRouted, queued, agentKot }
-    }));
-    const durablePayload = {
-        _id: eventPayload._id,
-        eventId,
-        orderNumber: eventPayload.orderNumber,
-        kotTicket: eventPayload.kotTicket,
-        kotCreatedAt: eventPayload.kotCreatedAt,
-        kotEventType: eventType,
-        tableName: eventPayload.tableName,
-        tableNumber: eventPayload.tableNumber,
-        tables: (eventPayload.tables || []).map(table => ({
-            _id: table?._id,
-            name: table?.name,
-            tableNumber: table?.tableNumber
-        })),
-        placedBy: eventPayload.placedBy ? { name: eventPayload.placedBy.name } : null,
-        user: eventPayload.user ? { name: eventPayload.user.name } : null,
-        items: eventPayload.items || [],
-        specialInstructions: eventPayload.specialInstructions || '',
-        createdAt: eventPayload.createdAt,
-        printerConfig
-    };
+    const fullItems = payload.items || [];
+    const { foodItems, beverageItems } = splitItemsByBeverage(fullItems);
 
-    // Persist only when the print agent owns the KOT. When the browser/staff app prints it as the
-    // fallback, an agent that comes back later must not replay the same ticket to the kitchen.
-    // The write starts before the emit (no added print latency) and lands long before the agent's ack.
-    const persisted = (kotRouted || queued)
-        ? KOTPrintJob.findOneAndUpdate(
-            { eventId },
-            {
-                $setOnInsert: {
-                    eventId,
-                    status: 'pending',
-                    payload: durablePayload,
-                    expiresAt: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000))
-                }
-            },
-            { upsert: true, new: true }
-        ).catch((error) => {
-            // Socket delivery must still happen if the durable outbox is temporarily unavailable.
-            console.error(`Could not persist KOT print job ${eventId}:`, error.message);
-        })
-        : null;
+    // Filter printer configs:
+    // Kitchen printer: WiFi TCP printer (role: kitchen, connection: network)
+    // USB printer: USB system printer (role: bar / counter / RETSOL RTP-81, connection: usb)
+    const kitchenPrinters = (printerConfig.printers || []).map(p => ({
+        ...p,
+        kot: Boolean(p.kot && (p.type === 'tcp' || p.role === 'kitchen' || p.connection === 'network')),
+        bill: Boolean(p.bill)
+    }));
+    const usbPrinters = (printerConfig.printers || []).map(p => ({
+        ...p,
+        kot: Boolean(p.kot && (p.connection === 'usb' || p.type === 'system' || p.role === 'bar' || /retsol/i.test(p.name || p.systemName || ''))),
+        bill: Boolean(p.bill)
+    }));
+
+    const kitchenPrinterConfig = { ...printerConfig, version: Date.now(), printers: kitchenPrinters };
+    const usbPrinterConfig = { ...printerConfig, version: Date.now() + 1, printers: usbPrinters };
 
     const io = req.app.get('io');
-    if (io) {
-        // Prevent duplicate printing: the desktop agent catches new-order for CREATE,
-        // and new-print-job for incremental KOT deltas (ADD/CANCEL). Emitting both
-        // on CREATE caused the agent to print every KOT twice.
-        if (eventType === 'CREATE') {
-            io.emit('new-order', eventPayload);
-            io.emit('new-kot', eventPayload);
-        } else {
-            io.emit('new-print-job', eventPayload);
-            io.emit('new-kot', eventPayload);
+
+    const emitJob = async (jobItems, specificConfig, subEventId, subTicket, subEventType) => {
+        if (!jobItems || jobItems.length === 0) return;
+
+        const subPayload = JSON.parse(JSON.stringify({
+            ...payload,
+            eventId: subEventId,
+            kotTicket: subTicket,
+            kotEventType: subEventType,
+            items: jobItems,
+            printerConfig: specificConfig,
+            printRouting: { kotRouted, queued, agentKot }
+        }));
+
+        const durablePayload = {
+            _id: subPayload._id,
+            eventId: subEventId,
+            orderNumber: subPayload.orderNumber,
+            kotTicket: subPayload.kotTicket,
+            kotCreatedAt: subPayload.kotCreatedAt || new Date(),
+            kotEventType: subEventType,
+            tableName: subPayload.tableName,
+            tableNumber: subPayload.tableNumber,
+            tables: (subPayload.tables || []).map(table => ({
+                _id: table?._id,
+                name: table?.name,
+                tableNumber: table?.tableNumber
+            })),
+            placedBy: subPayload.placedBy ? { name: subPayload.placedBy.name } : null,
+            user: subPayload.user ? { name: subPayload.user.name } : null,
+            items: jobItems,
+            specialInstructions: subPayload.specialInstructions || '',
+            createdAt: subPayload.createdAt || new Date(),
+            printerConfig: specificConfig
+        };
+
+        if (kotRouted || queued) {
+            await KOTPrintJob.findOneAndUpdate(
+                { eventId: subEventId },
+                {
+                    $setOnInsert: {
+                        eventId: subEventId,
+                        status: 'pending',
+                        payload: durablePayload,
+                        expiresAt: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000))
+                    }
+                },
+                { upsert: true, new: true }
+            ).catch(err => console.error(`Could not persist KOT print job ${subEventId}:`, err.message));
         }
+
+        if (io) {
+            io.to('print-agents').emit('printer-settings-updated', specificConfig);
+            await new Promise(r => setTimeout(r, 60));
+
+            if (subEventType === 'CREATE') {
+                io.emit('new-order', subPayload);
+            } else {
+                io.emit('new-print-job', subPayload);
+            }
+        }
+    };
+
+    if (foodItems.length > 0 && beverageItems.length > 0) {
+        // Both Food and Beverages: Send Food to Kitchen WiFi printer, Beverages to USB printer
+        await emitJob(foodItems, kitchenPrinterConfig, `${baseEventId}-FOOD`, payload.kotTicket || '', eventType);
+        await new Promise(r => setTimeout(r, 120));
+        const bevTicket = payload.kotTicket ? `${payload.kotTicket}-BEV` : 'KOT-BEV';
+        const bevEventType = eventType === 'CREATE' ? 'KOT (BEVERAGES)' : `${eventType} (BEV)`;
+        await emitJob(beverageItems, usbPrinterConfig, `${baseEventId}-BEV`, bevTicket, bevEventType);
+    } else if (beverageItems.length > 0) {
+        // ONLY Beverages: Send to USB printer only
+        const bevEventType = eventType === 'CREATE' ? 'KOT (BEVERAGES)' : `${eventType} (BEV)`;
+        await emitJob(beverageItems, usbPrinterConfig, baseEventId, payload.kotTicket || '', bevEventType);
+    } else {
+        // ONLY Food (or cancellation/instruction without items): Send to Kitchen printer
+        await emitJob(foodItems.length > 0 ? foodItems : fullItems, kitchenPrinterConfig, baseEventId, payload.kotTicket || '', eventType);
     }
-    await persisted;
-    return eventPayload;
+
+    // Restore standard printer config on agents after dispatch
+    if (io) {
+        setTimeout(() => {
+            io.to('print-agents').emit('printer-settings-updated', printerConfig);
+        }, 150);
+        // Real-time update for frontend UI / admin panel displays with all items
+        const fullPayload = JSON.parse(JSON.stringify({
+            ...payload,
+            eventId: baseEventId,
+            kotEventType: eventType,
+            printerConfig,
+            printRouting: { kotRouted, queued, agentKot }
+        }));
+        io.emit('new-kot', fullPayload);
+    }
+
+    return payload;
 };
 
 const requirePrintAgent = (req, res, next) => {
@@ -570,15 +620,12 @@ router.post('/', protect, async (req, res) => {
             gstNumber: await Settings.getSetting('gst_number', '')
         };
 
-        const taxableAmount = subtotal - discount;
-        const taxDetails = taxConfig.map(t => ({
-            name: t.name,
-            rate: t.rate,
-            amount: taxableAmount * (t.rate / 100)
-        }));
-
-        const totalTax = taxDetails.reduce((sum, t) => sum + t.amount, 0);
-        const total = taxableAmount + totalTax;
+        const orderTotals = calculateTotals(orderItems, discount, taxConfig);
+        subtotal = orderTotals.subtotal;
+        const taxableAmount = orderTotals.taxableAmount;
+        const taxDetails = orderTotals.taxDetails;
+        const totalTax = orderTotals.tax;
+        const total = orderTotals.total;
 
         // Check if any selected table has an active running order to append items
         let activeOrder = null;
@@ -616,16 +663,12 @@ router.post('/', protect, async (req, res) => {
                 }
             }
 
-            // Recalculate subtotal & tax
-            activeOrder.subtotal = activeOrder.items.reduce((acc, item) => acc + item.total, 0);
-            const taxableAmount = activeOrder.subtotal - activeOrder.discount;
-            activeOrder.taxDetails = taxConfig.map(t => ({
-                name: t.name,
-                rate: t.rate,
-                amount: taxableAmount * (t.rate / 100)
-            }));
-            activeOrder.tax = activeOrder.taxDetails.reduce((sum, t) => sum + t.amount, 0);
-            activeOrder.total = taxableAmount + activeOrder.tax;
+            // Recalculate subtotal & tax (0% GST on beverages)
+            const activeTotals = calculateTotals(activeOrder.items, activeOrder.discount || 0, taxConfig);
+            activeOrder.subtotal = activeTotals.subtotal;
+            activeOrder.taxDetails = activeTotals.taxDetails;
+            activeOrder.tax = activeTotals.tax;
+            activeOrder.total = activeTotals.total;
 
             // Add KOT history. Mark append KOTs so stale partial mobile payloads can be recognized safely.
             const additionInstructions = `[ADDITION] ${orderInstructions || 'New items added'}`;

@@ -1,3 +1,4 @@
+const { isBeverageItem } = require('./beverageHelper');
 const DEFAULT_TAX_CONFIG = [{ name: 'GST', rate: 5 }];
 
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -18,6 +19,7 @@ const normalizeItems = (items = []) => {
         const price = Number(item?.price) || 0;
         const notes = String(item?.notes || item?.instruction || item?.specialInstructions || item?.note || '').trim();
         const existing = itemMap.get(menuItemId);
+        const isBeverage = isBeverageItem(item);
 
         if (existing) {
             existing.quantity += quantity;
@@ -25,6 +27,7 @@ const normalizeItems = (items = []) => {
             if (notes && !existing.notes.split(' | ').includes(notes)) {
                 existing.notes = existing.notes ? `${existing.notes} | ${notes}` : notes;
             }
+            if (isBeverage) existing.isBeverage = true;
         } else {
             itemMap.set(menuItemId, {
                 menuItem: item?.menuItem?._id || item?.menuItem || item?.menuItemId,
@@ -32,7 +35,8 @@ const normalizeItems = (items = []) => {
                 price,
                 quantity,
                 total: roundMoney(price * quantity),
-                notes
+                notes,
+                isBeverage
             });
         }
     }
@@ -110,10 +114,33 @@ const getConfiguredTax = async (Settings) => {
 
 const calculateTotals = (items, discount = 0, taxConfig = DEFAULT_TAX_CONFIG) => {
     const normalizedItems = normalizeItems(items);
-    const subtotal = roundMoney(normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0));
+
+    let foodSubtotal = 0;
+    let beverageSubtotal = 0;
+
+    for (const item of normalizedItems) {
+        const itemLineTotal = roundMoney(item.price * item.quantity);
+        if (isBeverageItem(item)) {
+            item.isBeverage = true;
+            beverageSubtotal += itemLineTotal;
+        } else {
+            item.isBeverage = false;
+            foodSubtotal += itemLineTotal;
+        }
+    }
+
+    foodSubtotal = roundMoney(foodSubtotal);
+    beverageSubtotal = roundMoney(beverageSubtotal);
+    const subtotal = roundMoney(foodSubtotal + beverageSubtotal);
+
     const requestedDiscount = Number(discount) || 0;
     const discountAmount = roundMoney(Math.max(0, requestedDiscount));
-    const taxableAmount = roundMoney(Math.max(0, subtotal - discountAmount));
+
+    // Discount applies proportionally across food items to determine GST-taxable base
+    const foodShare = subtotal > 0 ? (foodSubtotal / subtotal) : 0;
+    const foodDiscount = roundMoney(discountAmount * foodShare);
+    const taxableAmount = roundMoney(Math.max(0, foodSubtotal - foodDiscount));
+
     const taxes = sanitizeTaxConfig(taxConfig);
     const taxDetails = taxes.map(tax => ({
         name: tax.name,
@@ -121,9 +148,19 @@ const calculateTotals = (items, discount = 0, taxConfig = DEFAULT_TAX_CONFIG) =>
         amount: roundMoney(taxableAmount * tax.rate / 100)
     }));
     const tax = roundMoney(taxDetails.reduce((sum, detail) => sum + detail.amount, 0));
-    const total = roundMoney(taxableAmount + tax);
+    const total = roundMoney(Math.max(0, subtotal - discountAmount) + tax);
 
-    return { items: normalizedItems, subtotal, discount: discountAmount, taxableAmount, taxDetails, tax, total };
+    return {
+        items: normalizedItems,
+        subtotal,
+        foodSubtotal,
+        beverageSubtotal,
+        discount: discountAmount,
+        taxableAmount,
+        taxDetails,
+        tax,
+        total
+    };
 };
 
 const allocateAmount = (amount, weights) => {
@@ -189,6 +226,7 @@ const getBusinessDayRange = (dateString = getBusinessDate()) => {
 };
 
 module.exports = {
+    isBeverageItem,
     roundMoney,
     getMenuItemId,
     normalizeItems,

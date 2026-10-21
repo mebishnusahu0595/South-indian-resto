@@ -372,28 +372,39 @@ router.post('/:id/print', protect, admin, async (req, res) => {
         const forceReprint = Boolean(req.body?.forceReprint || req.query?.reprint === 'true');
         const billIdStr = bill._id.toString();
 
-        // Deduplication: prevent duplicate prints if already printed or queued within the last 15 seconds
-        const duplicateWindowMs = 15000;
-        const recentJob = await KOTPrintJob.findOne({
+        // Strict deduplication: A bill should only be printed once automatically.
+        // Suppress any duplicate print requests for the same billId unless forceReprint is explicitly true.
+        const existingJob = await KOTPrintJob.findOne({
             jobType: 'bill',
             'payload.billId': billIdStr,
-            createdAt: { $gte: new Date(Date.now() - duplicateWindowMs) }
+            status: { $in: ['printed', 'pending'] }
         }).sort({ createdAt: -1 });
 
-        if (recentJob && !forceReprint) {
-            console.log(`[Dedupe] Bill print request for ${bill.billNumber || billIdStr} suppressed (already queued ${recentJob.eventId} ${Math.round((Date.now() - recentJob.createdAt.getTime()) / 1000)}s ago)`);
+        if (existingJob && !forceReprint) {
+            console.log(`[Dedupe] Bill print request for ${bill.billNumber || billIdStr} suppressed (already queued/printed as ${existingJob.eventId})`);
             return res.json({
                 routed: true,
                 queued: false,
                 duplicate: true,
-                message: 'Bill print job already queued or printed recently',
-                eventId: recentJob.eventId
+                message: 'Bill print job already queued or printed',
+                eventId: existingJob.eventId
             });
         }
 
         // Deterministic eventId: unique to this bill instance (and print sequence if force reprint)
         const reprintSuffix = forceReprint ? `-${Date.now()}` : '';
         const eventId = `BILL-${bill._id}${reprintSuffix}`;
+
+        // Ensure all bill printers in config strictly print only 1 copy per job
+        const billPrinters = (routing.agentConfig?.printers || []).map(p => ({
+            ...p,
+            copies: 1
+        }));
+        const billPrinterConfig = {
+            ...routing.agentConfig,
+            printers: billPrinters
+        };
+
         const jobPayload = {
             jobType: 'bill',
             eventId,
@@ -413,7 +424,7 @@ router.post('/:id/print', protect, admin, async (req, res) => {
             total: bill.total || 0,
             paymentMethod: bill.paymentMethod || 'pending',
             createdAt: bill.createdAt || new Date(),
-            printerConfig: routing.agentConfig
+            printerConfig: billPrinterConfig
         };
 
         const printJob = new KOTPrintJob({

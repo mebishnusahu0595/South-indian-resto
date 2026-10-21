@@ -33,7 +33,7 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
         printBill(billId)
             .then(res => {
                 if (cancelled) return;
-                if (res.data?.routed) setSilentQueued(true);
+                if (res.data?.routed || res.data?.duplicate) setSilentQueued(true);
                 else browserPrint();
             })
             .catch(browserPrint);

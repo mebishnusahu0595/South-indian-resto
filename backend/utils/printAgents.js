@@ -138,22 +138,41 @@ const withoutDuplicateRoutes = (config) => {
         .flatMap(printer => ['kot', 'bill'].filter(job => printer[job]).map(job => `${job}:${printer.host}`)));
     const hasDirectKitchenKOT = config.printers.some(p => p.type !== 'system' && p.enabled !== false && p.kot && (p.role === 'kitchen' || p.host === '192.168.1.67'));
 
+    let seenBillPrinter = false;
+
     return {
         ...config,
         printers: config.printers.map((printer) => {
-            if (printer.type !== 'system') return printer;
-            // Never allow a duplicate system queue named "kitchen" or "kitchan" if a direct WiFi kitchen printer is configured
-            const isKitchenQueue = /kitch(?:e|a)n/i.test(printer.systemName || printer.name || '');
-            if (hasDirectKitchenKOT && isKitchenQueue) {
-                return { ...printer, kot: false };
+            let kot = printer.kot;
+            let bill = printer.bill;
+            let copies = Math.max(1, Math.min(5, Number(printer.copies) || 1));
+
+            // System queue duplicate checks
+            if (printer.type === 'system') {
+                const isKitchenQueue = /kitch(?:e|a)n/i.test(printer.systemName || printer.name || '');
+                if (hasDirectKitchenKOT && isKitchenQueue) {
+                    kot = false;
+                }
+                const host = (agents.get(printer.agentId)?.printers || [])
+                    .find(found => found.type === 'system' && found.systemName === printer.systemName)?.host
+                    || systemPrinterHosts.get(`${printer.agentId}:${printer.systemName}`);
+                if (host) {
+                    if (direct.has(`kot:${host}`)) kot = false;
+                    if (direct.has(`bill:${host}`)) bill = false;
+                }
             }
-            const host = (agents.get(printer.agentId)?.printers || [])
-                .find(found => found.type === 'system' && found.systemName === printer.systemName)?.host
-                || systemPrinterHosts.get(`${printer.agentId}:${printer.systemName}`);
-            if (!host) return printer;
-            const kot = printer.kot && !direct.has(`kot:${host}`);
-            const bill = printer.bill && !direct.has(`bill:${host}`);
-            return kot === printer.kot && bill === printer.bill ? printer : { ...printer, kot, bill };
+
+            // Prevent multiple printers printing duplicate bills: only first active bill printer prints bills
+            if (bill && printer.enabled !== false) {
+                if (seenBillPrinter) {
+                    bill = false;
+                } else {
+                    seenBillPrinter = true;
+                    copies = 1; // Strict single copy for official receipt
+                }
+            }
+
+            return { ...printer, kot, bill, copies };
         })
     };
 };

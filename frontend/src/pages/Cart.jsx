@@ -221,10 +221,21 @@ const Cart = () => {
         }
     };
 
+    const isBeverage = (item) => {
+        const catName = item.category?.name || '';
+        if (/beverage|mocktail/i.test(catName)) return true;
+        const name = String(item.name || '').toLowerCase();
+        return /\b(beverage|drink|mocktail|shake|lassi|mojito|margarita|cooler|coke|sprite|thumsup|thums up|redbull|red bull|fanta|juice|soda|water bottle|cold drink|cold coffee|tea|ice tea|iced tea|milkshake)\b/i.test(name);
+    };
+
     const subtotal = getCartTotal;
+    const foodSubtotal = cart.reduce((sum, item) => sum + (isBeverage(item) ? 0 : (item.price * item.quantity)), 0);
     const totalDiscount = discount + (usePoints ? pointsDiscount : 0);
-    const tax = (subtotal - totalDiscount) * (gstRate / 100);
-    const total = subtotal - totalDiscount + tax;
+    const foodShare = subtotal > 0 ? (foodSubtotal / subtotal) : 0;
+    const foodDiscount = totalDiscount * foodShare;
+    const taxableAmount = Math.max(0, foodSubtotal - foodDiscount);
+    const tax = taxableAmount * (gstRate / 100);
+    const total = Math.max(0, subtotal - totalDiscount) + tax;
 
     if (cart.length === 0) {
         return (

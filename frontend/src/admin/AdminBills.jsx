@@ -120,7 +120,7 @@ const AdminBills = () => {
             if (!cancelled) timer = setTimeout(() => window.print(), 350);
         };
         printBill(createdBill._id)
-            .then(res => { if (!res.data?.routed) browserPrint(); })
+            .then(res => { if (!res.data?.routed && !res.data?.duplicate) browserPrint(); })
             .catch(browserPrint);
         return () => {
             cancelled = true;
