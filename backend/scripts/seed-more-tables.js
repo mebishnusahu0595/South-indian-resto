@@ -45,8 +45,8 @@ const seedTables = async () => {
             }
         }
 
-        // 3. Ground Floor Rooms (101 - 120)
-        for (let i = 101; i <= 120; i++) {
+        // 3. Ground Floor Rooms (101 - 112)
+        for (let i = 101; i <= 112; i++) {
             const roomNum = `${i}`;
             const exists = await Table.findOne({ tableNumber: roomNum });
             if (!exists) {
@@ -61,8 +61,22 @@ const seedTables = async () => {
             }
         }
 
-        // 4. 1st Floor Rooms (201 - 220)
-        for (let i = 201; i <= 220; i++) {
+        // 4. 1st Floor Rooms (201 - 212 & 301 - 304)
+        for (let i = 201; i <= 212; i++) {
+            const roomNum = `${i}`;
+            const exists = await Table.findOne({ tableNumber: roomNum });
+            if (!exists) {
+                newTables.push({
+                    tableNumber: roomNum,
+                    name: `Room ${roomNum}`,
+                    capacity: 2,
+                    section: '1st Floor',
+                    areaType: 'room',
+                    shape: 'rectangle'
+                });
+            }
+        }
+        for (let i = 301; i <= 304; i++) {
             const roomNum = `${i}`;
             const exists = await Table.findOne({ tableNumber: roomNum });
             if (!exists) {
@@ -77,9 +91,9 @@ const seedTables = async () => {
             }
         }
 
-        // 5. 2nd Floor Rooms (301 - 304)
-        for (let i = 301; i <= 304; i++) {
-            const roomNum = `${i}`;
+        // 5. 2nd Floor Rooms (101-2nd to 104-2nd)
+        for (let i = 101; i <= 104; i++) {
+            const roomNum = `${i}-2nd`;
             const exists = await Table.findOne({ tableNumber: roomNum });
             if (!exists) {
                 newTables.push({
