@@ -93,6 +93,18 @@ function formatRoomOrderPayload(order, tableInfo = null) {
         total: Number(order.total || 0),
         currency: 'INR',
         status: order.status || 'confirmed',
+        paymentMethod: order.paymentMethod || 'pending',
+        paidAtRestaurant: Boolean(order.status === 'paid' && order.paymentMethod !== 'hotel_bill'),
+        paidInHotelBill: Boolean(order.paidInHotelBill || order.paymentMethod === 'hotel_bill'),
+        pmsInvoiceNumber: order.pmsInvoiceNumber || '',
+        isEligibleForRoomBill: Boolean(
+            order.status !== 'cancelled' &&
+            order.paymentMethod !== 'cash' &&
+            order.paymentMethod !== 'upi' &&
+            order.paymentMethod !== 'card' &&
+            order.paymentMethod !== 'online' &&
+            !order.paidInHotelBill
+        ),
         specialInstructions: order.specialInstructions || '',
         customerName: order.user?.name || order.customerName || '',
         customerPhone: order.user?.phone || order.customerPhone || '',

@@ -198,7 +198,7 @@ router.post('/generate', protect, admin, async (req, res) => {
         const taxConfig = await getConfiguredTax(Settings);
         const totals = calculateTotals(combinedItems, discountAmount, taxConfig);
         const paymentMethod = req.body.paymentMethod || 'pending';
-        const validMethods = ['cash', 'online', 'upi', 'card', 'split', 'pending'];
+        const validMethods = ['cash', 'online', 'upi', 'card', 'split', 'pending', 'hotel_bill'];
         if (!validMethods.includes(paymentMethod)) {
             return res.status(400).json({ message: 'Invalid payment method.' });
         }

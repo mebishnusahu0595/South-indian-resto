@@ -610,11 +610,13 @@ const AdminBills = () => {
                                                     padding: '3px 8px',
                                                     borderRadius: '4px',
                                                     fontWeight: 'bold',
-                                                    background: isPaid ? '#D1FAE5' : '#FEF3F7',
-                                                    color: isPaid ? '#047857' : '#D97706',
-                                                    border: `1px solid ${isPaid ? '#10B981' : '#F59E0B'}`
+                                                    background: effectiveMethod === 'HOTEL_BILL' ? '#EDE9FE' : (isPaid ? '#D1FAE5' : '#FEF3F7'),
+                                                    color: effectiveMethod === 'HOTEL_BILL' ? '#6D28D9' : (isPaid ? '#047857' : '#D97706'),
+                                                    border: `1px solid ${effectiveMethod === 'HOTEL_BILL' ? '#8B5CF6' : (isPaid ? '#10B981' : '#F59E0B')}`
                                                 }}>
-                                                    {isPaid ? `PAID (${effectiveMethod})` : 'UNPAID'}
+                                                    {effectiveMethod === 'HOTEL_BILL'
+                                                        ? `PAID (HOTEL BILL${bill.pmsInvoiceNumber ? ` #${bill.pmsInvoiceNumber}` : ''})`
+                                                        : (isPaid ? `PAID (${effectiveMethod})` : 'UNPAID')}
                                                 </span>
                                             </td>
                                             <td>₹{bill.subtotal.toFixed(2)}</td>

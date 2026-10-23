@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
+const Bill = require('../models/Bill');
 const Table = require('../models/Table');
 const Settings = require('../models/Settings');
+const { getBusinessDate } = require('../utils/orderCalculations');
 const hotelAuth = require('../middleware/hotelAuth');
 const {
     isRoomTable,
@@ -134,34 +136,138 @@ router.get('/orders/:id', async (req, res) => {
  */
 const markSyncedHandler = async (req, res) => {
     try {
-        const { pmsChargeId, notes } = req.body;
-        const order = await Order.findById(req.params.id);
+        const {
+            pmsChargeId,
+            notes,
+            paymentStatus,
+            paymentMethod,
+            invoiceNumber,
+            hotelInvoiceNumber,
+            paidAt
+        } = req.body;
 
+        const order = await Order.findById(req.params.id);
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
+        const now = paidAt ? new Date(paidAt) : new Date();
         order.pmsSynced = true;
-        order.pmsSyncedAt = new Date();
+        order.pmsSyncedAt = now;
         if (pmsChargeId) order.pmsChargeId = String(pmsChargeId);
+
+        const isPaidInHotel = (
+            paymentStatus === 'paid' ||
+            paymentMethod === 'hotel_bill' ||
+            req.body.isPaid === true
+        );
+
+        const invNum = String(invoiceNumber || hotelInvoiceNumber || order.pmsInvoiceNumber || '').trim();
+
+        if (isPaidInHotel) {
+            order.status = 'paid';
+            order.paymentMethod = 'hotel_bill';
+            order.paidInHotelBill = true;
+            order.amountPaid = order.total;
+            order.settledAt = now;
+            order.businessDate = getBusinessDate(now);
+            if (invNum) {
+                order.pmsInvoiceNumber = invNum;
+                order.billerName = `Hotel Bill (${invNum})`;
+            } else {
+                order.billerName = 'Hotel Bill';
+            }
+        }
 
         await order.save();
 
+        let bill = null;
+        if (isPaidInHotel) {
+            // Find or create linked Bill in Kea
+            bill = await Bill.findOne({
+                $or: [{ order: order._id }, { orders: order._id }]
+            });
+
+            if (!bill) {
+                bill = new Bill({
+                    billNumber: `BILL-HTL-${Date.now().toString().slice(-6)}`,
+                    order: order._id,
+                    orders: [order._id],
+                    items: order.items,
+                    subtotal: order.subtotal,
+                    discount: order.discount || 0,
+                    discountName: order.discountName || '',
+                    tax: order.tax,
+                    taxDetails: order.taxDetails || [],
+                    total: order.total,
+                    tableNumbers: order.tableNumber ? [order.tableNumber] : [],
+                    orderNumbers: [order.orderNumber],
+                    customer: {
+                        name: order.user?.name || 'Hotel Guest',
+                        phone: order.user?.phone || ''
+                    }
+                });
+            }
+
+            bill.paymentMethod = 'hotel_bill';
+            bill.billerName = order.billerName || `Hotel Bill (${invNum || 'PMS'})`;
+            bill.pmsInvoiceNumber = invNum;
+            bill.paidAt = now;
+            bill.businessDate = order.businessDate || getBusinessDate(now);
+            await bill.save();
+
+            // Free the room table in Kea layout
+            const tableIds = [...(order.tables || []), order.table].filter(Boolean);
+            if (tableIds.length > 0) {
+                await Table.updateMany(
+                    { _id: { $in: tableIds } },
+                    { status: 'available', isOccupied: false, currentOrder: null }
+                );
+            }
+
+            // Real-time notification to all active Kea screens
+            const io = req.app.get('io');
+            if (io) {
+                const populatedOrder = await Order.findById(order._id)
+                    .populate('tables', 'tableNumber name section areaType')
+                    .populate('items.menuItem', 'name price');
+                io.emit('order-updated', populatedOrder);
+                io.emit('bill-generated', bill);
+                tableIds.forEach(tid => {
+                    io.emit('table-freed', { _id: tid });
+                    io.emit('table-updated', { _id: tid, status: 'available', isOccupied: false, currentOrder: null });
+                });
+            }
+
+            console.log(`[HotelSync] Order #${order.orderNumber} (Room ${order.roomNumber}) marked PAID via Hotel Bill (${invNum || 'PMS'}) and table freed.`);
+        }
+
         res.json({
             success: true,
-            message: `Order #${order.orderNumber} successfully marked as synced to Hotel PMS`,
+            message: isPaidInHotel
+                ? `Order #${order.orderNumber} successfully settled & marked as Paid in Hotel Bill (${invNum || 'PMS'})`
+                : `Order #${order.orderNumber} successfully marked as synced to Hotel PMS`,
             orderId: order._id,
+            orderNumber: order.orderNumber,
+            roomNumber: order.roomNumber,
+            status: order.status,
+            paymentMethod: order.paymentMethod,
+            paidInHotelBill: Boolean(order.paidInHotelBill),
+            pmsInvoiceNumber: order.pmsInvoiceNumber,
             pmsChargeId: order.pmsChargeId,
-            pmsSyncedAt: order.pmsSyncedAt
+            pmsSyncedAt: order.pmsSyncedAt,
+            tableFreed: isPaidInHotel
         });
     } catch (err) {
-        console.error('[HotelSync] Error marking order as synced:', err);
-        res.status(500).json({ success: false, message: 'Failed to update sync status' });
+        console.error('[HotelSync] Error marking order as synced/paid:', err);
+        res.status(500).json({ success: false, message: 'Failed to update order status' });
     }
 };
 
 router.post('/orders/:id/synced', markSyncedHandler);
 router.post('/orders/:id/ack', markSyncedHandler);
+router.post('/orders/:id/pay', markSyncedHandler);
+router.post('/orders/:id/settle', markSyncedHandler);
 
 /**
  * @route   GET /api/hotel-sync/stream

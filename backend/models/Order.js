@@ -74,8 +74,16 @@ const orderSchema = new mongoose.Schema({
     },
     paymentMethod: {
         type: String,
-        enum: ['cash', 'online', 'upi', 'card', 'split', 'pending'],
+        enum: ['cash', 'online', 'upi', 'card', 'split', 'pending', 'hotel_bill'],
         default: 'pending'
+    },
+    paidInHotelBill: {
+        type: Boolean,
+        default: false
+    },
+    pmsInvoiceNumber: {
+        type: String,
+        default: ''
     },
     splitPaymentDetails: {
         cash: { type: Number, default: 0 },
