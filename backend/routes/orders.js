@@ -1651,7 +1651,7 @@ router.put('/:id/payment', protect, async (req, res) => {
         const order = await Order.findById(req.params.id).populate('items.menuItem');
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
-        const validMethods = ['cash', 'online', 'upi', 'card', 'split'];
+        const validMethods = ['cash', 'online', 'upi', 'card', 'split', 'hotel_bill', 'nc'];
         if (!validMethods.includes(paymentMethod)) {
             return res.status(400).json({ message: 'A valid settlement payment method is required.' });
         }
@@ -1672,8 +1672,11 @@ router.put('/:id/payment', protect, async (req, res) => {
                 }
             }
 
-            const paidAmount = roundMoney(Number(amountPaid));
-            if (!Number.isFinite(paidAmount) || Math.round(paidAmount * 100) !== Math.round(linkedBill.total * 100)) {
+            const isNC = paymentMethod === 'nc';
+            const isHotelBill = paymentMethod === 'hotel_bill';
+            const ncReason = req.body.ncReason || req.body.discountName || 'Complimentary';
+            const paidAmount = isNC ? 0 : (isHotelBill ? linkedBill.total : roundMoney(Number(amountPaid)));
+            if (!isNC && !isHotelBill && (!Number.isFinite(paidAmount) || Math.round(paidAmount * 100) !== Math.round(linkedBill.total * 100))) {
                 return res.status(400).json({
                     message: `Settlement amount must exactly match bill total ₹${linkedBill.total.toFixed(2)}. Apply any discount before settlement.`
                 });
@@ -1716,28 +1719,47 @@ router.put('/:id/payment', protect, async (req, res) => {
                 : (linkedBill.businessDate || getBusinessDate(now));
 
             await runAtomic(async session => {
-                await Order.bulkWrite(allocations.map(allocation => ({
-                    updateOne: {
-                        filter: { _id: allocation.order._id },
-                        update: { $set: {
-                            items: allocation.items,
-                            subtotal: allocation.subtotal,
-                            discount: allocation.discount,
-                            tax: allocation.tax,
-                            taxDetails: allocation.taxDetails,
-                            total: allocation.total,
-                            paymentMethod,
-                            splitPaymentDetails: split,
-                            amountPaid: allocation.total,
-                            status: 'paid',
-                            settledAt: now,
-                            businessDate,
-                            updatedAt: now
-                        } }
-                    }
-                })), sessionOptions(session));
+                const rawBillTotal = linkedBill.total;
+                await Order.bulkWrite(allocations.map(allocation => {
+                    const allocTotal = isNC ? 0 : allocation.total;
+                    const allocTax = isNC ? 0 : allocation.tax;
+                    const allocDiscount = isNC ? allocation.subtotal : allocation.discount;
+                    return {
+                        updateOne: {
+                            filter: { _id: allocation.order._id },
+                            update: { $set: {
+                                items: allocation.items,
+                                subtotal: allocation.subtotal,
+                                discount: allocDiscount,
+                                discountName: isNC ? ('NC: ' + ncReason) : (allocation.order.discountName || ''),
+                                tax: allocTax,
+                                taxDetails: isNC ? [] : allocation.taxDetails,
+                                total: allocTotal,
+                                paymentMethod,
+                                ncAmount: isNC ? allocation.total : 0,
+                                ncReason: isNC ? ncReason : '',
+                                paidInHotelBill: isHotelBill,
+                                roomNumber: req.body.roomNumber ? String(req.body.roomNumber).trim() : (allocation.order.roomNumber || ''),
+                                splitPaymentDetails: split,
+                                amountPaid: allocTotal,
+                                status: 'paid',
+                                settledAt: now,
+                                businessDate,
+                                updatedAt: now
+                            } }
+                        }
+                    };
+                }), sessionOptions(session));
 
                 linkedBill.paymentMethod = paymentMethod;
+                if (isNC) {
+                    linkedBill.ncAmount = rawBillTotal;
+                    linkedBill.ncReason = ncReason;
+                    linkedBill.total = 0;
+                    linkedBill.tax = 0;
+                    linkedBill.discount = linkedBill.subtotal;
+                    linkedBill.discountName = 'NC: ' + ncReason;
+                }
                 linkedBill.splitPaymentDetails = split;
                 linkedBill.paidAt = now;
                 linkedBill.businessDate = businessDate;

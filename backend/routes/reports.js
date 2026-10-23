@@ -6,6 +6,7 @@ const Table = require('../models/Table');
 const MenuItem = require('../models/MenuItem');
 const Employee = require('../models/Employee');
 const Expense = require('../models/Expense');
+const HotelSettlement = require('../models/HotelSettlement');
 const { protect, admin, superadmin } = require('../middleware/auth');
 const { getBusinessDate, getBusinessDayRange } = require('../utils/orderCalculations');
 
@@ -59,6 +60,8 @@ router.get('/day-end', protect, admin, async (req, res) => {
             online: 0,
             card: 0,
             split: 0,
+            hotel_bill: 0,
+            nc: 0,
             splitDetails: { cash: 0, upi: 0, card: 0 }
         };
 
@@ -72,30 +75,36 @@ router.get('/day-end', protect, admin, async (req, res) => {
 
         // Monetary totals and payment methods are counted once per Bill, never once per linked order.
         bills.forEach(bill => {
-            grossSales += bill.subtotal || 0;
-            totalDiscount += bill.discount || 0;
-            totalTax += bill.tax || 0;
-            netRevenue += bill.total || 0;
-
             const linkedOrderMethod = [...(bill.orders || []), bill.order]
                 .find(order => order?.paymentMethod && order.paymentMethod !== 'pending')?.paymentMethod;
             const method = (bill.paymentMethod && bill.paymentMethod !== 'pending')
                 ? bill.paymentMethod
                 : (linkedOrderMethod || 'pending');
-            if (method === 'cash') paymentBreakdown.cash += bill.total || 0;
-            else if (method === 'online' || method === 'upi') paymentBreakdown.online += bill.total || 0;
-            else if (method === 'card') paymentBreakdown.card += bill.total || 0;
-            else if (method === 'split') {
-                paymentBreakdown.split += bill.total || 0;
-                const billSplitTotal = (bill.splitPaymentDetails?.cash || 0)
-                    + (bill.splitPaymentDetails?.upi || 0)
-                    + (bill.splitPaymentDetails?.card || 0);
-                const linkedSplit = [...(bill.orders || []), bill.order]
-                    .find(order => order?.paymentMethod === 'split' && order.splitPaymentDetails)?.splitPaymentDetails;
-                const splitSource = billSplitTotal > 0 ? bill.splitPaymentDetails : (linkedSplit || {});
-                paymentBreakdown.splitDetails.cash += splitSource.cash || 0;
-                paymentBreakdown.splitDetails.upi += splitSource.upi || 0;
-                paymentBreakdown.splitDetails.card += splitSource.card || 0;
+
+            if (method === 'nc') {
+                paymentBreakdown.nc += (bill.ncAmount || bill.subtotal || 0);
+            } else {
+                grossSales += bill.subtotal || 0;
+                totalDiscount += bill.discount || 0;
+                totalTax += bill.tax || 0;
+                netRevenue += bill.total || 0;
+
+                if (method === 'cash') paymentBreakdown.cash += bill.total || 0;
+                else if (method === 'online' || method === 'upi') paymentBreakdown.online += bill.total || 0;
+                else if (method === 'card') paymentBreakdown.card += bill.total || 0;
+                else if (method === 'hotel_bill') paymentBreakdown.hotel_bill += bill.total || 0;
+                else if (method === 'split') {
+                    paymentBreakdown.split += bill.total || 0;
+                    const billSplitTotal = (bill.splitPaymentDetails?.cash || 0)
+                        + (bill.splitPaymentDetails?.upi || 0)
+                        + (bill.splitPaymentDetails?.card || 0);
+                    const linkedSplit = [...(bill.orders || []), bill.order]
+                        .find(order => order?.paymentMethod === 'split' && order.splitPaymentDetails)?.splitPaymentDetails;
+                    const splitSource = billSplitTotal > 0 ? bill.splitPaymentDetails : (linkedSplit || {});
+                    paymentBreakdown.splitDetails.cash += splitSource.cash || 0;
+                    paymentBreakdown.splitDetails.upi += splitSource.upi || 0;
+                    paymentBreakdown.splitDetails.card += splitSource.card || 0;
+                }
             }
         });
 
@@ -191,6 +200,66 @@ router.get('/day-end', protect, admin, async (req, res) => {
         const totalExpenses = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
         const netProfit = netRevenue - totalExpenses;
 
+        // Track Hotel Room Credit bills for this business date
+        const hotelCreditBills = bills.filter(b => b.paymentMethod === 'hotel_bill');
+        const hotelCreditDetails = hotelCreditBills.map(b => {
+            const linkedOrders = [...(b.orders || []), b.order].filter(Boolean);
+            const rNum = b.tableNumbers?.[0] || linkedOrders[0]?.roomNumber || linkedOrders[0]?.tableNumber || '-';
+            return {
+                billNumber: b.billNumber,
+                orderNumbers: (b.orderNumbers && b.orderNumbers.length > 0)
+                    ? b.orderNumbers
+                    : linkedOrders.map(o => o.orderNumber),
+                roomNumber: rNum,
+                total: b.total,
+                time: b.createdAt,
+                billerName: b.billerName,
+                itemsSummary: (b.items || []).map(it => `${it.name} x${it.quantity}`).join(', ')
+            };
+        });
+
+        // Track Non-Chargeable (NC) orders and items
+        const ncBills = bills.filter(b => b.paymentMethod === 'nc');
+        let ncTotalOriginalValue = 0;
+        const ncItemsMap = {};
+
+        ncBills.forEach(b => {
+            ncTotalOriginalValue += (b.ncAmount || b.subtotal || 0);
+            (b.items || []).forEach(it => {
+                const name = it.name || 'NC Item';
+                if (!ncItemsMap[name]) {
+                    ncItemsMap[name] = { name, quantity: 0, unitPrice: it.price || 0, totalValue: 0 };
+                }
+                ncItemsMap[name].quantity += (it.quantity || 1);
+                ncItemsMap[name].totalValue += (it.total || ((it.price || 0) * (it.quantity || 1)));
+            });
+        });
+        const ncSummary = {
+            count: ncBills.length,
+            totalOriginalValue: Math.round(ncTotalOriginalValue * 100) / 100,
+            items: Object.values(ncItemsMap).sort((a, b) => b.totalValue - a.totalValue),
+            bills: ncBills.map(b => ({
+                billNumber: b.billNumber,
+                billerName: b.billerName,
+                ncReason: b.ncReason || 'Complimentary',
+                originalValue: b.ncAmount || b.subtotal,
+                items: (b.items || []).map(it => `${it.name} x${it.quantity}`).join(', '),
+                createdAt: b.createdAt
+            }))
+        };
+
+        // Hotel Settlements received on this target business date (handover from hotel)
+        const settlements = await HotelSettlement.find({ settlementBusinessDate: targetDate }).sort({ createdAt: -1 });
+        const hotelSettlementsReceived = {
+            total: Math.round(settlements.reduce((sum, s) => sum + (s.settledAmount || 0), 0) * 100) / 100,
+            cash: Math.round(settlements.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + (s.settledAmount || 0), 0) * 100) / 100,
+            online: Math.round(settlements.filter(s => ['upi', 'online'].includes(s.paymentMethod)).reduce((sum, s) => sum + (s.settledAmount || 0), 0) * 100) / 100,
+            card: Math.round(settlements.filter(s => s.paymentMethod === 'card').reduce((sum, s) => sum + (s.settledAmount || 0), 0) * 100) / 100,
+            list: settlements
+        };
+
+        const totalCashInRegister = (paymentBreakdown.cash + paymentBreakdown.splitDetails.cash + hotelSettlementsReceived.cash) - (expenses.filter(e => e.paymentMethod === 'cash').reduce((sum, e) => sum + (e.amount || 0), 0));
+
         res.json({
             date: targetDate,
             summary: {
@@ -201,14 +270,21 @@ router.get('/day-end', protect, admin, async (req, res) => {
                 totalTax,
                 netRevenue,
                 totalExpenses,
-                netProfit
+                netProfit,
+                hotelCreditTotal: paymentBreakdown.hotel_bill,
+                hotelSettlementsTotal: hotelSettlementsReceived.total,
+                ncTotalValue: ncSummary.totalOriginalValue,
+                cashInRegister: Math.round(totalCashInRegister * 100) / 100
             },
             expenses,
             paymentBreakdown,
             categorySales,
             productSales,
             staffSales,
-            bills: detailedBills
+            bills: detailedBills,
+            hotelCreditDetails,
+            hotelSettlementsReceived,
+            ncSummary
         });
     } catch (error) {
         console.error('Day-end report error:', error);
@@ -326,6 +402,120 @@ router.get('/section-wise', protect, admin, async (req, res) => {
     } catch (error) {
         console.error('Section-wise report error:', error);
         res.status(500).json({ message: error.message });
+    }
+});
+
+
+// @route   POST /api/reports/hotel-settlement
+// @desc    Record payment handover from hotel for past room food credit
+// @access  Private/Admin
+router.post('/hotel-settlement', protect, admin, async (req, res) => {
+    try {
+        const {
+            orderNumber,
+            roomNumber,
+            orderBusinessDate,
+            settlementBusinessDate,
+            creditAmount,
+            settledAmount,
+            paymentMethod,
+            notes
+        } = req.body;
+
+        if (!roomNumber || !settledAmount || Number(settledAmount) <= 0) {
+            return res.status(400).json({ message: 'Room number and valid settled amount are required' });
+        }
+
+        const settlement = new HotelSettlement({
+            orderNumber: orderNumber ? String(orderNumber).trim() : '',
+            roomNumber: String(roomNumber).trim(),
+            orderBusinessDate: orderBusinessDate || getBusinessDate(),
+            settlementBusinessDate: settlementBusinessDate || getBusinessDate(),
+            creditAmount: Number(creditAmount) || Number(settledAmount),
+            settledAmount: Number(settledAmount),
+            paymentMethod: paymentMethod || 'cash',
+            receivedByName: req.user?.name || 'Staff',
+            notes: notes ? String(notes).trim() : ''
+        });
+
+        await settlement.save();
+        res.json({ success: true, message: 'Hotel credit settlement recorded successfully', settlement });
+    } catch (error) {
+        console.error('Hotel settlement error:', error);
+        res.status(500).json({ message: error.message || 'Server error' });
+    }
+});
+
+// @route   GET /api/reports/hotel-credits-pending
+// @desc    Get pending hotel room credits vs settled amounts across dates
+// @access  Private/Admin
+router.get('/hotel-credits-pending', protect, admin, async (req, res) => {
+    try {
+        // Find all bills settled as hotel_bill
+        const bills = await Bill.find({ paymentMethod: 'hotel_bill' })
+            .sort({ createdAt: -1 })
+            .limit(100)
+            .populate('order', 'orderNumber tableNumber roomNumber createdAt')
+            .populate('orders', 'orderNumber tableNumber roomNumber createdAt');
+
+        // Find all settlements
+        const allSettlements = await HotelSettlement.find({}).sort({ createdAt: -1 });
+
+        const pendingList = bills.map(b => {
+            const linkedOrders = [...(b.orders || []), b.order].filter(Boolean);
+            const rNum = b.tableNumbers?.[0] || linkedOrders[0]?.roomNumber || linkedOrders[0]?.tableNumber || '';
+            const oNums = (b.orderNumbers && b.orderNumbers.length > 0)
+                ? b.orderNumbers
+                : linkedOrders.map(o => o.orderNumber);
+
+            // Find matching settlements by room and date or orderNumber
+            const matchedSettlements = allSettlements.filter(s =>
+                (s.roomNumber && s.roomNumber === rNum && s.orderBusinessDate === b.businessDate) ||
+                (s.orderNumber && oNums.includes(s.orderNumber))
+            );
+            const totalSettled = matchedSettlements.reduce((sum, s) => sum + (s.settledAmount || 0), 0);
+            const remainingBalance = Math.max(0, (b.total || 0) - totalSettled);
+
+            return {
+                billId: b._id,
+                billNumber: b.billNumber,
+                orderNumbers: oNums,
+                roomNumber: rNum,
+                businessDate: b.businessDate || (b.createdAt ? b.createdAt.toISOString().slice(0, 10) : ''),
+                totalAmount: b.total,
+                totalSettled,
+                remainingBalance: Math.round(remainingBalance * 100) / 100,
+                isFullySettled: remainingBalance <= 0.01,
+                itemsSummary: (b.items || []).map(it => `${it.name} x${it.quantity}`).join(', '),
+                createdAt: b.createdAt
+            };
+        });
+
+        res.json({
+            success: true,
+            pendingCredits: pendingList,
+            totalPendingAmount: Math.round(pendingList.reduce((sum, p) => sum + p.remainingBalance, 0) * 100) / 100
+        });
+    } catch (error) {
+        console.error('Pending hotel credits error:', error);
+        res.status(500).json({ message: error.message || 'Server error' });
+    }
+});
+
+// @route   GET /api/reports/hotel-settlements
+// @desc    Get all hotel settlements history
+// @access  Private/Admin
+router.get('/hotel-settlements', protect, admin, async (req, res) => {
+    try {
+        const { date, roomNumber } = req.query;
+        const query = {};
+        if (date) query.settlementBusinessDate = date;
+        if (roomNumber) query.roomNumber = String(roomNumber).trim();
+
+        const settlements = await HotelSettlement.find(query).sort({ createdAt: -1 });
+        res.json(settlements);
+    } catch (error) {
+        res.status(500).json({ message: error.message || 'Server error' });
     }
 });
 

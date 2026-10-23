@@ -198,7 +198,7 @@ router.post('/generate', protect, admin, async (req, res) => {
         const taxConfig = await getConfiguredTax(Settings);
         const totals = calculateTotals(combinedItems, discountAmount, taxConfig);
         const paymentMethod = req.body.paymentMethod || 'pending';
-        const validMethods = ['cash', 'online', 'upi', 'card', 'split', 'pending', 'hotel_bill'];
+        const validMethods = ['cash', 'online', 'upi', 'card', 'split', 'pending', 'hotel_bill', 'nc'];
         if (!validMethods.includes(paymentMethod)) {
             return res.status(400).json({ message: 'Invalid payment method.' });
         }
@@ -251,13 +251,25 @@ router.post('/generate', protect, admin, async (req, res) => {
             name: primaryOrder.user?.name || 'Walk-in',
             phone: primaryOrder.user?.phone || ''
         };
+        const isNC = paymentMethod === 'nc';
+        const rawBillTotal = totals.total;
+        const ncReason = req.body.ncReason || req.body.discountName || 'Complimentary';
+        if (isNC) {
+            totals.total = 0;
+            totals.tax = 0;
+            totals.discount = totals.subtotal;
+            totals.discountName = 'NC: ' + ncReason;
+        }
+
         bill.billerName = String(billerName).trim();
         bill.subtotal = totals.subtotal;
         bill.discount = totals.discount;
-        bill.discountName = discountName || '';
+        bill.discountName = totals.discountName || discountName || '';
         bill.tax = totals.tax;
         bill.total = totals.total;
         bill.paymentMethod = paymentMethod;
+        bill.ncAmount = isNC ? rawBillTotal : (bill.ncAmount || 0);
+        bill.ncReason = isNC ? ncReason : (bill.ncReason || '');
         bill.splitPaymentDetails = splitPaymentDetails;
         bill.businessDate = businessDate;
         bill.paidAt = settled ? (bill.paidAt || now) : null;
@@ -265,31 +277,38 @@ router.post('/generate', protect, admin, async (req, res) => {
         // All validation is complete before the first write. Keep Bill, orders, and tables in one transaction when supported.
         await runAtomic(async session => {
             await bill.save(sessionOptions(session));
-            await Order.bulkWrite(allocations.map(allocation => ({
-                updateOne: {
-                    filter: { _id: allocation.order._id },
-                    update: {
-                        $set: {
-                            items: allocation.items,
-                            subtotal: allocation.subtotal,
-                            discount: allocation.discount,
-                            discountName: discountName || '',
-                            billerName: String(billerName).trim(),
-                            tax: allocation.tax,
-                            taxDetails: allocation.taxDetails,
-                            gstRate: taxConfig.reduce((sum, tax) => sum + tax.rate, 0),
-                            total: allocation.total,
-                            paymentMethod,
-                            splitPaymentDetails,
-                            amountPaid: settled ? allocation.total : 0,
-                            status: settled ? 'paid' : 'bill_generated',
-                            settledAt: settled ? (allocation.order.settledAt || now) : null,
-                            businessDate: settled ? businessDate : '',
-                            updatedAt: now
+            await Order.bulkWrite(allocations.map(allocation => {
+                const allocTotal = isNC ? 0 : allocation.total;
+                const allocTax = isNC ? 0 : allocation.tax;
+                const allocDiscount = isNC ? allocation.subtotal : allocation.discount;
+                return {
+                    updateOne: {
+                        filter: { _id: allocation.order._id },
+                        update: {
+                            $set: {
+                                items: allocation.items,
+                                subtotal: allocation.subtotal,
+                                discount: allocDiscount,
+                                discountName: isNC ? ('NC: ' + ncReason) : (discountName || ''),
+                                billerName: String(billerName).trim(),
+                                tax: allocTax,
+                                taxDetails: isNC ? [] : allocation.taxDetails,
+                                gstRate: isNC ? 0 : taxConfig.reduce((sum, tax) => sum + tax.rate, 0),
+                                total: allocTotal,
+                                paymentMethod,
+                                ncAmount: isNC ? allocation.total : 0,
+                                ncReason: isNC ? ncReason : '',
+                                splitPaymentDetails,
+                                amountPaid: settled ? allocTotal : 0,
+                                status: settled ? 'paid' : 'bill_generated',
+                                settledAt: settled ? (allocation.order.settledAt || now) : null,
+                                businessDate: settled ? businessDate : '',
+                                updatedAt: now
+                            }
                         }
                     }
-                }
-            })), sessionOptions(session));
+                };
+            }), sessionOptions(session));
 
             if (settled) {
                 await Table.updateMany(

@@ -110,6 +110,18 @@ const AdminOrders = () => {
     const [newPaidAmount, setNewPaidAmount] = useState(0);
     const [newPaymentMethod, setNewPaymentMethod] = useState('cash');
 
+    // Hotel Credit & NC modal states
+    const [showHotelCreditModal, setShowHotelCreditModal] = useState(false);
+    const [hotelCreditOrder, setHotelCreditOrder] = useState(null);
+    const [hotelCreditRoomNumber, setHotelCreditRoomNumber] = useState('');
+    const [hotelCreditBillerName, setHotelCreditBillerName] = useState('');
+    const [hotelCreditNotes, setHotelCreditNotes] = useState('');
+
+    const [showNCModal, setShowNCModal] = useState(false);
+    const [ncOrder, setNcOrder] = useState(null);
+    const [ncApprovedBy, setNcApprovedBy] = useState('');
+    const [ncReason, setNcReason] = useState('Complimentary / VIP');
+
     // KOTs state
     const [activeTab, setActiveTab] = useState('active'); // 'active' | 'kots' | 'all'
     const [kotList, setKotList] = useState([]);
@@ -682,6 +694,81 @@ const AdminOrders = () => {
             // Do not pop open the bill preview on final split settlement - bill was already printed beforehand!
         } catch (error) {
             alert(error.response?.data?.message || 'Failed to process split payment');
+        }
+    };
+
+    const handleOpenHotelCreditModal = (order, amount) => {
+        let defaultRoom = order.roomNumber || '';
+        if (!defaultRoom && order.tableNumber) {
+            const m = String(order.tableNumber).match(/\d+/);
+            if (m) defaultRoom = m[0];
+        }
+        setHotelCreditOrder(order);
+        setHotelCreditRoomNumber(defaultRoom);
+        setHotelCreditBillerName(order.billerName || localStorage.getItem('lastBillerName') || 'Staff');
+        setHotelCreditNotes('');
+        setShowHotelCreditModal(true);
+    };
+
+    const handleConfirmHotelCredit = async (e) => {
+        if (e) e.preventDefault();
+        if (!hotelCreditOrder) return;
+        const rNum = String(hotelCreditRoomNumber || '').trim();
+        if (!rNum) {
+            alert('Please enter a valid Hotel Room Number.');
+            return;
+        }
+
+        try {
+            const sessionOrders = getSessionOrders(hotelCreditOrder, orders);
+            const orderIds = sessionOrders.map(o => o._id);
+            await generateBill({
+                orderIds: orderIds.length > 0 ? orderIds : [hotelCreditOrder._id],
+                billerName: hotelCreditBillerName.trim() ? `Room ${rNum} (${hotelCreditBillerName.trim()})` : `Hotel Room ${rNum}`,
+                roomNumber: rNum,
+                paymentMethod: 'hotel_bill',
+                discount: 0
+            });
+            setShowHotelCreditModal(false);
+            setHotelCreditOrder(null);
+            fetchOrders();
+            alert(`Order #${hotelCreditOrder.orderNumber} successfully transferred to Hotel Room ${rNum} bill.`);
+        } catch (error) {
+            alert(error.response?.data?.message || 'Failed to transfer order to hotel room bill');
+        }
+    };
+
+    const handleOpenNCModal = (order) => {
+        setNcOrder(order);
+        setNcApprovedBy(user?.name || localStorage.getItem('lastBillerName') || 'Manager');
+        setNcReason('Complimentary / VIP');
+        setShowNCModal(true);
+    };
+
+    const handleConfirmNC = async (e) => {
+        if (e) e.preventDefault();
+        if (!ncOrder) return;
+        if (!ncApprovedBy.trim()) {
+            alert('Please enter approver name.');
+            return;
+        }
+
+        try {
+            const sessionOrders = getSessionOrders(ncOrder, orders);
+            const orderIds = sessionOrders.map(o => o._id);
+            await generateBill({
+                orderIds: orderIds.length > 0 ? orderIds : [ncOrder._id],
+                billerName: ncApprovedBy.trim(),
+                paymentMethod: 'nc',
+                ncReason: ncReason.trim() || 'Complimentary',
+                discount: 0
+            });
+            setShowNCModal(false);
+            setNcOrder(null);
+            fetchOrders();
+            alert(`Order #${ncOrder.orderNumber} marked as Non-Chargeable (NC). Bill is ₹0.`);
+        } catch (error) {
+            alert(error.response?.data?.message || 'Failed to settle order as NC');
         }
     };
 
@@ -1672,6 +1759,123 @@ const AdminOrders = () => {
                 </div>
             )}
             {/* Split Payment Modal (Cash / UPI / Card Breakdown) */}
+            
+            {/* Hotel Room Credit Modal */}
+            {showHotelCreditModal && hotelCreditOrder && (
+                <div className="bill-modal-overlay" onClick={() => setShowHotelCreditModal(false)}>
+                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '440px', width: '92%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '2px solid #111', paddingBottom: '8px' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#0369A1' }}>🏨 Transfer to Hotel Room</h3>
+                            <button onClick={() => setShowHotelCreditModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}><FiX /></button>
+                        </div>
+                        <form onSubmit={handleConfirmHotelCredit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ background: '#E0F2FE', border: '1.5px solid #0284C7', borderRadius: '8px', padding: '12px', fontSize: '0.9rem' }}>
+                                <div><strong>Order Number:</strong> #{hotelCreditOrder.orderNumber}</div>
+                                <div><strong>Order Total:</strong> ₹{(hotelCreditOrder.total || 0).toFixed(2)}</div>
+                                <div style={{ fontSize: '0.8rem', color: '#0369A1', marginTop: '4px' }}>
+                                    💡 This order will be transferred to The Mark Hotel PMS folio for this room.
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                                    Hotel Room Number *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    autoFocus
+                                    placeholder="e.g. 101, 102, 201"
+                                    value={hotelCreditRoomNumber}
+                                    onChange={e => setHotelCreditRoomNumber(e.target.value)}
+                                    style={{ width: '100%', padding: '8px 10px', fontSize: '1rem', fontWeight: 'bold', border: '2px solid #111', borderRadius: '6px' }}
+                                />
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                                    Staff / Biller Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={hotelCreditBillerName}
+                                    onChange={e => setHotelCreditBillerName(e.target.value)}
+                                    placeholder="Your name / Counter"
+                                    style={{ width: '100%', padding: '8px 10px', fontSize: '0.9rem', border: '1.5px solid #111', borderRadius: '6px' }}
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
+                                <button type="button" className="btn btn-secondary" onClick={() => setShowHotelCreditModal(false)}>Cancel</button>
+                                <button type="submit" className="btn btn-primary" style={{ background: '#0284C7', borderColor: '#0284C7', fontWeight: 'bold' }}>
+                                    Confirm Room Credit
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Non-Chargeable (NC) Modal */}
+            {showNCModal && ncOrder && (
+                <div className="bill-modal-overlay" onClick={() => setShowNCModal(false)}>
+                    <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '440px', width: '92%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '2px solid #111', paddingBottom: '8px' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#6B21A8' }}>🎁 Non-Chargeable (NC) Bill</h3>
+                            <button onClick={() => setShowNCModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}><FiX /></button>
+                        </div>
+                        <form onSubmit={handleConfirmNC} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ background: '#F3E8FF', border: '1.5px solid #9333EA', borderRadius: '8px', padding: '12px', fontSize: '0.9rem' }}>
+                                <div><strong>Order Number:</strong> #{ncOrder.orderNumber}</div>
+                                <div><strong>Original Item Value:</strong> ₹{(ncOrder.total || ncOrder.subtotal || 0).toFixed(2)}</div>
+                                <div style={{ fontSize: '0.8rem', color: '#6B21A8', marginTop: '4px' }}>
+                                    ⚠️ The guest bill will be <strong>₹0.00</strong>. Original item amounts and quantities will be tracked in the Day-End NC Report.
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                                    Approved By / Manager Name *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    autoFocus
+                                    placeholder="Manager Name / Approver"
+                                    value={ncApprovedBy}
+                                    onChange={e => setNcApprovedBy(e.target.value)}
+                                    style={{ width: '100%', padding: '8px 10px', fontSize: '0.95rem', fontWeight: 'bold', border: '2px solid #111', borderRadius: '6px' }}
+                                />
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                                    NC Reason *
+                                </label>
+                                <select
+                                    value={ncReason}
+                                    onChange={e => setNcReason(e.target.value)}
+                                    style={{ width: '100%', padding: '8px 10px', fontSize: '0.9rem', border: '1.5px solid #111', borderRadius: '6px' }}
+                                >
+                                    <option value="Complimentary / VIP">Complimentary / VIP</option>
+                                    <option value="Owner / Management Guest">Owner / Management Guest</option>
+                                    <option value="Staff / Tasting Meal">Staff / Tasting Meal</option>
+                                    <option value="Guest Complaint / Quality Issue">Guest Complaint / Quality Issue</option>
+                                    <option value="Other Courtesy">Other Courtesy</option>
+                                </select>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
+                                <button type="button" className="btn btn-secondary" onClick={() => setShowNCModal(false)}>Cancel</button>
+                                <button type="submit" className="btn btn-primary" style={{ background: '#7C3AED', borderColor: '#7C3AED', fontWeight: 'bold' }}>
+                                    Confirm NC (Bill ₹0)
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {showSplitModal && (
                 <div className="bill-modal-overlay" onClick={() => setShowSplitModal(false)}>
                     <div className="bill-container" onClick={e => e.stopPropagation()} style={{ fontFamily: 'inherit', maxWidth: '480px' }}>
@@ -2416,7 +2620,7 @@ const AdminOrders = () => {
                                     Payment Method / Mode:
                                 </label>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                    {['cash', 'online', 'card', 'split'].map(mode => (
+                                    {['cash', 'online', 'card', 'split', 'hotel_bill', 'nc'].map(mode => (
                                         <button
                                             key={mode}
                                             type="button"
@@ -2433,7 +2637,7 @@ const AdminOrders = () => {
                                                 textTransform: 'uppercase'
                                             }}
                                         >
-                                            {mode === 'online' ? 'UPI / Online' : mode}
+                                            {mode === 'online' ? 'UPI / Online' : mode === 'hotel_bill' ? 'Hotel Room' : mode === 'nc' ? 'NC (₹0)' : mode}
                                         </button>
                                     ))}
                                 </div>

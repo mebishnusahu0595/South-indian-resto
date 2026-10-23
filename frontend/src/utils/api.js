@@ -183,3 +183,8 @@ export const getRatings = (params) => axios.get(`${API_URL}/ratings`, { params }
 export const getRatingStats = () => axios.get(`${API_URL}/ratings/stats`);
 export const submitRating = (data) => axios.post(`${API_URL}/ratings`, data);
 export const checkRating = (orderId) => axios.get(`${API_URL}/ratings/check/${orderId}`);
+
+// Hotel Credit Settlements
+export const getPendingHotelCredits = () => axios.get(`${API_URL}/reports/hotel-credits-pending`);
+export const createHotelSettlement = (data) => axios.post(`${API_URL}/reports/hotel-settlement`, data);
+export const getHotelSettlements = (params) => axios.get(`${API_URL}/reports/hotel-settlements`, { params });

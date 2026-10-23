@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend, AreaChart, Area } from 'recharts';
-import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport, getItemWiseSales, getExpenses, createExpense, updateExpense, deleteExpense } from '../utils/api';
+import { getDashboardStats, getRevenueData, getCategorySales, getTopItems, getUserAnalytics, updateSetting, getAllSettings, getDayEndReport, getSectionWiseReport, getItemWiseSales, getExpenses, createExpense, updateExpense, deleteExpense, getPendingHotelCredits, createHotelSettlement, getHotelSettlements } from '../utils/api';
 import { exportToCSV, downloadCSV, revenueExportColumns } from '../utils/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
@@ -114,6 +114,74 @@ const AdminAnalytics = () => {
         bank_transfer: '',
         other: ''
     });
+        // Hotel Credit Settlement Modal State
+    const [showHotelSettleModal, setShowHotelSettleModal] = useState(false);
+    const [pendingHotelCredits, setPendingHotelCredits] = useState([]);
+    const [loadingPendingCredits, setLoadingPendingCredits] = useState(false);
+    const [settleForm, setSettleForm] = useState({
+        roomNumber: '',
+        orderNumber: '',
+        orderBusinessDate: getRelativeBusinessDate(-1),
+        settlementBusinessDate: getLocalDateString(),
+        creditAmount: '',
+        settledAmount: '',
+        paymentMethod: 'cash',
+        notes: ''
+    });
+    const [submittingSettle, setSubmittingSettle] = useState(false);
+
+    const openHotelSettleModal = async (defaultRoom = '', defaultOrder = '', defaultCredit = '', defaultDate = '') => {
+        setSettleForm({
+            roomNumber: defaultRoom || '',
+            orderNumber: defaultOrder || '',
+            orderBusinessDate: defaultDate || getRelativeBusinessDate(-1),
+            settlementBusinessDate: dayEndData?.date || reportDate || getLocalDateString(),
+            creditAmount: defaultCredit !== undefined && defaultCredit !== '' ? String(defaultCredit) : '',
+            settledAmount: defaultCredit !== undefined && defaultCredit !== '' ? String(defaultCredit) : '',
+            paymentMethod: 'cash',
+            notes: ''
+        });
+        setShowHotelSettleModal(true);
+        setLoadingPendingCredits(true);
+        try {
+            const res = await getPendingHotelCredits();
+            setPendingHotelCredits(res.data?.pendingCredits || []);
+        } catch (err) {
+            console.error('Error fetching pending hotel credits:', err);
+        } finally {
+            setLoadingPendingCredits(false);
+        }
+    };
+
+    const handleSubmitHotelSettlement = async (e) => {
+        if (e) e.preventDefault();
+        const amt = parseFloat(settleForm.settledAmount);
+        if (!settleForm.roomNumber.trim()) {
+            alert('Please enter Room Number.');
+            return;
+        }
+        if (isNaN(amt) || amt <= 0) {
+            alert('Please enter a valid settled amount received (> 0).');
+            return;
+        }
+
+        setSubmittingSettle(true);
+        try {
+            await createHotelSettlement({
+                ...settleForm,
+                settledAmount: amt,
+                creditAmount: parseFloat(settleForm.creditAmount) || amt
+            });
+            alert(`Payment of ₹${amt.toFixed(2)} from Hotel for Room ${settleForm.roomNumber} recorded successfully!`);
+            setShowHotelSettleModal(false);
+            fetchDayEndReport(reportDate);
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to record hotel settlement');
+        } finally {
+            setSubmittingSettle(false);
+        }
+    };
+
     const [bulkExpenseRows, setBulkExpenseRows] = useState([
         { title: '', amount: '', category: 'Kitchen Supplies', paymentMethod: 'cash', notes: '' },
         { title: '', amount: '', category: 'Raw Materials / Grocery', paymentMethod: 'cash', notes: '' },
@@ -1194,6 +1262,21 @@ const AdminAnalytics = () => {
                                     <h3 className="eod-stat-val">₹{(dayEndData.summary.netProfit !== undefined ? dayEndData.summary.netProfit : (dayEndData.summary.netRevenue - (dayEndData.summary.totalExpenses || 0))).toFixed(2)}</h3>
                                     <span className="eod-stat-sub">Revenue - Expenses</span>
                                 </div>
+                                <div className="eod-stat-box" style={{ borderLeft: '4px solid #0284C7' }}>
+                                    <span className="eod-stat-label">🏨 HOTEL ROOM CREDIT</span>
+                                    <h3 className="eod-stat-val" style={{ color: '#0369A1' }}>₹{(dayEndData.summary?.hotelCreditTotal || 0).toFixed(2)}</h3>
+                                    <span className="eod-stat-sub">{(dayEndData.hotelCreditDetails || []).length} room orders</span>
+                                </div>
+                                <div className="eod-stat-box" style={{ borderLeft: '4px solid #059669' }}>
+                                    <span className="eod-stat-label">💵 HOTEL SETTLED TODAY</span>
+                                    <h3 className="eod-stat-val" style={{ color: '#059669' }}>₹{(dayEndData.summary?.hotelSettlementsTotal || 0).toFixed(2)}</h3>
+                                    <span className="eod-stat-sub">{(dayEndData.hotelSettlementsReceived?.list || []).length} settlements</span>
+                                </div>
+                                <div className="eod-stat-box" style={{ borderLeft: '4px solid #9333EA' }}>
+                                    <span className="eod-stat-label">🎁 COMPLIMENTARY (NC)</span>
+                                    <h3 className="eod-stat-val" style={{ color: '#7E22CE' }}>₹{(dayEndData.summary?.ncTotalValue || 0).toFixed(2)}</h3>
+                                    <span className="eod-stat-sub">{dayEndData.ncSummary?.count || 0} NC orders (₹0 bill)</span>
+                                </div>
                             </div>
 
                             {/* Payment Method Breakdown */}
@@ -1227,6 +1310,24 @@ const AdminAnalytics = () => {
                                                 </div>
                                             </td>
                                             <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{dayEndData.paymentBreakdown.split.toFixed(2)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>
+                                                🏨 Hotel Room Credit (Transferred to The Mark Folio)
+                                                <div style={{ fontSize: '0.78rem', color: '#0369A1', marginTop: '2px' }}>
+                                                    {(dayEndData.hotelCreditDetails || []).length} orders · To be collected by hotel at guest check-out
+                                                </div>
+                                            </td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#0284C7' }}>₹{(dayEndData.paymentBreakdown.hotel_bill || 0).toFixed(2)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>
+                                                🎁 Non-Chargeable (NC / Complimentary)
+                                                <div style={{ fontSize: '0.78rem', color: '#7E22CE', marginTop: '2px' }}>
+                                                    {dayEndData.ncSummary?.count || 0} orders · Original Value: ₹{(dayEndData.ncSummary?.totalOriginalValue || 0).toFixed(2)} (Guest paid ₹0)
+                                                </div>
+                                            </td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#9333EA' }}>₹0.00</td>
                                         </tr>
                                         <tr style={{ background: '#F9FAFB', fontWeight: 'bold' }}>
                                             <td>TOTAL COLLECTED</td>
@@ -1336,6 +1437,160 @@ const AdminAnalytics = () => {
                                     </table>
                                 )}
                             </div>
+
+                            {/* Hotel Room Credits Section */}
+                            <div className="eod-report-section">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #111', paddingBottom: '6px', marginBottom: '12px' }}>
+                                    <h3 style={{ margin: 0 }} className="eod-section-title-clean">🏨 Hotel Room Credits (Day-End Transfer to The Mark)</h3>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary btn-sm no-print"
+                                        onClick={() => openHotelSettleModal()}
+                                        style={{ fontSize: '0.82rem', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: '5px', background: '#0284C7', borderColor: '#0284C7', fontWeight: 'bold' }}
+                                    >
+                                        <FiPlus /> Settle Hotel Credit / Add Money
+                                    </button>
+                                </div>
+
+                                {(!dayEndData.hotelCreditDetails || dayEndData.hotelCreditDetails.length === 0) ? (
+                                    <div style={{ padding: '14px', background: '#F0F9FF', border: '1px dashed #BAE6FD', borderRadius: '6px', textAlign: 'center', color: '#0369A1', fontSize: '0.9rem' }}>
+                                        No food orders were credited to hotel rooms on this date.
+                                    </div>
+                                ) : (
+                                    <table className="eod-report-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Room #</th>
+                                                <th>Order / Bill #</th>
+                                                <th>Time</th>
+                                                <th>Biller / Staff</th>
+                                                <th>Items Ordered</th>
+                                                <th style={{ textAlign: 'right' }}>Credit Amount</th>
+                                                <th className="no-print" style={{ textAlign: 'center', width: '120px' }}>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {dayEndData.hotelCreditDetails.map((hc, idx) => (
+                                                <tr key={idx}>
+                                                    <td><strong style={{ color: '#0284C7', fontSize: '1rem' }}>Room {hc.roomNumber}</strong></td>
+                                                    <td>{hc.orderNumbers?.join(', ') || hc.billNumber}</td>
+                                                    <td>{new Date(hc.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                                                    <td>{hc.billerName || '-'}</td>
+                                                    <td style={{ fontSize: '0.82rem', color: '#4B5563' }}>{hc.itemsSummary}</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#0369A1' }}>₹{hc.total.toFixed(2)}</td>
+                                                    <td className="no-print" style={{ textAlign: 'center' }}>
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-sm btn-secondary"
+                                                            onClick={() => openHotelSettleModal(hc.roomNumber, hc.orderNumbers?.[0] || '', hc.total, dayEndData.date)}
+                                                            style={{ fontSize: '0.75rem', padding: '3px 8px', fontWeight: 'bold' }}
+                                                        >
+                                                            Add Payment
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            <tr style={{ background: '#F0F9FF', fontWeight: 'bold' }}>
+                                                <td colSpan={5} style={{ textAlign: 'right', color: '#0369A1' }}>TOTAL ROOM CREDITS:</td>
+                                                <td style={{ textAlign: 'right', color: '#0284C7', fontSize: '1rem' }}>₹{(dayEndData.summary?.hotelCreditTotal || 0).toFixed(2)}</td>
+                                                <td className="no-print"></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+
+                            {/* Hotel Settlements Received Today */}
+                            {dayEndData.hotelSettlementsReceived?.list?.length > 0 && (
+                                <div className="eod-report-section">
+                                    <h3 className="eod-section-title">💵 Hotel Settlements Received Today (Handover from The Mark)</h3>
+                                    <table className="eod-report-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Room #</th>
+                                                <th>Order Date</th>
+                                                <th>Payment Mode</th>
+                                                <th>Received By</th>
+                                                <th>Notes</th>
+                                                <th style={{ textAlign: 'right' }}>Amount Received</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {dayEndData.hotelSettlementsReceived.list.map((s, idx) => (
+                                                <tr key={idx}>
+                                                    <td><strong>Room {s.roomNumber}</strong></td>
+                                                    <td>{s.orderBusinessDate}</td>
+                                                    <td><span className="expense-badge" style={{ textTransform: 'uppercase' }}>{s.paymentMethod}</span></td>
+                                                    <td>{s.receivedByName || 'Staff'}</td>
+                                                    <td style={{ fontSize: '0.82rem', color: '#666' }}>{s.notes || '-'}</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#059669' }}>+₹{s.settledAmount.toFixed(2)}</td>
+                                                </tr>
+                                            ))}
+                                            <tr style={{ background: '#ECFDF5', fontWeight: 'bold' }}>
+                                                <td colSpan={5} style={{ textAlign: 'right', color: '#065F46' }}>TOTAL SETTLED FROM HOTEL TODAY:</td>
+                                                <td style={{ textAlign: 'right', color: '#059669', fontSize: '1rem' }}>+₹{dayEndData.hotelSettlementsReceived.total.toFixed(2)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* Non-Chargeable (NC) Orders Section */}
+                            {dayEndData.ncSummary?.count > 0 && (
+                                <div className="eod-report-section">
+                                    <h3 className="eod-section-title" style={{ color: '#7E22CE' }}>🎁 Non-Chargeable (NC / Complimentary) Orders Breakdown</h3>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '16px', marginBottom: '10px' }}>
+                                        <div>
+                                            <h4 style={{ margin: '0 0 8px', fontSize: '0.9rem', color: '#6B21A8' }}>Complimentary Items Given:</h4>
+                                            <table className="eod-report-table" style={{ fontSize: '0.82rem' }}>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Item Name</th>
+                                                        <th style={{ textAlign: 'center' }}>Qty</th>
+                                                        <th style={{ textAlign: 'right' }}>Retail Value</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {dayEndData.ncSummary.items.map((it, idx) => (
+                                                        <tr key={idx}>
+                                                            <td>{it.name}</td>
+                                                            <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{it.quantity}</td>
+                                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{it.totalValue.toFixed(2)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div>
+                                            <h4 style={{ margin: '0 0 8px', fontSize: '0.9rem', color: '#6B21A8' }}>NC Authorization & Orders:</h4>
+                                            <table className="eod-report-table" style={{ fontSize: '0.82rem' }}>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Bill #</th>
+                                                        <th>Approver</th>
+                                                        <th>Reason</th>
+                                                        <th style={{ textAlign: 'right' }}>Value</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {dayEndData.ncSummary.bills.map((b, idx) => (
+                                                        <tr key={idx}>
+                                                            <td>{b.billNumber}</td>
+                                                            <td><strong>{b.billerName}</strong></td>
+                                                            <td style={{ color: '#666' }}>{b.ncReason}</td>
+                                                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#7E22CE' }}>₹{b.originalValue.toFixed(2)}</td>
+                                                        </tr>
+                                                    ))}
+                                                    <tr style={{ background: '#F3E8FF', fontWeight: 'bold' }}>
+                                                        <td colSpan={3} style={{ textAlign: 'right', color: '#6B21A8' }}>TOTAL COMPLIMENTARY VALUE:</td>
+                                                        <td style={{ textAlign: 'right', color: '#7E22CE' }}>₹{dayEndData.ncSummary.totalOriginalValue.toFixed(2)}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Category Sales */}
                             <div className="eod-report-section">
@@ -2063,6 +2318,162 @@ const AdminAnalytics = () => {
             )}
 
             {/* ADD / EDIT EXPENSE MODAL */}
+            
+            {/* Settle Hotel Credit Modal */}
+            {showHotelSettleModal && (
+                <div className="modal-overlay" onClick={() => !submittingSettle && setShowHotelSettleModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', width: '92%' }}>
+                        <div className="modal-header">
+                            <h2 style={{ fontSize: '1.2rem', color: '#0369A1' }}>🏨 Settle Hotel Room Credit / Add Money</h2>
+                            <button className="modal-close" onClick={() => setShowHotelSettleModal(false)}>×</button>
+                        </div>
+                        <form onSubmit={handleSubmitHotelSettlement} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
+                            <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B' }}>
+                                Record payment handed over by The Mark Hotel PMS for food orders charged to room bills.
+                            </p>
+
+                            {/* Quick Select from Pending Credits if available */}
+                            {pendingHotelCredits.length > 0 && (
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                                        Quick Select Pending Room Credit:
+                                    </label>
+                                    <select
+                                        className="input"
+                                        style={{ width: '100%', padding: '7px 10px', fontSize: '0.85rem', border: '1.5px solid #0284C7', borderRadius: '6px' }}
+                                        value=""
+                                        onChange={e => {
+                                            const sel = pendingHotelCredits.find(p => p.billId === e.target.value);
+                                            if (sel) {
+                                                setSettleForm({
+                                                    ...settleForm,
+                                                    roomNumber: sel.roomNumber || '',
+                                                    orderNumber: sel.orderNumbers?.[0] || '',
+                                                    orderBusinessDate: sel.businessDate || '',
+                                                    creditAmount: String(sel.totalAmount || ''),
+                                                    settledAmount: String(sel.remainingBalance || sel.totalAmount || '')
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        <option value="">-- Or select from pending room credits --</option>
+                                        {pendingHotelCredits.filter(p => !p.isFullySettled).map(p => (
+                                            <option key={p.billId} value={p.billId}>
+                                                Room {p.roomNumber} · {p.businessDate} · Balance: ₹{p.remainingBalance.toFixed(2)} (Total: ₹{p.totalAmount.toFixed(2)})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                                        Hotel Room # *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="e.g. 101, 102"
+                                        value={settleForm.roomNumber}
+                                        onChange={e => setSettleForm({ ...settleForm, roomNumber: e.target.value })}
+                                        className="input"
+                                        style={{ width: '100%', padding: '8px', fontWeight: 'bold' }}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                                        Original Order Date *
+                                    </label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={settleForm.orderBusinessDate}
+                                        onChange={e => setSettleForm({ ...settleForm, orderBusinessDate: e.target.value })}
+                                        className="input"
+                                        style={{ width: '100%', padding: '8px' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                                        Settlement Date (Today) *
+                                    </label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={settleForm.settlementBusinessDate}
+                                        onChange={e => setSettleForm({ ...settleForm, settlementBusinessDate: e.target.value })}
+                                        className="input"
+                                        style={{ width: '100%', padding: '8px' }}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                                        Payment Mode Received *
+                                    </label>
+                                    <select
+                                        value={settleForm.paymentMethod}
+                                        onChange={e => setSettleForm({ ...settleForm, paymentMethod: e.target.value })}
+                                        className="input"
+                                        style={{ width: '100%', padding: '8px', fontWeight: 'bold' }}
+                                    >
+                                        <option value="cash">💵 Cash Handover</option>
+                                        <option value="upi">📱 UPI / Online</option>
+                                        <option value="card">💳 Card</option>
+                                        <option value="bank_transfer">🏦 Bank Transfer</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                                    Amount Received from Hotel (₹) *
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    required
+                                    placeholder="0.00"
+                                    value={settleForm.settledAmount}
+                                    onChange={e => setSettleForm({ ...settleForm, settledAmount: e.target.value })}
+                                    className="input"
+                                    style={{ width: '100%', padding: '8px 10px', fontSize: '1.1rem', fontWeight: 'bold', color: '#059669', border: '2px solid #059669', borderRadius: '6px' }}
+                                />
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                                    Staff Note / Reference
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Received from Front Desk at checkout"
+                                    value={settleForm.notes}
+                                    onChange={e => setSettleForm({ ...settleForm, notes: e.target.value })}
+                                    className="input"
+                                    style={{ width: '100%', padding: '8px' }}
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                <button type="button" className="btn btn-secondary" disabled={submittingSettle} onClick={() => setShowHotelSettleModal(false)}>
+                                    Cancel
+                                </button>
+                                <button type="submit" className="btn btn-primary" disabled={submittingSettle} style={{ background: '#0284C7', borderColor: '#0284C7', fontWeight: 'bold' }}>
+                                    {submittingSettle ? 'Recording...' : '💾 Record Settlement'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {showAddExpenseModal && (
                 <div className="expense-modal-overlay" onClick={() => !submittingExpense && setShowAddExpenseModal(false)}>
                     <div className="expense-modal-content" style={{ maxWidth: modalMode === 'bulk' && !editingExpenseId ? '720px' : '520px' }} onClick={e => e.stopPropagation()}>

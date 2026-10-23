@@ -74,8 +74,16 @@ const orderSchema = new mongoose.Schema({
     },
     paymentMethod: {
         type: String,
-        enum: ['cash', 'online', 'upi', 'card', 'split', 'pending', 'hotel_bill'],
+        enum: ['cash', 'online', 'upi', 'card', 'split', 'pending', 'hotel_bill', 'nc'],
         default: 'pending'
+    },
+    ncAmount: {
+        type: Number,
+        default: 0
+    },
+    ncReason: {
+        type: String,
+        default: ''
     },
     paidInHotelBill: {
         type: Boolean,
