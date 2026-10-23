@@ -28,6 +28,7 @@ const {
 } = require('../utils/orderCalculations');
 const { splitItemsByBeverage } = require('../utils/beverageHelper');
 const { runAtomic, sessionOptions } = require('../utils/transactions');
+const { dispatchHotelRoomOrder } = require('../utils/hotelOrderHelper');
 
 const getKOTEventId = (payload) => {
     const orderId = payload._id?.toString() || payload.id?.toString() || payload.orderNumber || 'unknown';
@@ -706,6 +707,9 @@ router.post('/', protect, async (req, res) => {
             // order after the incremental KOT event so the partial duplicate is replaced.
             if (io) io.emit('order-updated', populatedOrder);
 
+            // Notify Hotel PMS if this order is for a hotel room
+            dispatchHotelRoomOrder(activeOrder, populatedOrder, 'room_order.items_added');
+
             return res.status(200).json(populatedOrder);
         }
 
@@ -775,6 +779,9 @@ router.post('/', protect, async (req, res) => {
         // the incremental new-order event immediately get the full populated state too.
         const io2 = req.app.get('io');
         if (io2) io2.emit('order-updated', populatedOrder);
+
+        // Notify Hotel PMS if this order is for a hotel room
+        dispatchHotelRoomOrder(order, populatedOrder, 'room_order.created');
 
         res.status(201).json(populatedOrder);
     } catch (error) {
@@ -1041,6 +1048,11 @@ router.put('/:id/modify-items', protect, async (req, res) => {
         // dispatchKOT intentionally keeps the printer-compatible incremental new-order event.
         // Follow it with canonical state so old APK history cannot retain a partial editable row.
         if ((addedKotObj || cancelledKotObj) && io) io.emit('order-updated', populatedOrder);
+
+        // Notify Hotel PMS of modified items for room orders
+        if (addedKotObj) {
+            dispatchHotelRoomOrder(order, populatedOrder, 'room_order.items_modified');
+        }
 
         res.json({
             message: isAllCancelled ? 'All items removed. Order cancelled successfully.' : 'Order items modified successfully',

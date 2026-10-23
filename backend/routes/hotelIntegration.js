@@ -1,0 +1,292 @@
+const express = require('express');
+const router = express.Router();
+const Order = require('../models/Order');
+const Table = require('../models/Table');
+const Settings = require('../models/Settings');
+const hotelAuth = require('../middleware/hotelAuth');
+const {
+    isRoomTable,
+    formatRoomOrderPayload,
+    addSseClient,
+    removeSseClient,
+    sendWebhookNotification
+} = require('../utils/hotelOrderHelper');
+
+// All routes in this router require hotel API key authorization
+router.use(hotelAuth);
+
+/**
+ * @route   GET /api/hotel-sync/orders
+ * @desc    Fetch room service orders (filtered by roomNumber, sync status, date)
+ * @access  Protected (Hotel API Key)
+ */
+router.get('/orders', async (req, res) => {
+    try {
+        const { roomNumber, synced, since, limit = 50 } = req.query;
+
+        // Build query
+        const query = {};
+
+        // Find room tables if roomNumber specified
+        if (roomNumber) {
+            const cleanRoom = String(roomNumber).trim();
+            const matchingTables = await Table.find({
+                $or: [
+                    { tableNumber: cleanRoom },
+                    { name: new RegExp(`Room\\s*${cleanRoom}`, 'i') }
+                ]
+            }).select('_id');
+
+            const tableIds = matchingTables.map(t => t._id);
+
+            query.$or = [
+                { roomNumber: cleanRoom },
+                { tableNumber: cleanRoom },
+                { table: { $in: tableIds } },
+                { tables: { $in: tableIds } }
+            ];
+        } else {
+            // Find all tables that are rooms
+            const roomTables = await Table.find({
+                $or: [
+                    { areaType: 'room' },
+                    { section: /floor|room/i },
+                    { name: /room/i }
+                ]
+            }).select('_id');
+
+            const roomTableIds = roomTables.map(t => t._id);
+
+            query.$or = [
+                { isRoomOrder: true },
+                { table: { $in: roomTableIds } },
+                { tables: { $in: roomTableIds } },
+                { tableNumber: /^\d{3}$/ } // 3-digit room numbers like 101, 201
+            ];
+        }
+
+        // Filter by PMS sync status
+        if (synced === 'false' || synced === false) {
+            query.pmsSynced = { $ne: true };
+        } else if (synced === 'true' || synced === true) {
+            query.pmsSynced = true;
+        }
+
+        // Filter by timestamp
+        if (since) {
+            const sinceDate = new Date(since);
+            if (!isNaN(sinceDate.getTime())) {
+                query.createdAt = { $gte: sinceDate };
+            }
+        }
+
+        const orders = await Order.find(query)
+            .sort({ createdAt: -1 })
+            .limit(Math.min(Number(limit) || 50, 200))
+            .populate('tables', 'tableNumber name section areaType')
+            .populate('table', 'tableNumber name section areaType')
+            .populate('items.menuItem', 'name price');
+
+        const formatted = orders.map(order => formatRoomOrderPayload(order));
+
+        res.json({
+            success: true,
+            count: formatted.length,
+            data: formatted
+        });
+    } catch (err) {
+        console.error('[HotelSync] Error fetching room orders:', err);
+        res.status(500).json({ success: false, message: 'Failed to fetch room orders' });
+    }
+});
+
+/**
+ * @route   GET /api/hotel-sync/orders/:id
+ * @desc    Get single room order details
+ * @access  Protected (Hotel API Key)
+ */
+router.get('/orders/:id', async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id)
+            .populate('tables', 'tableNumber name section areaType')
+            .populate('table', 'tableNumber name section areaType')
+            .populate('items.menuItem', 'name price');
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        const payload = formatRoomOrderPayload(order);
+        res.json({
+            success: true,
+            data: payload
+        });
+    } catch (err) {
+        console.error('[HotelSync] Error fetching order details:', err);
+        res.status(500).json({ success: false, message: 'Failed to fetch order details' });
+    }
+});
+
+/**
+ * @route   POST /api/hotel-sync/orders/:id/synced (or /ack)
+ * @desc    Mark a room order as synced to the Hotel PMS folio to avoid duplicate billing
+ * @access  Protected (Hotel API Key)
+ */
+const markSyncedHandler = async (req, res) => {
+    try {
+        const { pmsChargeId, notes } = req.body;
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        order.pmsSynced = true;
+        order.pmsSyncedAt = new Date();
+        if (pmsChargeId) order.pmsChargeId = String(pmsChargeId);
+
+        await order.save();
+
+        res.json({
+            success: true,
+            message: `Order #${order.orderNumber} successfully marked as synced to Hotel PMS`,
+            orderId: order._id,
+            pmsChargeId: order.pmsChargeId,
+            pmsSyncedAt: order.pmsSyncedAt
+        });
+    } catch (err) {
+        console.error('[HotelSync] Error marking order as synced:', err);
+        res.status(500).json({ success: false, message: 'Failed to update sync status' });
+    }
+};
+
+router.post('/orders/:id/synced', markSyncedHandler);
+router.post('/orders/:id/ack', markSyncedHandler);
+
+/**
+ * @route   GET /api/hotel-sync/stream
+ * @desc    Real-time Server-Sent Events (SSE) stream for live room order notifications
+ * @access  Protected (Hotel API Key in header or ?apiKey query param)
+ */
+router.get('/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.flushHeaders?.();
+
+    // Initial handshake
+    res.write(`event: connected\ndata: ${JSON.stringify({ status: 'connected', time: new Date() })}\n\n`);
+
+    addSseClient(res);
+
+    // Keepalive ping every 25 seconds
+    const keepAliveTimer = setInterval(() => {
+        try {
+            res.write(`: keepalive ${Date.now()}\n\n`);
+        } catch (e) {
+            clearInterval(keepAliveTimer);
+        }
+    }, 25000);
+
+    req.on('close', () => {
+        clearInterval(keepAliveTimer);
+        removeSseClient(res);
+    });
+});
+
+/**
+ * @route   GET /api/hotel-sync/rooms
+ * @desc    List all hotel room tables with active running orders and unpaid bills
+ * @access  Protected (Hotel API Key)
+ */
+router.get('/rooms', async (req, res) => {
+    try {
+        const roomTables = await Table.find({
+            $or: [
+                { areaType: 'room' },
+                { section: /floor|room/i },
+                { name: /room/i }
+            ]
+        }).sort({ tableNumber: 1 });
+
+        const activeOrders = await Order.find({
+            table: { $in: roomTables.map(t => t._id) },
+            status: { $nin: ['paid', 'cancelled'] }
+        }).select('_id orderNumber table total subtotal tax status createdAt items');
+
+        const activeOrderMap = new Map();
+        for (const o of activeOrders) {
+            activeOrderMap.set(String(o.table), o);
+        }
+
+        const result = roomTables.map(table => {
+            const order = activeOrderMap.get(String(table._id));
+            return {
+                tableId: table._id,
+                roomNumber: table.tableNumber,
+                name: table.name || `Room ${table.tableNumber}`,
+                section: table.section,
+                areaType: table.areaType,
+                isOccupied: table.isOccupied,
+                activeOrder: order ? {
+                    orderId: order._id,
+                    orderNumber: order.orderNumber,
+                    itemCount: (order.items || []).length,
+                    total: order.total,
+                    createdAt: order.createdAt
+                } : null
+            };
+        });
+
+        res.json({
+            success: true,
+            count: result.length,
+            data: result
+        });
+    } catch (err) {
+        console.error('[HotelSync] Error fetching room list:', err);
+        res.status(500).json({ success: false, message: 'Failed to fetch rooms' });
+    }
+});
+
+/**
+ * @route   POST /api/hotel-sync/test-webhook
+ * @desc    Test trigger webhook to verify connection to Hotel PMS
+ * @access  Protected (Hotel API Key)
+ */
+router.post('/test-webhook', async (req, res) => {
+    try {
+        const mockPayload = {
+            orderId: 'test_order_' + Date.now(),
+            orderNumber: 'TEST-101',
+            roomNumber: req.body.roomNumber || '101',
+            roomName: 'Room ' + (req.body.roomNumber || '101'),
+            section: 'Ground Floor',
+            items: [
+                { foodName: 'Test Paneer Butter Masala', quantity: 1, price: 280, total: 280, notes: 'Test integration' },
+                { foodName: 'Test Virgin Mojito', quantity: 1, price: 150, total: 150, notes: '' }
+            ],
+            itemsSummary: 'Test Paneer Butter Masala x1, Test Virgin Mojito x1',
+            subtotal: 430,
+            tax: 14,
+            total: 444,
+            currency: 'INR',
+            status: 'confirmed',
+            createdAt: new Date(),
+            pmsSynced: false
+        };
+
+        await sendWebhookNotification(mockPayload, 'test.notification');
+
+        res.json({
+            success: true,
+            message: 'Test webhook dispatched to configured URL',
+            payload: mockPayload
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+module.exports = router;

@@ -88,6 +88,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/hotel-sync', require('./routes/hotelIntegration'));
 
 // Health check
 app.get('/api/health', (req, res) => {

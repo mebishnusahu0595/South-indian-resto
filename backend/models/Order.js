@@ -148,6 +148,26 @@ const orderSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    isRoomOrder: {
+        type: Boolean,
+        default: false
+    },
+    roomNumber: {
+        type: String,
+        default: ''
+    },
+    pmsSynced: {
+        type: Boolean,
+        default: false
+    },
+    pmsSyncedAt: {
+        type: Date,
+        default: null
+    },
+    pmsChargeId: {
+        type: String,
+        default: ''
+    },
     createdAt: {
         type: Date,
         default: Date.now
