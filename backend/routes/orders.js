@@ -56,17 +56,28 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
     const fullItems = payload.items || [];
     const { foodItems, beverageItems } = splitItemsByBeverage(fullItems);
 
-    // Filter printer configs:
-    // Kitchen printer: WiFi TCP printer (role: kitchen, connection: network)
-    // USB printer: USB system printer (role: bar / counter / RETSOL RTP-81, connection: usb)
+    const isKitchenPrinter = (p) => Boolean(
+        (p.type === 'tcp' || p.role === 'kitchen' || p.connection === 'network') &&
+        p.connection !== 'usb' &&
+        p.type !== 'system' &&
+        !/retsol/i.test(p.name || p.systemName || '')
+    );
+
+    const isUsbPrinter = (p) => Boolean(
+        p.connection === 'usb' ||
+        p.type === 'system' ||
+        p.role === 'bar' ||
+        /retsol/i.test(p.name || p.systemName || '')
+    );
+
     const kitchenPrinters = (printerConfig.printers || []).map(p => ({
         ...p,
-        kot: Boolean(p.kot && (p.type === 'tcp' || p.role === 'kitchen' || p.connection === 'network')),
+        kot: Boolean(p.kot && isKitchenPrinter(p)),
         bill: Boolean(p.bill)
     }));
     const usbPrinters = (printerConfig.printers || []).map(p => ({
         ...p,
-        kot: Boolean(p.kot && (p.connection === 'usb' || p.type === 'system' || p.role === 'bar' || /retsol/i.test(p.name || p.systemName || ''))),
+        kot: Boolean(p.kot && isUsbPrinter(p) && !isKitchenPrinter(p)),
         bill: Boolean(p.bill)
     }));
 
@@ -127,7 +138,7 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
 
         if (io) {
             io.to('print-agents').emit('printer-settings-updated', specificConfig);
-            await new Promise(r => setTimeout(r, 60));
+            await new Promise(r => setTimeout(r, 250));
 
             if (subEventType === 'CREATE') {
                 io.emit('new-order', subPayload);
@@ -138,26 +149,25 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
     };
 
     if (foodItems.length > 0 && beverageItems.length > 0) {
-        // Both Food and Beverages: Send Food to Kitchen WiFi printer, Beverages to USB printer
+        // Both Food and Beverages:
+        // 1) Send Food strictly to Kitchen WiFi printer (beverages stripped out)
         await emitJob(foodItems, kitchenPrinterConfig, `${baseEventId}-FOOD`, payload.kotTicket || '', eventType);
-        await new Promise(r => setTimeout(r, 120));
+        // 2) Wait 1500ms so print-agent locks in kitchen target before beverage job is dispatched
+        await new Promise(r => setTimeout(r, 1500));
+        // 3) Send Beverages strictly to USB printer (food stripped out)
         const bevTicket = payload.kotTicket ? `${payload.kotTicket}-BEV` : 'KOT-BEV';
         const bevEventType = eventType === 'CREATE' ? 'KOT (BEVERAGES)' : `${eventType} (BEV)`;
         await emitJob(beverageItems, usbPrinterConfig, `${baseEventId}-BEV`, bevTicket, bevEventType);
     } else if (beverageItems.length > 0) {
-        // ONLY Beverages: Send to USB printer only
+        // ONLY Beverages: Send strictly to USB printer only (NEVER to Kitchen)
         const bevEventType = eventType === 'CREATE' ? 'KOT (BEVERAGES)' : `${eventType} (BEV)`;
         await emitJob(beverageItems, usbPrinterConfig, baseEventId, payload.kotTicket || '', bevEventType);
     } else {
-        // ONLY Food (or cancellation/instruction without items): Send to Kitchen printer
+        // ONLY Food (or cancellation/instruction without items): Send strictly to Kitchen printer
         await emitJob(foodItems.length > 0 ? foodItems : fullItems, kitchenPrinterConfig, baseEventId, payload.kotTicket || '', eventType);
     }
 
-    // Restore standard printer config on agents after dispatch
     if (io) {
-        setTimeout(() => {
-            io.to('print-agents').emit('printer-settings-updated', printerConfig);
-        }, 150);
         // Real-time update for frontend UI / admin panel displays with all items
         const fullPayload = JSON.parse(JSON.stringify({
             ...payload,
