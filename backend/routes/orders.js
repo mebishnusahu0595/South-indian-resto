@@ -56,28 +56,41 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
     const fullItems = payload.items || [];
     const { foodItems, beverageItems } = splitItemsByBeverage(fullItems);
 
-    const isKitchenPrinter = (p) => Boolean(
-        (p.type === 'tcp' || p.role === 'kitchen' || p.connection === 'network') &&
-        p.connection !== 'usb' &&
-        p.type !== 'system' &&
-        !/retsol/i.test(p.name || p.systemName || '')
-    );
+    const isKitchenPrinter = (p) => {
+        const name = (p.name || p.systemName || '').toLowerCase();
+        if (/retsol/i.test(name)) return false;
+        if (/kitch(?:e|a)n/i.test(name)) return true;
+        if (p.role === 'kitchen') return true;
+        if (p.type === 'tcp' || p.host || p.connection === 'network') return true;
+        return false;
+    };
 
-    const isUsbPrinter = (p) => Boolean(
-        p.connection === 'usb' ||
-        p.type === 'system' ||
-        p.role === 'bar' ||
-        /retsol/i.test(p.name || p.systemName || '')
-    );
+    const isUsbPrinter = (p) => {
+        const name = (p.name || p.systemName || '').toLowerCase();
+        if (/retsol/i.test(name)) return true;
+        if (p.connection === 'usb') return true;
+        if (p.role === 'bar' || p.role === 'counter' || p.role === 'reception') return true;
+        if (p.type === 'system' && !p.host && !/kitch(?:e|a)n/i.test(name)) return true;
+        return false;
+    };
 
-    const kitchenPrinters = (printerConfig.printers || []).map(p => ({
+    let kitchenPrinters = (printerConfig.printers || []).map(p => ({
         ...p,
         kot: Boolean(p.kot && isKitchenPrinter(p)),
         bill: Boolean(p.bill)
     }));
+    // If no printer matched isKitchenPrinter specifically, use any enabled KOT printer (excluding dedicated USB receipt printer)
+    if (!kitchenPrinters.some(p => p.kot && p.enabled !== false)) {
+        kitchenPrinters = (printerConfig.printers || []).map(p => ({
+            ...p,
+            kot: Boolean(p.kot && !/retsol/i.test(p.name || p.systemName || '')),
+            bill: Boolean(p.bill)
+        }));
+    }
+
     const usbPrinters = (printerConfig.printers || []).map(p => ({
         ...p,
-        kot: Boolean(p.kot && isUsbPrinter(p) && !isKitchenPrinter(p)),
+        kot: Boolean(p.kot && isUsbPrinter(p)),
         bill: Boolean(p.bill)
     }));
 
@@ -137,9 +150,6 @@ const dispatchKOT = async (req, payload, eventType = 'CREATE') => {
         }
 
         if (io) {
-            io.to('print-agents').emit('printer-settings-updated', specificConfig);
-            await new Promise(r => setTimeout(r, 250));
-
             if (subEventType === 'CREATE') {
                 io.emit('new-order', subPayload);
             } else {

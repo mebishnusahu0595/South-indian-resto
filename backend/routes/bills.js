@@ -391,27 +391,26 @@ router.post('/:id/print', protect, admin, async (req, res) => {
         const forceReprint = Boolean(req.body?.forceReprint || req.query?.reprint === 'true');
         const billIdStr = bill._id.toString();
 
-        // Strict deduplication: A bill should only be printed once automatically.
-        // Suppress any duplicate print requests for the same billId unless forceReprint is explicitly true.
-        const existingJob = await KOTPrintJob.findOne({
+        // Only suppress duplicate auto-prints if it was ALREADY successfully printed within the last 60 seconds
+        const recentlyPrintedJob = await KOTPrintJob.findOne({
             jobType: 'bill',
             'payload.billId': billIdStr,
-            status: { $in: ['printed', 'pending'] }
+            status: 'printed',
+            printedAt: { $gte: new Date(Date.now() - 60 * 1000) }
         }).sort({ createdAt: -1 });
 
-        if (existingJob && !forceReprint) {
-            console.log(`[Dedupe] Bill print request for ${bill.billNumber || billIdStr} suppressed (already queued/printed as ${existingJob.eventId})`);
+        if (recentlyPrintedJob && !forceReprint) {
+            console.log(`[Dedupe] Bill print request for ${bill.billNumber || billIdStr} suppressed (already printed at ${recentlyPrintedJob.printedAt})`);
             return res.json({
                 routed: true,
                 queued: false,
                 duplicate: true,
-                message: 'Bill print job already queued or printed',
-                eventId: existingJob.eventId
+                message: 'Bill was already printed recently. Click reprint to print again.',
+                eventId: recentlyPrintedJob.eventId
             });
         }
 
-        // Deterministic eventId: unique to this bill instance (and print sequence if force reprint)
-        const reprintSuffix = forceReprint ? `-${Date.now()}` : '';
+        const reprintSuffix = `-${Date.now()}`;
         const eventId = `BILL-${bill._id}${reprintSuffix}`;
 
         // Ensure all bill printers in config strictly print only 1 copy per job

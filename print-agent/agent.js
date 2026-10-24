@@ -260,7 +260,11 @@ using System.IO;
 using System.Runtime.InteropServices;
 public static class KeaRawPrint {
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-  public class DocInfo { public string DocName; public string OutputFile; public string DataType; }
+  public class DocInfo {
+    [MarshalAs(UnmanagedType.LPWStr)] public string DocName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string OutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string DataType;
+  }
   [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
   static extern bool OpenPrinter(string name, out IntPtr handle, IntPtr defaults);
   [DllImport("winspool.drv", SetLastError = true)]
@@ -281,13 +285,15 @@ public static class KeaRawPrint {
     try {
       DocInfo info = new DocInfo();
       info.DocName = "Kea Print";
+      info.OutputFile = null;
       info.DataType = "RAW";
       if (StartDocPrinter(handle, 1, info) == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
       try {
-        if (!StartPagePrinter(handle)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        bool pageStarted = false;
+        try { pageStarted = StartPagePrinter(handle); } catch {}
         int written;
         bool ok = WritePrinter(handle, data, data.Length, out written);
-        EndPagePrinter(handle);
+        if (pageStarted) { try { EndPagePrinter(handle); } catch {} }
         if (!ok || written != data.Length) throw new Win32Exception(Marshal.GetLastWin32Error());
       } finally {
         EndDocPrinter(handle);
@@ -297,9 +303,14 @@ public static class KeaRawPrint {
     }
   }
   public static int Main(string[] args) {
-    if (args.Length < 2) { Console.Error.WriteLine("Usage: KeaRawPrint <printerName> <filePath>"); return 1; }
-    Send(args[0], File.ReadAllBytes(args[1]));
-    return 0;
+    try {
+      if (args.Length < 2) { Console.Error.WriteLine("Usage: KeaRawPrint <printerName> <filePath>"); return 1; }
+      Send(args[0], File.ReadAllBytes(args[1]));
+      return 0;
+    } catch (Exception ex) {
+      Console.Error.WriteLine("KeaRawPrint error: " + ex.Message);
+      return 1;
+    }
   }
 }
 `;
@@ -354,7 +365,11 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 public static class KeaRawPrint {
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-  public class DocInfo { public string DocName; public string OutputFile; public string DataType; }
+  public class DocInfo {
+    [MarshalAs(UnmanagedType.LPWStr)] public string DocName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string OutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string DataType;
+  }
   [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
   static extern bool OpenPrinter(string name, out IntPtr handle, IntPtr defaults);
   [DllImport("winspool.drv", SetLastError = true)]
@@ -375,13 +390,15 @@ public static class KeaRawPrint {
     try {
       DocInfo info = new DocInfo();
       info.DocName = "Kea Print";
+      info.OutputFile = null;
       info.DataType = "RAW";
       if (StartDocPrinter(handle, 1, info) == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
       try {
-        if (!StartPagePrinter(handle)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        bool pageStarted = false;
+        try { pageStarted = StartPagePrinter(handle); } catch {}
         int written;
         bool ok = WritePrinter(handle, data, data.Length, out written);
-        EndPagePrinter(handle);
+        if (pageStarted) { try { EndPagePrinter(handle); } catch {} }
         if (!ok || written != data.Length) throw new Win32Exception(Marshal.GetLastWin32Error());
       } finally {
         EndDocPrinter(handle);
@@ -525,14 +542,49 @@ async function listSystemPrinters() {
 async function printRawToSystemPrinter(systemName, buffer) {
   const file = path.join(os.tmpdir(), `kea-print-${crypto.randomUUID()}.bin`);
   fs.writeFileSync(file, buffer);
+  let lastErr = null;
   try {
     if (process.platform === 'win32') {
+      // Tier 1: Fast pre-compiled C# helper KeaRawPrint.exe (~0.1s)
       if (cachedPrintExe) {
-        // Fast path: pre-compiled EXE (~0.1s)
-        await runCommand(cachedPrintExe, [systemName, file]);
-      } else {
-        // Slow fallback: PowerShell recompiles C# every time (~1-2s)
+        try {
+          await runCommand(cachedPrintExe, [systemName, file]);
+          return;
+        } catch (err1) {
+          console.warn(`[SystemPrint:Tier1] KeaRawPrint.exe failed on "${systemName}": ${err1.message}. Trying Tier 2 (PowerShell Winspool)...`);
+          lastErr = err1;
+        }
+      }
+
+      // Tier 2: PowerShell Winspool RAW print
+      try {
         await runPowerShell(WINDOWS_RAW_PRINT_PS, { KEA_PRINTER_NAME: systemName, KEA_PRINT_FILE: file });
+        return;
+      } catch (err2) {
+        console.warn(`[SystemPrint:Tier2] PowerShell Winspool failed on "${systemName}": ${err2.message}. Trying Tier 3 (CMD binary copy)...`);
+        lastErr = err2;
+      }
+
+      // Tier 3: CMD copy /b to local printer share (handles shared USB and network queues)
+      try {
+        const cleanName = systemName.replace(/["\\]/g, '');
+        await runCommand('cmd.exe', ['/c', `copy /b "${file}" "\\\\127.0.0.1\\${cleanName}"`]);
+        return;
+      } catch (err3) {
+        console.warn(`[SystemPrint:Tier3] CMD copy /b failed on "${systemName}": ${err3.message}. Trying Tier 4 (Out-Printer)...`);
+        lastErr = err3;
+      }
+
+      // Tier 4: PowerShell Out-Printer
+      try {
+        await runPowerShell(`Get-Content -Path $env:KEA_PRINT_FILE -Encoding Byte -Raw | Out-Printer -Name $env:KEA_PRINTER_NAME`, {
+          KEA_PRINTER_NAME: systemName,
+          KEA_PRINT_FILE: file
+        });
+        return;
+      } catch (err4) {
+        lastErr = err4;
+        throw new Error(`All system print methods failed for "${systemName}": ${lastErr.message}`);
       }
     } else {
       await runCommand('lp', ['-d', systemName, '-o', 'raw', file]);
@@ -783,7 +835,7 @@ function toTarget(printer, defaultPort = DEFAULT_PRINTER_PORT) {
 }
 
 function buildTargets(job) {
-  const config = livePrinterConfig?.version ? livePrinterConfig : job.printerConfig;
+  const config = (job.printerConfig?.printers?.length ? job.printerConfig : (livePrinterConfig?.version ? livePrinterConfig : job.printerConfig)) || {};
   const jobFlag = job.jobType === 'bill' ? 'bill' : 'kot';
   const targets = [];
   const endpointKeys = new Set();
@@ -858,8 +910,52 @@ async function printTarget(job, eventId, target) {
       console.log(`Printed ${job.jobType === 'bill' ? 'Bill' : 'KOT'} ${job.billNumber || job.kotTicket || job.orderNumber} on ${label}`);
       results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'printed' });
     } catch (error) {
-      results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'failed', error: error.message });
-      if (target.type === 'tcp') rescanSoon();
+      let recovered = false;
+      // Cross-fallback: if TCP network/Ethernet print failed, check if Windows system queue (e.g. KITCHAN) can print it
+      if (target.type === 'tcp') {
+        const fallbackSystem = systemPrinters.find(p =>
+          (p.host && p.host === target.host) ||
+          /kitch(?:e|a)n/i.test(p.systemName || '')
+        );
+        if (fallbackSystem) {
+          console.log(`[CrossFallback] TCP ${target.host}:${target.port} failed. Trying system queue "${fallbackSystem.systemName}"...`);
+          try {
+            const fbInterface = { execute: buf => printRawToSystemPrinter(fallbackSystem.systemName, buf), isPrinterConnected: async () => true };
+            await (job.jobType === 'bill'
+              ? printBillToInterface(job, fbInterface, `${fallbackSystem.systemName} (fallback)`)
+              : printKOTToInterface(job, fbInterface, `${fallbackSystem.systemName} (fallback)`));
+            successfulCopies.set(successKey, Date.now());
+            saveSuccessfulCopies();
+            console.log(`[CrossFallback] Successfully printed via system queue "${fallbackSystem.systemName}"!`);
+            results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'printed' });
+            recovered = true;
+          } catch (fbErr) {
+            console.warn(`[CrossFallback] System queue "${fallbackSystem.systemName}" also failed: ${fbErr.message}`);
+          }
+        }
+      } else if (target.type === 'system' && (target.host || /kitch(?:e|a)n/i.test(target.systemName || ''))) {
+        // If system queue failed and target has an IP, try direct TCP port 9100
+        const host = target.host || '192.168.1.67';
+        console.log(`[CrossFallback] System queue "${target.systemName}" failed. Trying direct TCP ${host}:${DEFAULT_PRINTER_PORT}...`);
+        try {
+          const fbInterface = { execute: buf => printRawToNetworkPrinter(host, DEFAULT_PRINTER_PORT, buf), isPrinterConnected: async () => true };
+          await (job.jobType === 'bill'
+            ? printBillToInterface(job, fbInterface, `${host}:${DEFAULT_PRINTER_PORT} (fallback)`)
+            : printKOTToInterface(job, fbInterface, `${host}:${DEFAULT_PRINTER_PORT} (fallback)`));
+          successfulCopies.set(successKey, Date.now());
+          saveSuccessfulCopies();
+          console.log(`[CrossFallback] Successfully printed via direct TCP ${host}!`);
+          results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'printed' });
+          recovered = true;
+        } catch (fbErr) {
+          console.warn(`[CrossFallback] Direct TCP ${host} also failed: ${fbErr.message}`);
+        }
+      }
+
+      if (!recovered) {
+        results.push({ target: target.name, endpoint: target.endpointKey, copy, status: 'failed', error: error.message });
+        if (target.type === 'tcp') rescanSoon();
+      }
     }
   }
   return results;

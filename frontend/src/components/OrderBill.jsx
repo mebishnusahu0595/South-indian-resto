@@ -17,7 +17,6 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
     const hasOrders = ordersList.length > 0;
 
     // Auto print once per bill: the PC print agent prints on the Superadmin-selected Bill
-    // printers when it is online; otherwise the browser print popup is used as before.
     useEffect(() => {
         if (!hasOrders || !billId) return undefined;
         // Strict deduplication: never fire printBill automatically more than once per bill instance
@@ -26,15 +25,30 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
 
         let cancelled = false;
         let timer;
+        const autoDismiss = (delay = 1200) => {
+            setTimeout(() => {
+                if (!cancelled && onCancel) onCancel();
+            }, delay);
+        };
         const browserPrint = () => {
-            if (!cancelled) timer = setTimeout(() => window.print(), 350);
+            if (!cancelled) {
+                timer = setTimeout(() => {
+                    window.print();
+                    autoDismiss(1000);
+                }, 350);
+            }
         };
 
         printBill(billId)
             .then(res => {
                 if (cancelled) return;
-                if (res.data?.routed || res.data?.duplicate) setSilentQueued(true);
-                else browserPrint();
+                if (res.data?.routed || res.data?.duplicate) {
+                    setSilentQueued(true);
+                    // Print job has gone to printer! Automatically dismiss popup so staff doesn't have to click Close!
+                    autoDismiss(1200);
+                } else {
+                    browserPrint();
+                }
             })
             .catch(browserPrint);
 
@@ -52,21 +66,29 @@ const OrderBill = ({ order, orders, bill, onCancel }) => {
             setIsPrinting(true);
             try {
                 const res = await printBill(bill._id);
-                if (res.data?.routed) setSilentQueued(true);
-                else window.print();
+                if (res.data?.routed || res.data?.duplicate) {
+                    setSilentQueued(true);
+                    setTimeout(() => { if (onCancel) onCancel(); }, 1200);
+                } else {
+                    window.print();
+                    setTimeout(() => { if (onCancel) onCancel(); }, 1000);
+                }
             } catch (err) {
                 console.error('Silent print failed, fallback to browser print dialog:', err);
                 window.print();
+                setTimeout(() => { if (onCancel) onCancel(); }, 1000);
             } finally {
                 setTimeout(() => setIsPrinting(false), 2000);
             }
         } else {
             window.print();
+            setTimeout(() => { if (onCancel) onCancel(); }, 1000);
         }
     };
 
     const handleBrowserPrint = () => {
         window.print();
+        setTimeout(() => { if (onCancel) onCancel(); }, 1000);
     };
 
     // Use restaurant info from the first order or defaults

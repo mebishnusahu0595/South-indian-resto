@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiPlus, FiMinus, FiTrash2, FiSearch, FiShoppingCart, FiUser, FiAlertTriangle, FiX, FiCheck, FiFileText, FiArrowLeft, FiHome, FiSun, FiStar, FiCoffee, FiGrid } from 'react-icons/fi';
-import { getCategories, getMenuItems, getTables, createOrder, getBillerSuggestions, generateBill, getCoupons, getMaxDiscount, getTableSections, updateTable, getPrinterSettings, updatePrinterSettings } from '../utils/api';
+import { getCategories, getMenuItems, getTables, createOrder, getBillerSuggestions, generateBill, printBill, getCoupons, getMaxDiscount, getTableSections, updateTable, getPrinterSettings, updatePrinterSettings } from '../utils/api';
 import { getImageUrl } from '../utils/config';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
@@ -46,6 +46,36 @@ const AdminCreateOrder = () => {
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [createdBill, setCreatedBill] = useState(null);
     const [generatingBill, setGeneratingBill] = useState(false);
+
+    // Auto-print and auto-close bill modal when created
+    useEffect(() => {
+        if (!createdBill || !createdBill._id) return undefined;
+        let cancelled = false;
+        const autoDismiss = () => {
+            setTimeout(() => {
+                if (!cancelled) {
+                    setShowBillModal(false);
+                    setCreatedBill(null);
+                    setDiscountInput('');
+                    navigate('/admin/bills');
+                }
+            }, 1200);
+        };
+        printBill(createdBill._id)
+            .then(res => {
+                if (res.data?.routed || res.data?.duplicate) {
+                    autoDismiss();
+                } else {
+                    window.print();
+                    autoDismiss();
+                }
+            })
+            .catch(() => {
+                window.print();
+                autoDismiss();
+            });
+        return () => { cancelled = true; };
+    }, [createdBill]);
 
     // When browser auto-print is disabled, keep a local preview available.
     // Automatic KOT printing is owned exclusively by AdminLayout.

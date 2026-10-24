@@ -89,7 +89,7 @@ const AdminLayout = () => {
 
     const handleManualPrintKOT = () => {
         window.print();
-        setTimeout(closeKOTPopups, 350);
+        setTimeout(closeKOTPopups, 500);
     };
 
     useEffect(() => {
@@ -111,17 +111,19 @@ const AdminLayout = () => {
 
         const isAutoPrint = localStorage.getItem('kea_auto_print_kot') !== 'false';
         let printTimer;
-        if (isAutoPrint) {
+
+        // If the ticket was routed to the PC print agent (network/USB), it is already printing physically.
+        // Auto-close the popup in 1.2s so the screen is never blocked!
+        if (layoutKOT.kotRouted) {
+            autoCloseTimer = setTimeout(finishPrint, 1200);
+        } else if (isAutoPrint) {
             printTimer = setTimeout(() => {
                 window.print();
-                // When print dialog completes/closes, automatically close modal
                 setTimeout(finishPrint, 350);
             }, 350);
-            // Safety auto-close: if window.print() was dismissed or finished, close modal after 4s
-            autoCloseTimer = setTimeout(finishPrint, 4000);
+            autoCloseTimer = setTimeout(finishPrint, 2000);
         } else {
-            // Even if auto-print is OFF, auto-close after 8 seconds so cashier screen is never blocked
-            autoCloseTimer = setTimeout(finishPrint, 8000);
+            autoCloseTimer = setTimeout(finishPrint, 2500);
         }
 
         return () => {

@@ -115,12 +115,30 @@ const AdminBills = () => {
 
         let cancelled = false;
         let timer;
-        // PC print agent prints on the selected Bill printers when online; otherwise browser popup.
+        const autoDismiss = () => {
+            setTimeout(() => {
+                if (!cancelled) {
+                    setShowEditModal(false);
+                    setCreatedBill(null);
+                }
+            }, 1200);
+        };
         const browserPrint = () => {
-            if (!cancelled) timer = setTimeout(() => window.print(), 350);
+            if (!cancelled) {
+                timer = setTimeout(() => {
+                    window.print();
+                    autoDismiss();
+                }, 350);
+            }
         };
         printBill(createdBill._id)
-            .then(res => { if (!res.data?.routed && !res.data?.duplicate) browserPrint(); })
+            .then(res => {
+                if (res.data?.routed || res.data?.duplicate) {
+                    autoDismiss();
+                } else {
+                    browserPrint();
+                }
+            })
             .catch(browserPrint);
         return () => {
             cancelled = true;
